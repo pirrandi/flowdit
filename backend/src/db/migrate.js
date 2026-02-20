@@ -2,6 +2,8 @@ require('dotenv').config();
 const db = require('./index');
 
 const migrations = [
+
+  `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
   // ── USERS ──────────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

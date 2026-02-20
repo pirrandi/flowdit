@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: pirra
+      POSTGRES_PASSWORD: REDACTED
+      POSTGRES_DB: flowdit_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  nginx:
+    image: nginx:alpine
+    container_name: flowduit-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - db
+volumes:
+  pgdata:
