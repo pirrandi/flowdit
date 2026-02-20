@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 4000;
 app.use(helmet());
 
 // ── CORS Robustecido ──────────────────────────────────────────────────
-const rawOrigin = process.env.CORS_ORIGIN || 'https://wr0ng.art';
+const rawOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 // Limpiamos posibles espacios en blanco de la lista
 const allowedOrigins = rawOrigin.split(',').map(o => o.trim());
 

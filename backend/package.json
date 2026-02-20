@@ -1,7 +1,7 @@
 {
-  "name": "hacklist-api",
+  "name": "flowdit-api",
   "version": "1.0.0",
-  "description": "HackList Pentest Tracker API",
+  "description": "Flowdit Pentest Tracker API",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
