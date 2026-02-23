@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — My Vulns</title>
+<link rel="stylesheet" href="css/main.css">
+<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<div class="topbar" id="topbar"></div>
+
+<div style="display:flex;flex:1;overflow:hidden">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <div class="page-title">My Custom Vulns</div>
+        <div class="page-subtitle">// personal findings with custom payloads</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a href="export.html" class="btn-secondary" style="padding:7px 14px;font-size:12px;text-decoration:none">↓ Export</a>
+        <button class="btn-accent" onclick="openAddVulnModal()">+ Add Vulnerability</button>
+      </div>
+    </div>
+    <div id="custom-content"></div>
+  </div>
+
+  <div class="activity-panel">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- Add/Edit Vuln Modal -->
+<div class="modal-overlay" id="vuln-modal">
+  <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title" id="modal-title">Add Vulnerability</div>
+
+    <!-- Name + Severity -->
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Name *</label>
+        <input type="text" class="form-input" id="modal-vuln-name" placeholder="e.g. GraphQL Introspection Enabled">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Severity</label>
+        <select class="form-input" id="modal-vuln-sev" style="cursor:pointer">
+          <option value="critical">🔴 Critical</option>
+          <option value="high">🟠 High</option>
+          <option value="medium" selected>🟡 Medium</option>
+          <option value="low">🔵 Low</option>
+          <option value="info">⚪ Info</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Category</label>
+      <input type="text" class="form-input" id="modal-vuln-cat" placeholder="e.g. GraphQL, Auth, API...">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Description <span style="color:var(--text3);font-weight:400">(what it is, why it matters)</span></label>
+      <textarea class="form-input note-textarea" id="modal-vuln-desc" placeholder="Describe the vulnerability, its impact and attack vector..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Checklist Items</label>
+      <div id="modal-items-list"></div>
+      <button class="btn-add-row" onclick="addModalRow('modal-items-list','Check item...')">+ Add item</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Payloads</label>
+      <div id="modal-payloads-list"></div>
+      <button class="btn-add-row" onclick="addModalRow('modal-payloads-list','Payload...')">+ Add payload</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notes <span style="color:var(--text3);font-weight:400">(internal, not in report)</span></label>
+      <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="References, context, raw observations..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Remediation <span style="color:var(--text3);font-weight:400">(recommendation for the client)</span></label>
+      <textarea class="form-input note-textarea" id="modal-vuln-rem"
+        style="border-color:var(--green)33"
+        placeholder="Describe how to fix or mitigate this vulnerability..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Evidence <span style="color:var(--text3);font-weight:400">(screenshots, optional)</span></label>
+      <div id="modal-evidence-list" style="margin-bottom:8px"></div>
+      <button class="btn-add-row" onclick="pickEvidenceFile()">+ Attach image</button>
+    </div>
+
+    <div class="form-error" id="vuln-error"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
+      <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/vulns.js"></script>
+<script src="js/page.js"></script>
+<script>
+  function pageInit() {
+    let html = '<div class="sidebar-section-label">Projects</div>';
+    state.projects.forEach(p => {
+      const active = p.id === state.currentProject?.id;
+      html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
+        <span class="sidebar-item-text">${esc(p.name)}</span>
+        <span class="sidebar-item-badge">${p.member_role}</span>
+      </div>`;
+    });
+    document.getElementById('sidebar').innerHTML = html;
+    renderCustomVulns();
+  }
+  bootPage('custom');
+</script>
+</body>
+</html>

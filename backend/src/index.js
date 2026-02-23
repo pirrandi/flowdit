@@ -1,88 +1,59 @@
 require('dotenv').config();
-const express    = require('express');
-const helmet     = require('helmet');
-const cors       = require('cors');
-const rateLimit  = require('express-rate-limit');
+const http      = require('http');
+const express   = require('express');
+const helmet    = require('helmet');
+const cors      = require('cors');
+const rateLimit = require('express-rate-limit');
 
-const authRoutes    = require('./routes/auth');
-const projectRoutes = require('./routes/projects');
-const wstgRoutes    = require('./routes/wstg');
-const psRoutes      = require('./routes/ps');
-const vulnsRoutes   = require('./routes/vulns');
-const { requireAuth } = require('./middleware/auth');
+const wsService = require('./services/ws');
 
-const app  = express();
+const app    = express();
+const server = http.createServer(app);
+
+// Setup WebSocket server attached to the same HTTP server
+wsService.setup(server);
+
 const PORT = process.env.PORT || 4000;
 
-// ── Security headers ─────────────────────────────────────────────────
+// ── Security ──────────────────────────────────────────────────────
 app.use(helmet());
 
-// ── CORS Robustecido ──────────────────────────────────────────────────
-const rawOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
-// Limpiamos posibles espacios en blanco de la lista
-const allowedOrigins = rawOrigin.split(',').map(o => o.trim());
-
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000').split(',');
 app.use(cors({
   origin: (origin, cb) => {
-    // Si no hay origen (ej. herramientas de servidor) o está en la lista
-    if (!origin || allowedOrigins.includes(origin)) {
-      return cb(null, true);
-    }
-    
-    // Log de seguridad para auditoría SOC
-    console.error(`[CORS REJECTED] Origen: ${origin} | Permitidos: ${allowedOrigins}`);
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
 
-// ── Body parsing ──────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 
-// ── Rate limiting ─────────────────────────────────────────────────────
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max:      parseInt(process.env.RATE_LIMIT_MAX) || 200,
-  standardHeaders: true,
-  legacyHeaders:   false,
-});
-app.use(limiter);
+// ── Rate limiting ─────────────────────────────────────────────────
+app.use(rateLimit({ windowMs:15*60*1000, max:3000, standardHeaders:true, legacyHeaders:false }));
+app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20 }));
+app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10 }));
 
-// Stricter limit on auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many login attempts, please try again later' },
-});
-app.use('/api/auth/login',    authLimiter);
-app.use('/api/auth/register', authLimiter);
+// ── Health ────────────────────────────────────────────────────────
+app.get('/health', (_, res) => res.json({ status:'ok', ts: new Date() }));
 
-// ── Health check ──────────────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date() }));
+// ── Routes ────────────────────────────────────────────────────────
+app.use('/api/auth',     require('./routes/auth'));
+app.use('/api/projects', require('./routes/projects'));
+app.use('/api/projects/:projectId/wstg',     require('./routes/wstg'));
+app.use('/api/projects/:projectId/ps',       require('./routes/ps'));
+app.use('/api/projects/:projectId/vulns',    require('./routes/vulns'));
+app.use('/api/projects/:projectId/activity', require('./routes/activity'));
 
-// ── Routes ────────────────────────────────────────────────────────────
-app.use('/api/auth',     authRoutes);
-app.use('/api/projects', projectRoutes);
-
-// Nested routes under projects
-app.use('/api/projects/:projectId/wstg',  wstgRoutes);
-app.use('/api/projects/:projectId/ps',    psRoutes);
-app.use('/api/projects/:projectId/vulns', vulnsRoutes);
-
-// ── 404 ───────────────────────────────────────────────────────────────
-app.use((req, res) => res.status(404).json({ error: 'Not found' }));
-
-// ── Error handler ─────────────────────────────────────────────────────
+// ── Error handler ─────────────────────────────────────────────────
+app.use((req, res) => res.status(404).json({ error:'Not found' }));
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({ error: 'CORS error' });
-  }
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error:'Internal server error' });
 });
 
-// ── Start ─────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🚀 HackList API running on port ${PORT}`);
-  console.log(`   Mode: ${process.env.NODE_ENV || 'development'}`);
+// ── Start ─────────────────────────────────────────────────────────
+server.listen(PORT, () => {
+  console.log(`🚀 Flowdit API on port ${PORT}`);
+  console.log(`🔌 WebSocket ready at ws://localhost:${PORT}/ws`);
 });

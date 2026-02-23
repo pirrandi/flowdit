@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Dashboard</title>
+<link rel="stylesheet" href="css/main.css">
+<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<div class="topbar" id="topbar"></div>
+
+<div style="display:flex;flex:1;overflow:hidden">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Dashboard</div>
+        <div class="page-subtitle" id="dash-subtitle">// select a project</div>
+      </div>
+      <div class="page-actions">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Project:</span>
+        <select id="project-select"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none"
+          onchange="switchProject(this.value)"></select>
+        <button class="btn-accent" onclick="openNewProjectModal()" style="padding:5px 12px;font-size:12px">+ New</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card green"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">0</div><div class="stat-sub">WSTG tests</div></div>
+      <div class="stat-card red"><div class="stat-label">Remaining</div><div class="stat-value" id="stat-remaining">0</div><div class="stat-sub">tests pending</div></div>
+      <div class="stat-card orange"><div class="stat-label">Vulns Found</div><div class="stat-value" id="stat-failed">0</div><div class="stat-sub">vulnerabilities</div></div>
+      <div class="stat-card purple"><div class="stat-label">Team</div><div class="stat-value" id="stat-members">1</div><div class="stat-sub">members</div></div>
+    </div>
+
+    <div class="progress-section">
+      <div class="progress-label-row"><span class="progress-label">WSTG Progress</span><span class="progress-pct" id="dash-wstg-pct">0%</span></div>
+      <div class="progress-bar"><div class="progress-bar-fill" id="dash-wstg-bar" style="width:0%"></div></div>
+    </div>
+    <div class="progress-section">
+      <div class="progress-label-row"><span class="progress-label">PortSwigger Labs</span><span class="progress-pct" id="dash-ps-pct">0%</span></div>
+      <div class="progress-bar"><div class="progress-bar-fill" id="dash-ps-bar" style="width:0%"></div></div>
+    </div>
+
+    <div id="dash-cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px;margin-top:4px"></div>
+  </div>
+
+  <div class="activity-panel">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="project-modal">
+  <div class="modal">
+    <div class="modal-title">New Project</div>
+    <div class="form-group"><label class="form-label">Project Name</label><input type="text" class="form-input" id="proj-name" placeholder="Client Corp — Q3 Pentest"></div>
+    <div class="form-group"><label class="form-label">Target / Scope</label><input type="text" class="form-input" id="proj-target" placeholder="https://target.com"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input note-textarea" id="proj-desc" placeholder="Scope, objectives..."></textarea></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('project-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="proj-save-btn" onclick="saveProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/dashboard.js"></script>
+<script src="js/page.js"></script>
+<script>
+  function pageInit() {
+    // Populate project selector
+    const sel = document.getElementById('project-select');
+    sel.innerHTML = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    if (state.currentProject) sel.value = state.currentProject.id;
+
+    // Sidebar: project list
+    let html = '<div class="sidebar-section-label">Projects</div>';
+    state.projects.forEach(p => {
+      const active = p.id === state.currentProject?.id;
+      html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
+        <span class="sidebar-item-text">${esc(p.name)}</span>
+        <span class="sidebar-item-badge">${p.member_role}</span>
+      </div>`;
+    });
+    document.getElementById('sidebar').innerHTML = html;
+
+    updateDashboard();
+  }
+
+  bootPage('dashboard');
+</script>
+</body>
+</html>

@@ -1,6 +1,5 @@
 const db = require('../db');
 
-// Attach project + membership to req, reject non-members
 async function requireProjectAccess(req, res, next) {
   const { projectId } = req.params;
   try {
@@ -11,30 +10,23 @@ async function requireProjectAccess(req, res, next) {
        WHERE p.id = $1 AND pm.user_id = $2`,
       [projectId, req.user.id]
     );
-    if (!rows.length) {
+    if (!rows.length)
       return res.status(404).json({ error: 'Project not found or access denied' });
-    }
-    req.project = rows[0];
+    req.project    = rows[0];
     req.memberRole = rows[0].member_role;
     next();
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 }
 
-// Only owner or editor can write
 function requireEditor(req, res, next) {
-  if (req.memberRole === 'viewer') {
+  if (req.memberRole === 'viewer')
     return res.status(403).json({ error: 'Viewers cannot modify data' });
-  }
   next();
 }
 
-// Only owner can manage members/settings
 function requireOwner(req, res, next) {
-  if (req.memberRole !== 'owner') {
+  if (req.memberRole !== 'owner')
     return res.status(403).json({ error: 'Only the project owner can do this' });
-  }
   next();
 }
 

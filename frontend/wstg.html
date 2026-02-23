@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — OWASP WSTG</title>
+<link rel="stylesheet" href="css/main.css">
+<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<div class="topbar" id="topbar"></div>
+
+<div style="display:flex;flex:1;overflow:hidden">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div style="flex:1">
+        <div class="page-title">OWASP WSTG</div>
+        <div class="page-subtitle">// 109 tests · 12 categories</div>
+        <!-- Progress bar -->
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div id="wstg-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--green),#34d399);border-radius:3px;transition:width .4s ease;width:0%"></div>
+          </div>
+          <span id="wstg-progress-pct" style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);min-width:36px;text-align:right">0%</span>
+          <span id="wstg-progress-count" style="font-family:var(--mono);font-size:11px;color:var(--text3)">0 / 109</span>
+        </div>
+      </div>
+    </div>
+    <div class="filter-row" id="wstg-filters">
+      <button class="filter-chip active" onclick="filterWSTG('all',this)">All</button>
+      <button class="filter-chip" onclick="filterWSTG('pending',this)">Pending</button>
+      <button class="filter-chip" onclick="filterWSTG('completed',this)">Completed</button>
+      <button class="filter-chip" onclick="filterWSTG('failed',this)">Vuln Found</button>
+    </div>
+    <div id="wstg-content"></div>
+  </div>
+
+  <div class="activity-panel">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/wstg.js"></script>
+<script src="js/page.js"></script>
+<script>
+  function updateWSTGProgress() {
+    let tested = 0, total = 0;
+    WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
+      total++;
+      if (state.wstgProgress[t.id]?.status) tested++;
+    }));
+    const pct = total ? Math.round(tested / total * 100) : 0;
+    const bar = document.getElementById('wstg-progress-bar');
+    const pctEl = document.getElementById('wstg-progress-pct');
+    const countEl = document.getElementById('wstg-progress-count');
+    if (bar)     bar.style.width   = `${pct}%`;
+    if (pctEl)   pctEl.textContent = `${pct}%`;
+    if (countEl) countEl.textContent = `${tested} / ${total}`;
+  }
+
+  function pageInit() {
+    // Sidebar
+    let html = '<div class="sidebar-section-label">Categories</div>';
+    WSTG_DATA.forEach(cat => {
+      const t      = cat.tests.length;
+      const tested = cat.tests.filter(test => !!state.wstgProgress[test.id]?.status).length;
+      const p      = t ? Math.round(tested / t * 100) : 0;
+      html += `<div class="sidebar-item" onclick="scrollToCat('${cat.id}')">
+        <div class="sidebar-mini-bar"><div class="sidebar-mini-fill" style="width:${p}%"></div></div>
+        <span class="sidebar-item-text">${esc(cat.name)}</span>
+        <span class="sidebar-item-badge">${tested}/${t}</span>
+      </div>`;
+    });
+    document.getElementById('sidebar').innerHTML = html;
+    renderWSTG();
+    updateWSTGProgress();
+    refreshTopbarProgress();
+  }
+
+  // Keep page progress bar in sync when a teammate makes a change
+  const _origPatch = window.patchWSTGTestDOM;
+  window.patchWSTGTestDOM = function(testId, progress) {
+    if (_origPatch) _origPatch(testId, progress);
+    updateWSTGProgress();
+  };
+
+  bootPage('wstg');
+</script>
+</body>
+</html>

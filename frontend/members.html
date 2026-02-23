@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Team</title>
+<link rel="stylesheet" href="css/main.css">
+<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<div class="topbar" id="topbar"></div>
+
+<div style="display:flex;flex:1;overflow:hidden">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main-content">
+    <div id="view-members"></div>
+  </div>
+
+  <div class="activity-panel">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- New Project Modal (needed for openNewProjectModal in topbar) -->
+<div class="modal-overlay" id="project-modal">
+  <div class="modal">
+    <div class="modal-title">New Project</div>
+    <div class="form-group"><label class="form-label">Project Name</label><input type="text" class="form-input" id="proj-name" placeholder="Client Corp — Q3 Pentest"></div>
+    <div class="form-group"><label class="form-label">Target / Scope</label><input type="text" class="form-input" id="proj-target" placeholder="https://target.com"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input note-textarea" id="proj-desc" placeholder="Scope, objectives..."></textarea></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('project-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="proj-save-btn" onclick="saveProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/members.js"></script>
+<script src="js/page.js"></script>
+<script>
+  function pageInit() {
+    let html = '<div class="sidebar-section-label">Projects</div>';
+    state.projects.forEach(p => {
+      const active = p.id === state.currentProject?.id;
+      html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
+        <span class="sidebar-item-text">${esc(p.name)}</span>
+        <span class="sidebar-item-badge">${p.member_role}</span>
+      </div>`;
+    });
+    document.getElementById('sidebar').innerHTML = html;
+    renderMembers();
+  }
+
+  bootPage('members');
+</script>
+</body>
+</html>

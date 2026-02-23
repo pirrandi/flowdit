@@ -1,0 +1,108 @@
+// ── api.js — all HTTP calls to the backend ───────────────────────────
+const API_BASE = window.FLOWDIT_API || 'http://localhost:4000/api';
+
+class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+const tokens = {
+  get access()  { return localStorage.getItem('fd_access'); },
+  get refresh() { return localStorage.getItem('fd_refresh'); },
+  set(a, r)  { localStorage.setItem('fd_access', a); if (r) localStorage.setItem('fd_refresh', r); },
+  clear()    { ['fd_access','fd_refresh','fd_user'].forEach(k => localStorage.removeItem(k)); },
+};
+
+let _refreshPromise = null;
+
+async function request(method, path, body, retry = true) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (tokens.access) headers['Authorization'] = `Bearer ${tokens.access}`;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method, headers,
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+
+  if (res.status === 401 && retry && tokens.refresh) {
+    if (!_refreshPromise) {
+      _refreshPromise = refreshTokens().finally(() => { _refreshPromise = null; });
+    }
+    const ok = await _refreshPromise;
+    if (ok) return request(method, path, body, false);
+    tokens.clear();
+    window.dispatchEvent(new Event('fd:logout'));
+    throw new ApiError(401, 'Session expired');
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed');
+  return data;
+}
+
+async function refreshTokens() {
+  try {
+    const data = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: tokens.refresh }),
+    }).then(r => r.json());
+    if (data.accessToken) { tokens.set(data.accessToken, data.refreshToken); return true; }
+    return false;
+  } catch { return false; }
+}
+
+const api = {
+  auth: {
+    register: (u, e, p)   => request('POST', '/auth/register', { username:u, email:e, password:p }),
+    login:    (l, p)       => request('POST', '/auth/login',    { login:l, password:p }),
+    logout:   ()           => request('POST', '/auth/logout', { refreshToken: tokens.refresh }).finally(() => tokens.clear()),
+    me:       ()           => request('GET',  '/auth/me'),
+    setTokens: (a,r)       => tokens.set(a, r),
+    clearTokens: ()        => tokens.clear(),
+    hasSession: ()         => !!tokens.access,
+  },
+  projects: {
+    list:    ()       => request('GET',    '/projects'),
+    create:  (d)      => request('POST',   '/projects', d),
+    get:     (id)     => request('GET',    `/projects/${id}`),
+    update:  (id,d)   => request('PATCH',  `/projects/${id}`, d),
+    delete:  (id)     => request('DELETE', `/projects/${id}`),
+    join:    (token)  => request('POST',   '/projects/join', { token }),
+  },
+  members: {
+    list:       (pid)         => request('GET',    `/projects/${pid}/members`),
+    changeRole: (pid,uid,role)=> request('PATCH',  `/projects/${pid}/members/${uid}`, { role }),
+    remove:     (pid,uid)     => request('DELETE', `/projects/${pid}/members/${uid}`),
+  },
+  invites: {
+    list:   (pid)             => request('GET',    `/projects/${pid}/invites`),
+    create: (pid, role, label)=> request('POST',   `/projects/${pid}/invites`, { role, label }),
+    revoke: (pid, id)         => request('DELETE', `/projects/${pid}/invites/${id}`),
+  },
+  wstg: {
+    getAll:    (pid)               => request('GET',   `/projects/${pid}/wstg`),
+    setStatus: (pid, tid, status, testName) =>
+                                      request('PATCH', `/projects/${pid}/wstg/${tid}/status`, { status, testName }),
+    setNote:   (pid, tid, note, testName)   =>
+                                      request('PATCH', `/projects/${pid}/wstg/${tid}/note`,   { note, testName }),
+    setItem:   (pid, tid, idx, checked)     =>
+                                      request('PATCH', `/projects/${pid}/wstg/${tid}/items/${idx}`, { checked }),
+  },
+  ps: {
+    getAll: (pid)                      => request('GET',   `/projects/${pid}/ps`),
+    toggle: (pid, catId, idx, done, labName) =>
+                                          request('PATCH', `/projects/${pid}/ps/${catId}/${idx}`, { done, labName }),
+  },
+  vulns: {
+    list:   (pid)       => request('GET',    `/projects/${pid}/vulns`),
+    create: (pid, d)    => request('POST',   `/projects/${pid}/vulns`, d),
+    update: (pid, id,d) => request('PATCH',  `/projects/${pid}/vulns/${id}`, d),
+    delete: (pid, id)   => request('DELETE', `/projects/${pid}/vulns/${id}`),
+  },
+  activity: {
+    list: (pid, limit=50) => request('GET', `/projects/${pid}/activity?limit=${limit}`),
+  },
+};
+
+window.api    = api;
+window.tokens = tokens;
