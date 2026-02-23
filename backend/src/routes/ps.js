@@ -6,18 +6,22 @@ const { requireProjectAccess, requireEditor } = require('../middleware/project')
 
 router.use(requireAuth, requireProjectAccess);
 
+// GET all progress + notes
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT cat_id, lab_idx, done FROM ps_progress WHERE project_id=$1`,
+      `SELECT cat_id, lab_idx, done, note FROM ps_progress WHERE project_id=$1`,
       [req.params.projectId]
     );
     const progress = {};
-    rows.forEach(r => { progress[`${r.cat_id}_${r.lab_idx}`] = r.done; });
+    rows.forEach(r => {
+      progress[`${r.cat_id}_${r.lab_idx}`] = { done: r.done, note: r.note || '' };
+    });
     res.json(progress);
   } catch (err) { next(err); }
 });
 
+// PATCH toggle done
 router.patch('/:catId/:labIdx', requireEditor, async (req, res, next) => {
   const labIdx = parseInt(req.params.labIdx);
   if (isNaN(labIdx)) return res.status(400).json({ error:'Invalid lab index' });
@@ -41,6 +45,23 @@ router.patch('/:catId/:labIdx', requireEditor, async (req, res, next) => {
         meta:       { catId: req.params.catId },
       });
     }
+    res.json({ ok:true });
+  } catch (err) { next(err); }
+});
+
+// PATCH note
+router.patch('/:catId/:labIdx/note', requireEditor, async (req, res, next) => {
+  const labIdx = parseInt(req.params.labIdx);
+  if (isNaN(labIdx)) return res.status(400).json({ error:'Invalid lab index' });
+  const { note } = req.body;
+  try {
+    await db.query(
+      `INSERT INTO ps_progress (project_id, cat_id, lab_idx, done, note, updated_by)
+       VALUES ($1,$2,$3,false,$4,$5)
+       ON CONFLICT (project_id, cat_id, lab_idx) DO UPDATE
+         SET note=$4, updated_by=$5, updated_at=NOW()`,
+      [req.params.projectId, req.params.catId, labIdx, note || '', req.user.id]
+    );
     res.json({ ok:true });
   } catch (err) { next(err); }
 });

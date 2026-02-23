@@ -212,12 +212,12 @@ function saveWSTGNote(testId, testName, val) {
 function updateCatBar(testId) {
   const cat = WSTG_DATA.find(c => c.tests.some(t => t.id === testId));
   if (!cat) return;
-  const done = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'done').length;
-  const pct  = cat.tests.length ? Math.round(done/cat.tests.length*100) : 0;
-  const bar  = document.getElementById(`catbar-${cat.id}`);
+  const tested = cat.tests.filter(t => !!state.wstgProgress[t.id]?.status).length;
+  const pct    = cat.tests.length ? Math.round(tested/cat.tests.length*100) : 0;
+  const bar    = document.getElementById(`catbar-${cat.id}`);
   if (bar) bar.style.width = `${pct}%`;
-  const cnt  = document.querySelector(`#cat-${cat.id} .cat-count`);
-  if (cnt) cnt.textContent = `${done}/${cat.tests.length}`;
+  const cnt    = document.querySelector(`#cat-${cat.id} .cat-count`);
+  if (cnt) cnt.textContent = `${tested}/${cat.tests.length}`;
 }
 
 function scrollToCat(catId) {
@@ -233,3 +233,46 @@ window.setWSTGStatus   = setWSTGStatus;
 window.toggleWSTGItem  = toggleWSTGItem;
 window.saveWSTGNote    = saveWSTGNote;
 window.scrollToCat     = scrollToCat;
+
+// Patch a single test's DOM without re-rendering the whole list.
+// Called by the WS activity handler when another user makes a change.
+function patchWSTGTestDOM(testId, progress) {
+  const el = document.getElementById(`test-${testId}`);
+  if (!el) return; // test not rendered (filtered out) — nothing to do
+
+  const status = progress.status || null;
+  const editor = progress.last_editor;
+
+  // Update card class
+  el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`.trim();
+
+  // Update check button
+  const chk = el.querySelector('.test-check');
+  if (chk) {
+    chk.textContent      = status==='done'?'✓':status==='fail'?'✕':'';
+    chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
+    chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
+    chk.style.color       = status ? 'var(--bg)' : '';
+  }
+
+  // Update test-name strikethrough
+  const name = el.querySelector('.test-name');
+  if (name) name.style.textDecoration = status==='done' ? 'line-through' : '';
+
+  // Update editor badge
+  if (editor) {
+    const badgeHTML = `<div class="last-editor" title="${esc(editor.username)} · just now">
+      <div class="last-editor-avatar" style="background:${esc(editor.avatar_color)}">${editor.username[0].toUpperCase()}</div>
+      <span class="last-editor-name">${esc(editor.username)}</span>
+      <span class="last-editor-time">just now</span>
+    </div>`;
+    const existing = el.querySelector('.last-editor');
+    if (existing) existing.outerHTML = badgeHTML;
+    else el.querySelector('.test-actions')?.insertAdjacentHTML('beforebegin', badgeHTML);
+  }
+
+  // Update cat bar + note (don't touch open/closed state of body)
+  updateCatBar(testId);
+}
+
+window.patchWSTGTestDOM = patchWSTGTestDOM;

@@ -9,7 +9,6 @@ async function renderMembers() {
 
   const isOwner = state.currentProject.member_role === 'owner';
   let invites   = [];
-
   if (isOwner) {
     try { invites = await api.invites.list(state.currentProject.id); } catch {}
   }
@@ -22,7 +21,6 @@ async function renderMembers() {
       </div>
     </div>
 
-    <!-- MEMBERS LIST -->
     <div class="members-card">
       <div class="members-card-title">
         Members
@@ -39,28 +37,25 @@ async function renderMembers() {
             </div>
           </div>
           <span class="role-badge role-${m.role}">${m.role}</span>
-          ${isOwner && m.role !== 'owner' ? `
-            <button class="btn-icon delete" onclick="removeMember('${m.id}')">✕</button>` : ''}
+          ${isOwner && m.role !== 'owner' ? `<button class="btn-icon delete" onclick="removeMember('${m.id}')">✕</button>` : ''}
         </div>`).join('')}
     </div>
 
     ${isOwner ? `
-    <!-- INVITE LINKS -->
     <div class="members-card">
       <div class="members-card-title">
         Invite Links
         <button class="btn-accent" style="padding:5px 12px;font-size:12px" onclick="createInvite()">+ Generate Code</button>
       </div>
       <p style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:12px">
-        Share these codes with teammates. They enter the code in "Join Project" to get access.
+        Share these codes with teammates. They paste the code below to get access.
       </p>
-
       ${invites.length ? `
         <div class="invite-list">
           ${invites.map(inv => {
-            const expired  = new Date(inv.expires_at) < new Date();
-            const used     = !!inv.accepted_at;
-            const cls      = (expired || used) ? 'invite-item invite-used' : 'invite-item';
+            const expired = new Date(inv.expires_at) < new Date();
+            const used    = !!inv.accepted_at;
+            const cls     = (expired || used) ? 'invite-item invite-used' : 'invite-item';
             return `<div class="${cls}">
               <div class="invite-token-display">${esc(inv.token)}</div>
               <span class="invite-role-tag role-badge role-${inv.role}">${inv.role}</span>
@@ -75,19 +70,18 @@ async function renderMembers() {
         </div>` : '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">No invite codes yet.</div>'}
     </div>
 
-    <!-- PROJECT SETTINGS -->
     <div class="members-card">
-      <div class="members-card-title">Project Settings</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-danger" onclick="deleteProject()">🗑 Delete Project</button>
-      </div>
+      <div class="members-card-title">Danger Zone</div>
+      <button class="btn-danger" onclick="deleteProject()">🗑 Delete Project</button>
     </div>` : ''}
 
-    <!-- JOIN PROJECT (for non-owners too) -->
     <div class="members-card">
       <div class="members-card-title">Join Another Project</div>
       <div style="display:flex;gap:8px">
-        <input type="text" id="join-code-input" class="form-input" placeholder="Enter code e.g. FD-ABC123DEF456" style="flex:1;text-transform:uppercase;letter-spacing:.1em">
+        <input type="text" id="join-code-input" class="form-input"
+          placeholder="Enter code e.g. FD-ABC123DEF456"
+          style="flex:1;text-transform:uppercase;letter-spacing:.1em"
+          onkeydown="if(event.key==='Enter')joinWithCode()">
         <button class="btn-accent" onclick="joinWithCode()">Join</button>
       </div>
       <div class="form-error" id="join-code-error"></div>
@@ -95,18 +89,14 @@ async function renderMembers() {
   `;
 }
 
-// Create a new invite token
 async function createInvite() {
-  // Show mini modal inline
   const role  = prompt('Role for this invite? (editor / viewer)', 'editor');
   if (!role || !['editor','viewer'].includes(role.trim().toLowerCase())) return;
   const label = prompt('Label for this invite? (optional, e.g. "Alice")', '');
-
   try {
     const inv = await api.invites.create(state.currentProject.id, role.trim(), label || '');
     showToast(`✓ Code created: ${inv.token}`, 'success');
-    // Copy to clipboard automatically
-    navigator.clipboard.writeText(inv.token).catch(()=>{});
+    navigator.clipboard.writeText(inv.token).catch(() => {});
     renderMembers();
   } catch(e) { showToast(e.message, 'error'); }
 }
@@ -117,7 +107,7 @@ async function copyInviteCode(token) {
 }
 
 async function revokeInvite(id) {
-  if (!confirm('Revoke this invite code? Anyone who has it won\'t be able to use it.')) return;
+  if (!confirm("Revoke this invite code?")) return;
   try {
     await api.invites.revoke(state.currentProject.id, id);
     showToast('Invite revoked', 'success');
@@ -132,7 +122,6 @@ async function removeMember(userId) {
     state.members = state.members.filter(m => m.id !== userId);
     showToast('Member removed', 'success');
     renderMembers();
-    updateDashboard();
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -145,12 +134,16 @@ async function joinWithCode() {
   try {
     const res = await api.projects.join(code);
     showToast('✓ Joined project!', 'success');
+
+    // Reload projects list and switch to the new one
     state.projects = await api.projects.list();
     state.currentProject = state.projects.find(p => p.id === res.projectId) || state.projects[0];
-    populateProjectSelect();
-    await loadProjectData();
-    renderApp();
-    showView('dashboard');
+    localStorage.setItem('fd_project', state.currentProject.id);
+    await loadProjectData(state.currentProject.id);
+
+    // Re-run pageInit to refresh sidebar + members view
+    if (typeof pageInit === 'function') pageInit();
+    refreshTopbarProgress();
   } catch(e) {
     err.textContent = e.message;
     err.style.display = 'block';
@@ -163,10 +156,14 @@ async function deleteProject() {
     await api.projects.delete(state.currentProject.id);
     state.projects = state.projects.filter(p => p.id !== state.currentProject.id);
     state.currentProject = state.projects[0] || null;
-    populateProjectSelect();
-    if (state.currentProject) await loadProjectData();
-    renderApp();
-    showView('dashboard');
+    localStorage.setItem('fd_project', state.currentProject?.id || '');
+    if (state.currentProject) {
+      await loadProjectData(state.currentProject.id);
+    } else {
+      state.wstgProgress = {}; state.psProgress = {}; state.customVulns = []; state.members = [];
+    }
+    if (typeof pageInit === 'function') pageInit();
+    refreshTopbarProgress();
     showToast('Project deleted', 'error');
   } catch(e) { showToast(e.message, 'error'); }
 }

@@ -16,14 +16,14 @@ function updateDashboard() {
     if (state.psProgress[`${cat.id}_${i}`]) psDone++;
   }));
 
-  const wPct = wTotal ? Math.round(wDone/wTotal*100) : 0;
+  const wPct = wTotal ? Math.round((wDone + wFail)/wTotal*100) : 0;
   const pPct = psTotal ? Math.round(psDone/psTotal*100) : 0;
 
   const setVal = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   const setW   = (id, v) => { const el = document.getElementById(id); if(el) el.style.width = v; };
 
-  setVal('stat-completed', wDone);
-  setVal('stat-remaining', wTotal - wDone);
+  setVal('stat-completed', wDone + wFail);
+  setVal('stat-remaining', wTotal - (wDone + wFail));
   setVal('stat-failed',    wFail);
   setVal('stat-members',   state.members.length);
   setVal('dash-wstg-pct',  `${wPct}%`);
@@ -37,7 +37,7 @@ function updateDashboard() {
   if (grid) {
     grid.innerHTML = WSTG_DATA.map(cat => {
       const t = cat.tests.length;
-      const d = cat.tests.filter(test => state.wstgProgress[test.id]?.status === 'done').length;
+      const d = cat.tests.filter(test => !!state.wstgProgress[test.id]?.status).length;
       const p = t ? Math.round(d/t*100) : 0;
       return `<div class="progress-section" style="margin:0">
         <div class="progress-label-row">

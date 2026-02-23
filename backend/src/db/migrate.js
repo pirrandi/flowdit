@@ -1,7 +1,11 @@
-require('dotenv').config();
+const path = require('path');
+// Load .env from backend/ regardless of where node is invoked from
+require('dotenv').config({ path: path.resolve(__dirname, '../../..', '.env') });
 const db = require('./index');
 
 const migrations = [
+
+
   `CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username    VARCHAR(50)  UNIQUE NOT NULL,
@@ -123,6 +127,16 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user   ON refresh_tokens(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_activity_log_project  ON activity_log(project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_activity_log_created  ON activity_log(created_at DESC)`,
+
+
+  // ── Column patches (safe to run on existing DBs) ────────────────
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS description TEXT`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediation TEXT`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS evidence JSONB NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS severity VARCHAR(10) NOT NULL DEFAULT 'medium' CHECK (severity IN ('critical','high','medium','low','info'))`,
+  `ALTER TABLE ps_progress ADD COLUMN IF NOT EXISTS note TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_color VARCHAR(7) NOT NULL DEFAULT '#7c3aed'`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES users(id)`,
 
   `CREATE OR REPLACE FUNCTION update_updated_at()
    RETURNS TRIGGER AS $$

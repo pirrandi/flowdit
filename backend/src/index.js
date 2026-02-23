@@ -30,7 +30,7 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 
 // ── Rate limiting ─────────────────────────────────────────────────
-app.use(rateLimit({ windowMs:15*60*1000, max:300, standardHeaders:true, legacyHeaders:false }));
+app.use(rateLimit({ windowMs:15*60*1000, max:3000, standardHeaders:true, legacyHeaders:false }));
 app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20 }));
 app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10 }));
 

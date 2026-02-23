@@ -3,27 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flowdit — Web Pentest Tracker</title>
+<title>Flowdit — Login</title>
 <link rel="stylesheet" href="css/main.css">
+<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
 </head>
 <body>
 
-<!-- ══ CONFIG ══ -->
-<script>
-  window.FLOWDIT_API = 'http://localhost:4000/api';
-  window.FLOWDIT_WS  = 'ws://localhost:4000/ws';
-</script>
-
-<!-- ══ LOADING ══ -->
 <div id="loading-overlay">
   <div class="spinner"></div>
-  <div class="spinner-text">// initializing flowdit...</div>
+  <div class="spinner-text">// initializing...</div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════ -->
-<!-- LOGIN                                                          -->
-<!-- ══════════════════════════════════════════════════════════════ -->
-<div id="login-screen" class="screen">
+<div id="login-screen" style="display:none;min-height:100vh;align-items:center;justify-content:center;position:relative;overflow:hidden">
   <div class="login-bg-grid"></div>
   <div class="login-glow"></div>
   <div class="login-card">
@@ -32,13 +23,10 @@
       <span class="logo-text">Flowdit</span>
     </div>
     <div class="login-tagline">// collaborative pentest tracker</div>
-
     <div class="tab-row">
       <button class="tab-btn active" onclick="switchAuthTab('login',this)">Login</button>
-      <button class="tab-btn" onclick="switchAuthTab('register',this)">Register</button>
+      <button class="tab-btn"        onclick="switchAuthTab('register',this)">Register</button>
     </div>
-
-    <!-- Login form -->
     <div id="login-form">
       <div class="form-group">
         <label class="form-label">Username or Email</label>
@@ -52,8 +40,6 @@
       <div class="form-error" id="login-error"></div>
       <button class="btn-primary" id="login-btn" onclick="doLogin()">Access Terminal</button>
     </div>
-
-    <!-- Register form -->
     <div id="register-form" style="display:none">
       <div class="form-group">
         <label class="form-label">Username</label>
@@ -78,262 +64,10 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════ -->
-<!-- APP                                                            -->
-<!-- ══════════════════════════════════════════════════════════════ -->
-<div id="app-screen" class="screen">
-
-  <!-- TOP BAR -->
-  <div class="topbar">
-    <div class="topbar-logo">
-      <div class="topbar-logo-icon">🎯</div>
-      <span class="topbar-logo-text">Flowdit</span>
-    </div>
-
-    <nav style="display:flex;gap:2px;margin-left:8px">
-      <button class="nav-btn active" onclick="showView('dashboard')">Dashboard</button>
-      <button class="nav-btn" onclick="showView('wstg')">OWASP WSTG</button>
-      <button class="nav-btn" onclick="showView('portswigger')">PortSwigger</button>
-      <button class="nav-btn" onclick="showView('custom')">My Vulns</button>
-      <button class="nav-btn" onclick="showView('members')">Team</button>
-    </nav>
-
-    <div class="topbar-spacer"></div>
-
-    <!-- Online presence -->
-    <div class="online-avatars" id="online-presence"></div>
-
-    <!-- Live WS indicator -->
-    <div id="live-dot" class="live-badge" title="Connecting..."></div>
-
-    <!-- Search -->
-    <div class="search-wrap">
-      <span class="search-icon">🔍</span>
-      <input type="text" class="search-input" placeholder="Search..."
-        oninput="handleSearch(this.value)">
-    </div>
-
-    <!-- Progress -->
-    <div class="progress-pill">
-      <span id="topbar-pct">0%</span>
-      <div class="progress-bar-mini">
-        <div class="progress-bar-mini-fill" id="topbar-bar" style="width:0%"></div>
-      </div>
-    </div>
-
-    <!-- User menu -->
-    <div class="user-pill" onclick="toggleUserMenu()">
-      <div id="user-avatar-top" class="avatar-sm" style="background:#7c3aed">U</div>
-      <span id="user-name-top" class="user-name">User</span>
-      <div class="user-dropdown" id="user-dropdown">
-        <button class="dropdown-item" onclick="showView('members');closeUserMenu()">👥 Team</button>
-        <button class="dropdown-item" onclick="openNewProjectModal();closeUserMenu()">📁 New Project</button>
-        <button class="dropdown-item danger" onclick="doLogout()">↪ Logout</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- BODY -->
-  <div class="app-body">
-
-    <!-- SIDEBAR -->
-    <div class="sidebar" id="sidebar"></div>
-
-    <!-- MAIN CONTENT -->
-    <div class="main-content">
-
-      <!-- ─ DASHBOARD ─────────────────────────────────────────── -->
-      <div class="view active" id="view-dashboard">
-        <div class="page-header">
-          <div>
-            <div class="page-title">Dashboard</div>
-            <div class="page-subtitle" id="dash-subtitle">// select a project</div>
-          </div>
-          <div class="page-actions">
-            <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Project:</span>
-            <select id="project-select"
-              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none"
-              onchange="switchProject(this.value)"></select>
-            <button class="btn-accent" onclick="openNewProjectModal()" style="padding:5px 12px;font-size:12px">+ New</button>
-          </div>
-        </div>
-
-        <div class="stats-grid">
-          <div class="stat-card green"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">0</div><div class="stat-sub">WSTG tests</div></div>
-          <div class="stat-card red"><div class="stat-label">Remaining</div><div class="stat-value" id="stat-remaining">0</div><div class="stat-sub">tests pending</div></div>
-          <div class="stat-card orange"><div class="stat-label">Vulns Found</div><div class="stat-value" id="stat-failed">0</div><div class="stat-sub">vulnerabilities</div></div>
-          <div class="stat-card purple"><div class="stat-label">Team</div><div class="stat-value" id="stat-members">1</div><div class="stat-sub">members</div></div>
-        </div>
-
-        <div class="progress-section">
-          <div class="progress-label-row"><span class="progress-label">WSTG Progress</span><span class="progress-pct" id="dash-wstg-pct">0%</span></div>
-          <div class="progress-bar"><div class="progress-bar-fill" id="dash-wstg-bar" style="width:0%"></div></div>
-        </div>
-        <div class="progress-section">
-          <div class="progress-label-row"><span class="progress-label">PortSwigger Labs</span><span class="progress-pct" id="dash-ps-pct">0%</span></div>
-          <div class="progress-bar"><div class="progress-bar-fill" id="dash-ps-bar" style="width:0%"></div></div>
-        </div>
-
-        <div id="dash-cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px;margin-top:4px"></div>
-      </div>
-
-      <!-- ─ WSTG ──────────────────────────────────────────────── -->
-      <div class="view" id="view-wstg">
-        <div class="page-header">
-          <div>
-            <div class="page-title">OWASP WSTG</div>
-            <div class="page-subtitle">// 109 tests · 12 categories</div>
-          </div>
-        </div>
-        <div class="filter-row" id="wstg-filters">
-          <button class="filter-chip active" onclick="filterWSTG('all',this)">All</button>
-          <button class="filter-chip" onclick="filterWSTG('pending',this)">Pending</button>
-          <button class="filter-chip" onclick="filterWSTG('completed',this)">Completed</button>
-          <button class="filter-chip" onclick="filterWSTG('failed',this)">Vuln Found</button>
-        </div>
-        <div id="wstg-content"></div>
-      </div>
-
-      <!-- ─ PORTSWIGGER ─────────────────────────────────────── -->
-      <div class="view" id="view-portswigger">
-        <div class="page-header">
-          <div>
-            <div class="page-title">PortSwigger Academy</div>
-            <div class="page-subtitle">// 268 labs · 31 categories</div>
-          </div>
-        </div>
-        <div class="filter-row" id="ps-filters">
-          <button class="filter-chip active" onclick="filterPS('all',this)">All</button>
-          <button class="filter-chip diff-Apprentice" onclick="filterPS('Apprentice',this)">Apprentice</button>
-          <button class="filter-chip diff-Practitioner" onclick="filterPS('Practitioner',this)">Practitioner</button>
-          <button class="filter-chip diff-Expert" onclick="filterPS('Expert',this)">Expert</button>
-          <button class="filter-chip" onclick="filterPS('done',this)">Done</button>
-          <button class="filter-chip" onclick="filterPS('pending',this)">Pending</button>
-        </div>
-        <div id="ps-content"></div>
-      </div>
-
-      <!-- ─ CUSTOM VULNS ────────────────────────────────────── -->
-      <div class="view" id="view-custom">
-        <div class="page-header">
-          <div>
-            <div class="page-title">My Custom Vulns</div>
-            <div class="page-subtitle">// personal findings with custom payloads</div>
-          </div>
-          <button class="btn-accent" onclick="openAddVulnModal()">+ Add Vulnerability</button>
-        </div>
-        <div id="custom-content"></div>
-      </div>
-
-      <!-- ─ MEMBERS ─────────────────────────────────────────── -->
-      <div class="view" id="view-members">
-        <!-- rendered dynamically by members.js -->
-      </div>
-
-    </div><!-- /main-content -->
-
-    <!-- ACTIVITY FEED PANEL -->
-    <div class="activity-panel">
-      <div class="activity-header">
-        <span class="activity-title">Activity</span>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div class="live-badge"></div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
-        </div>
-      </div>
-      <div class="activity-list" id="activity-list">
-        <div class="activity-empty">No activity yet</div>
-      </div>
-    </div>
-
-  </div><!-- /app-body -->
-</div><!-- /app-screen -->
-
-<!-- ══ MODALS ══ -->
-
-<!-- New Project -->
-<div class="modal-overlay" id="project-modal">
-  <div class="modal">
-    <div class="modal-title">New Project</div>
-    <div class="form-group">
-      <label class="form-label">Project Name</label>
-      <input type="text" class="form-input" id="proj-name" placeholder="Client Corp — Q3 Pentest">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Target / Scope</label>
-      <input type="text" class="form-input" id="proj-target" placeholder="https://target.com">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Description</label>
-      <textarea class="form-input note-textarea" id="proj-desc" placeholder="Scope, objectives..."></textarea>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="document.getElementById('project-modal').classList.remove('open')">Cancel</button>
-      <button class="btn-save" id="proj-save-btn" onclick="saveProject()">Create</button>
-    </div>
-  </div>
-</div>
-
-<!-- Add/Edit Vuln -->
-<div class="modal-overlay" id="vuln-modal">
-  <div class="modal">
-    <div class="modal-title" id="modal-title">Add Vulnerability</div>
-    <div class="form-group">
-      <label class="form-label">Name</label>
-      <input type="text" class="form-input" id="modal-vuln-name" placeholder="e.g. GraphQL Introspection Enabled">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Category</label>
-      <input type="text" class="form-input" id="modal-vuln-cat" placeholder="e.g. GraphQL, Auth, API...">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Checklist Items</label>
-      <div id="modal-items-list"></div>
-      <button class="btn-add-row" onclick="addModalRow('modal-items-list','Check item...')">+ Add item</button>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Payloads</label>
-      <div id="modal-payloads-list"></div>
-      <button class="btn-add-row" onclick="addModalRow('modal-payloads-list','Payload...')">+ Add payload</button>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Notes</label>
-      <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="References, remediation..."></textarea>
-    </div>
-    <div class="form-error" id="vuln-error"></div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
-      <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
-    </div>
-  </div>
-</div>
-
 <div class="toast-container" id="toast-container"></div>
-
-<!-- ══ SCRIPTS — order matters ══ -->
-<!-- Config must be first (above) -->
-
-<!-- Data -->
-<script src="js/data.js"></script>
-
-<!-- Services -->
 <script src="js/services/state.js"></script>
 <script src="js/services/api.js"></script>
-<script src="js/services/ws.js"></script>
 <script src="js/services/utils.js"></script>
-
-<!-- Components -->
-<script src="js/components/activity.js"></script>
-
-<!-- Views -->
-<script src="js/views/dashboard.js"></script>
-<script src="js/views/wstg.js"></script>
-<script src="js/views/portswigger.js"></script>
-<script src="js/views/vulns.js"></script>
-<script src="js/views/members.js"></script>
-
-<!-- Main controller (last) -->
-<script src="js/app.js"></script>
-
+<script src="js/auth.js"></script>
 </body>
 </html>

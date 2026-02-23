@@ -13,7 +13,12 @@ router.get('/', async (req, res, next) => {
       `SELECT cv.*, u.username AS editor_username, u.avatar_color AS editor_color
        FROM custom_vulns cv
        LEFT JOIN users u ON u.id=cv.updated_by
-       WHERE cv.project_id=$1 ORDER BY cv.created_at`,
+       WHERE cv.project_id=$1
+       ORDER BY
+         CASE cv.severity
+           WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3
+           WHEN 'low' THEN 4 WHEN 'info' THEN 5 ELSE 6 END,
+         cv.created_at`,
       [req.params.projectId]
     );
     res.json(rows);
@@ -25,12 +30,12 @@ router.post('/', requireEditor, [
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { name, category='Custom', items=[], payloads=[], notes='' } = req.body;
+  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[] } = req.body;
   try {
     const { rows } = await db.query(
-      `INSERT INTO custom_vulns (project_id, name, category, items, payloads, notes, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *`,
-      [req.params.projectId, name, category, JSON.stringify(items), JSON.stringify(payloads), notes, req.user.id]
+      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11) RETURNING *`,
+      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), req.user.id]
     );
     await activity.log({
       projectId:  req.params.projectId,
@@ -39,18 +44,19 @@ router.post('/', requireEditor, [
       entityType: 'custom_vuln',
       entityId:   rows[0].id,
       entityName: name,
+      meta:       { severity },
     });
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
 
 router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','items','payloads','notes','status','checked_items'];
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','status','checked_items'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
       let val = req.body[f];
-      if (['items','payloads','checked_items'].includes(f)) val = JSON.stringify(val);
+      if (['items','payloads','checked_items','evidence'].includes(f)) val = JSON.stringify(val);
       updates.push(`${f}=$${values.length+1}`);
       values.push(val);
     }
@@ -59,7 +65,6 @@ router.patch('/:vulnId', requireEditor, async (req, res, next) => {
   updates.push(`updated_by=$${values.length+1}`);
   values.push(req.user.id);
   values.push(req.params.vulnId, req.params.projectId);
-
   try {
     const { rows } = await db.query(
       `UPDATE custom_vulns SET ${updates.join(',')}
@@ -69,13 +74,10 @@ router.patch('/:vulnId', requireEditor, async (req, res, next) => {
     if (!rows.length) return res.status(404).json({ error:'Vulnerability not found' });
     if (req.body.status !== undefined) {
       await activity.log({
-        projectId:  req.params.projectId,
-        user:       req.user,
-        action:     'set_status',
-        entityType: 'custom_vuln',
-        entityId:   req.params.vulnId,
-        entityName: rows[0].name,
-        meta:       { status: req.body.status },
+        projectId:  req.params.projectId, user: req.user,
+        action: 'set_status', entityType: 'custom_vuln',
+        entityId: req.params.vulnId, entityName: rows[0].name,
+        meta: { status: req.body.status },
       });
     }
     res.json(rows[0]);
@@ -90,11 +92,8 @@ router.delete('/:vulnId', requireEditor, async (req, res, next) => {
     );
     if (rows.length) {
       await activity.log({
-        projectId:  req.params.projectId,
-        user:       req.user,
-        action:     'vuln_deleted',
-        entityType: 'custom_vuln',
-        entityName: rows[0].name,
+        projectId: req.params.projectId, user: req.user,
+        action: 'vuln_deleted', entityType: 'custom_vuln', entityName: rows[0].name,
       });
     }
     res.json({ ok:true });
