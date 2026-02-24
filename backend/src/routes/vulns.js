@@ -10,9 +10,11 @@ router.use(requireAuth, requireProjectAccess);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT cv.*, u.username AS editor_username, u.avatar_color AS editor_color
+      `SELECT cv.*, u.username AS editor_username, u.avatar_color AS editor_color,
+              t.host AS target_host, t.type AS target_type
        FROM custom_vulns cv
        LEFT JOIN users u ON u.id=cv.updated_by
+       LEFT JOIN targets t ON t.id=cv.target_id
        WHERE cv.project_id=$1
        ORDER BY
          CASE cv.severity
@@ -30,12 +32,12 @@ router.post('/', requireEditor, [
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[] } = req.body;
+  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null } = req.body;
   try {
     const { rows } = await db.query(
-      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11) RETURNING *`,
-      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), req.user.id]
+      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING *`,
+      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), target_id||null, req.user.id]
     );
     await activity.log({
       projectId:  req.params.projectId,
@@ -51,7 +53,7 @@ router.post('/', requireEditor, [
 });
 
 router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','status','checked_items'];
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','status','checked_items','target_id'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
