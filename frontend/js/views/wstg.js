@@ -51,6 +51,25 @@ function renderWSTG() {
   });
 }
 
+const TARGET_ICONS = { domain:'🌐', ip:'🖥', cidr:'🔲', url:'🔗', other:'📌' };
+
+function buildTargetSelector(testId, currentTargetId) {
+  const inScope = (state.targets||[]).filter(t => t.scope === 'in');
+  if (!inScope.length) return '';
+
+  const options = inScope.map(t =>
+    `<option value="${t.id}" ${t.id === currentTargetId ? 'selected' : ''}>${TARGET_ICONS[t.type]||'📌'} ${esc(t.host)}</option>`
+  ).join('');
+
+  return `<div class="wstg-target-row" id="target-row-${testId}">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">🎯 Affected target</span>
+    <select class="wstg-target-select" onchange="saveWSTGTarget('${testId}',this.value)">
+      <option value="">— Unassigned —</option>
+      ${options}
+    </select>
+  </div>`;
+}
+
 function buildTestItem(test) {
   const td      = state.wstgProgress[test.id] || {};
   const status  = td.status || null;
@@ -74,7 +93,7 @@ function buildTestItem(test) {
   // Payload tabs
   let payloadsHTML = '';
   if (pKeys.length) {
-    const tabs  = pKeys.map((k,i) => `<button class="payload-tab ${i===0?'active':''}" onclick="switchPayloadTab('${test.id}','${k}',this)">${esc(k)}</button>`).join('');
+    const tabs   = pKeys.map((k,i) => `<button class="payload-tab ${i===0?'active':''}" onclick="switchPayloadTab('${test.id}','${k}',this)">${esc(k)}</button>`).join('');
     const panels = pKeys.map((k,i) => `<div class="payload-panel ${i===0?'active':''}" data-tab="${k}">` +
       payloads[k].map(p => `<div class="payload-row">
         <div class="payload-code">${esc(p)}</div>
@@ -91,6 +110,14 @@ function buildTestItem(test) {
       <span class="last-editor-time">${timeAgo(td.updated_at)}</span>
     </div>` : '';
 
+  // Target selector — only shown when status is fail
+  const targetSel = status === 'fail' ? buildTargetSelector(test.id, td.target_id) : '';
+
+  // Target badge in header if assigned
+  const targetBadge = (status === 'fail' && td.target_id)
+    ? `<span class="wstg-target-badge">🎯 ${esc(_getTargetHost(td.target_id))}</span>`
+    : '';
+
   const el = document.createElement('div');
   el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`;
   el.id = `test-${test.id}`;
@@ -100,6 +127,7 @@ function buildTestItem(test) {
       <div class="test-check" onclick="cycleWSTGStatus('${test.id}',event)">${status==='done'?'✓':status==='fail'?'✕':''}</div>
       <span class="test-id">${esc(test.id)}</span>
       <span class="test-name">${esc(test.name)}</span>
+      ${targetBadge}
       ${editorBadge}
       <div class="test-actions">
         <button class="test-action-btn pass" onclick="setWSTGStatus('${test.id}','done','${esc(test.name)}',event)">✓</button>
@@ -107,6 +135,7 @@ function buildTestItem(test) {
         <button class="test-action-btn" onclick="setWSTGStatus('${test.id}',null,'${esc(test.name)}',event)">↺</button>
       </div>
     </div>
+    ${targetSel}
     <div class="test-body" id="body-${test.id}">
       ${itemsHTML}${payloadsHTML}
       <textarea class="note-textarea" placeholder="// Notes, findings, POC..."
@@ -115,8 +144,12 @@ function buildTestItem(test) {
   return el;
 }
 
+function _getTargetHost(targetId) {
+  return (state.targets||[]).find(t => t.id === targetId)?.host || targetId;
+}
+
 function toggleTestBody(id, e) {
-  if (e.target.closest('.test-check,.test-actions')) return;
+  if (e.target.closest('.test-check,.test-actions,.wstg-target-row')) return;
   document.getElementById(`body-${id}`)?.classList.toggle('open');
 }
 
@@ -149,38 +182,71 @@ async function _applyWSTGStatus(id, status, testName) {
     state.wstgProgress[id].updated_at = res.updated_at;
     state.wstgProgress[id].last_editor = res.editor;
 
-    // Refresh item UI
+    // If clearing vuln status, also clear target
+    if (!status) state.wstgProgress[id].target_id = null;
+
     const el = document.getElementById(`test-${id}`);
     if (el) {
       el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`;
       const chk = el.querySelector('.test-check');
-      chk.textContent  = status==='done'?'✓':status==='fail'?'✕':'';
+      chk.textContent       = status==='done'?'✓':status==='fail'?'✕':'';
       chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
       chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
       chk.style.color       = status ? 'var(--bg)' : '';
 
+      // Toggle target selector row
+      const existingRow = el.querySelector('.wstg-target-row');
+      if (status === 'fail' && !existingRow) {
+        const header = el.querySelector('.test-header');
+        header.insertAdjacentHTML('afterend', buildTargetSelector(id, state.wstgProgress[id].target_id));
+      } else if (status !== 'fail' && existingRow) {
+        existingRow.remove();
+      }
+
+      // Update target badge in header
+      const existingBadge = el.querySelector('.wstg-target-badge');
+      if (existingBadge) existingBadge.remove();
+
       // Update editor badge
       const editor = res.editor;
-      let badge = el.querySelector('.last-editor');
       if (editor) {
         const html = `<div class="last-editor" title="${esc(editor.username)} · just now">
           <div class="last-editor-avatar" style="background:${esc(editor.avatar_color)}">${editor.username[0].toUpperCase()}</div>
           <span class="last-editor-name">${esc(editor.username)}</span>
           <span class="last-editor-time">just now</span>
         </div>`;
+        const badge = el.querySelector('.last-editor');
         if (badge) badge.outerHTML = html;
-        else {
-          const actions = el.querySelector('.test-actions');
-          actions?.insertAdjacentHTML('beforebegin', html);
-        }
+        else el.querySelector('.test-actions')?.insertAdjacentHTML('beforebegin', html);
       }
     }
 
     updateCatBar(id);
     updateDashboard();
 
-    const label = status==='done'?'✓ Marked complete':status==='fail'?'⚠ Vuln logged':'↺ Cleared';
+    const label = status==='done'?'✓ Marked complete':status==='fail'?'⚠ Vuln logged — assign a target below':'↺ Cleared';
     showToast(label, status==='fail'?'error':'success');
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function saveWSTGTarget(testId, targetId) {
+  try {
+    await api.wstg.setTarget(state.currentProject.id, testId, targetId||null);
+    if (!state.wstgProgress[testId]) state.wstgProgress[testId] = {};
+    state.wstgProgress[testId].target_id = targetId || null;
+
+    // Update badge in header
+    const el = document.getElementById(`test-${testId}`);
+    if (!el) return;
+    const existing = el.querySelector('.wstg-target-badge');
+    if (targetId) {
+      const badge = `<span class="wstg-target-badge">🎯 ${esc(_getTargetHost(targetId))}</span>`;
+      if (existing) existing.outerHTML = badge;
+      else el.querySelector('.test-id')?.insertAdjacentHTML('afterend', badge);
+    } else {
+      existing?.remove();
+    }
+    showToast('✓ Target assigned', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -224,29 +290,15 @@ function scrollToCat(catId) {
   document.getElementById(`cat-${catId}`)?.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
-window.filterWSTG      = filterWSTG;
-window.renderWSTG      = renderWSTG;
-window.toggleTestBody  = toggleTestBody;
-window.switchPayloadTab = switchPayloadTab;
-window.cycleWSTGStatus = cycleWSTGStatus;
-window.setWSTGStatus   = setWSTGStatus;
-window.toggleWSTGItem  = toggleWSTGItem;
-window.saveWSTGNote    = saveWSTGNote;
-window.scrollToCat     = scrollToCat;
-
-// Patch a single test's DOM without re-rendering the whole list.
-// Called by the WS activity handler when another user makes a change.
 function patchWSTGTestDOM(testId, progress) {
   const el = document.getElementById(`test-${testId}`);
-  if (!el) return; // test not rendered (filtered out) — nothing to do
+  if (!el) return;
 
   const status = progress.status || null;
   const editor = progress.last_editor;
 
-  // Update card class
   el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`.trim();
 
-  // Update check button
   const chk = el.querySelector('.test-check');
   if (chk) {
     chk.textContent      = status==='done'?'✓':status==='fail'?'✕':'';
@@ -255,11 +307,17 @@ function patchWSTGTestDOM(testId, progress) {
     chk.style.color       = status ? 'var(--bg)' : '';
   }
 
-  // Update test-name strikethrough
   const name = el.querySelector('.test-name');
   if (name) name.style.textDecoration = status==='done' ? 'line-through' : '';
 
-  // Update editor badge
+  // Toggle target selector
+  const existingRow = el.querySelector('.wstg-target-row');
+  if (status === 'fail' && !existingRow) {
+    el.querySelector('.test-header')?.insertAdjacentHTML('afterend', buildTargetSelector(testId, progress.target_id));
+  } else if (status !== 'fail' && existingRow) {
+    existingRow.remove();
+  }
+
   if (editor) {
     const badgeHTML = `<div class="last-editor" title="${esc(editor.username)} · just now">
       <div class="last-editor-avatar" style="background:${esc(editor.avatar_color)}">${editor.username[0].toUpperCase()}</div>
@@ -271,8 +329,18 @@ function patchWSTGTestDOM(testId, progress) {
     else el.querySelector('.test-actions')?.insertAdjacentHTML('beforebegin', badgeHTML);
   }
 
-  // Update cat bar + note (don't touch open/closed state of body)
   updateCatBar(testId);
 }
 
-window.patchWSTGTestDOM = patchWSTGTestDOM;
+window.filterWSTG        = filterWSTG;
+window.renderWSTG        = renderWSTG;
+window.buildTestItem     = buildTestItem;
+window.toggleTestBody    = toggleTestBody;
+window.switchPayloadTab  = switchPayloadTab;
+window.cycleWSTGStatus   = cycleWSTGStatus;
+window.setWSTGStatus     = setWSTGStatus;
+window.saveWSTGTarget    = saveWSTGTarget;
+window.toggleWSTGItem    = toggleWSTGItem;
+window.saveWSTGNote      = saveWSTGNote;
+window.scrollToCat       = scrollToCat;
+window.patchWSTGTestDOM  = patchWSTGTestDOM;

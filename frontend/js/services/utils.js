@@ -53,6 +53,9 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'lab_completed': return `completed lab ${name}`;
     case 'vuln_created':  return `added custom vuln ${name}`;
     case 'vuln_deleted':  return `deleted ${name}`;
+    case 'target_added': return `added target ${name}`
+    case 'target_removed': return `deleted target ${name}`
+    case 'target_updated': return `updated target ${name}`
     case 'invite_created': return `created an invite link`;
     case 'member_joined':  return `<strong>${esc(entityName)}</strong> joined the project`;
     default: return `updated ${name}`;

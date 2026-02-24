@@ -87,17 +87,28 @@ const api = {
                                       request('PATCH', `/projects/${pid}/wstg/${tid}/note`,   { note, testName }),
     setItem:   (pid, tid, idx, checked)     =>
                                       request('PATCH', `/projects/${pid}/wstg/${tid}/items/${idx}`, { checked }),
+    setTarget: (pid, tid, targetId) =>
+                                      request('PATCH', `/projects/${pid}/wstg/${tid}/target`, { target_id: targetId }),
+    saveReport:(pid, tid, description, remediation) =>
+                                      request('PATCH', `/projects/${pid}/wstg/${tid}/report`, { description, remediation }),
   },
   ps: {
-    getAll: (pid)                      => request('GET',   `/projects/${pid}/ps`),
-    toggle: (pid, catId, idx, done, labName) =>
-                                          request('PATCH', `/projects/${pid}/ps/${catId}/${idx}`, { done, labName }),
+    getAll:   (pid)                          => request('GET',   `/projects/${pid}/ps`),
+    toggle:   (pid, catId, idx, done, labName) =>
+                                               request('PATCH', `/projects/${pid}/ps/${catId}/${idx}`, { done, labName }),
+    saveNote: (pid, catId, idx, note)        => request('PATCH', `/projects/${pid}/ps/${catId}/${idx}/note`, { note }),
   },
   vulns: {
     list:   (pid)       => request('GET',    `/projects/${pid}/vulns`),
     create: (pid, d)    => request('POST',   `/projects/${pid}/vulns`, d),
     update: (pid, id,d) => request('PATCH',  `/projects/${pid}/vulns/${id}`, d),
     delete: (pid, id)   => request('DELETE', `/projects/${pid}/vulns/${id}`),
+  },
+  targets: {
+    list:   (pid)        => request('GET',    `/projects/${pid}/targets`),
+    create: (pid, d)     => request('POST',   `/projects/${pid}/targets`, d),
+    update: (pid, id, d) => request('PATCH',  `/projects/${pid}/targets/${id}`, d),
+    delete: (pid, id)    => request('DELETE', `/projects/${pid}/targets/${id}`),
   },
   activity: {
     list: (pid, limit=50) => request('GET', `/projects/${pid}/activity?limit=${limit}`),

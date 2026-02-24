@@ -31,11 +31,12 @@ async function bootPage(viewName) {
 // ── PROJECT LOADING ───────────────────────────────────────────────
 async function loadProjectData(pid) {
   wsClient.connect(pid);
-  [state.wstgProgress, state.psProgress, state.customVulns, state.members] = await Promise.all([
+  [state.wstgProgress, state.psProgress, state.customVulns, state.members, state.targets] = await Promise.all([
     api.wstg.getAll(pid),
     api.ps.getAll(pid),
     api.vulns.list(pid),
     api.members.list(pid),
+    api.targets.list(pid),
   ]);
   await loadActivity(pid);
 }
@@ -93,8 +94,9 @@ function renderTopbar() {
     { href:'dashboard.html',   label:'Dashboard' },
     { href:'wstg.html',        label:'OWASP WSTG' },
     { href:'portswigger.html', label:'PortSwigger' },
-    { href:'vulns.html',       label:'My Vulns' },
+    { href:'vulns.html',       label:'Vulnerabilities' },
     { href:'members.html',     label:'Team' },
+    { href:'targets.html',     label:'Targets' },
     { href:'export.html',      label:'↓ Export' },
   ];
   const current = window.location.pathname.split('/').pop() || 'dashboard.html';

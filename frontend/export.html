@@ -7,16 +7,65 @@
 <link rel="stylesheet" href="css/main.css">
 <script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
 <style>
-.rpt { font-family:'Inter',system-ui,sans-serif; color:var(--text); line-height:1.7; }
-.rpt h1 { font-size:26px;font-weight:800;margin:0 0 4px;color:var(--text); }
-.rpt h2 { font-size:15px;font-weight:700;margin:36px 0 12px;color:var(--accent);
+/* ── Two-panel layout ────────────────────────────────────────────── */
+.exp-layout { display:flex;flex:1;overflow:hidden;min-height:0; }
+.exp-editor { width:380px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow-y:auto;background:var(--bg2); }
+.exp-preview { flex:1;overflow-y:auto;padding:40px 48px; }
+
+/* Editor panel sections */
+.exp-section { border-bottom:1px solid var(--border); }
+.exp-section-header {
+  display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;
+  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2);
+  user-select:none;
+}
+.exp-section-header:hover { background:var(--bg3); }
+.exp-section-header .chevron { margin-left:auto;font-size:9px;transition:transform .2s; }
+.exp-section-header.open .chevron { transform:rotate(90deg); }
+.exp-section-body { display:none;padding:10px 14px 14px; }
+.exp-section-body.open { display:block; }
+
+/* Finding editor cards */
+.exp-finding { border:1px solid var(--border);border-radius:7px;margin-bottom:8px;overflow:hidden; }
+.exp-finding-header {
+  display:flex;align-items:center;gap:8px;padding:8px 10px;
+  background:var(--bg3);cursor:pointer;font-size:12px;font-weight:600;
+}
+.exp-finding-header:hover { background:var(--bg); }
+.exp-finding-body { display:none;padding:10px; }
+.exp-finding-body.open { display:flex;flex-direction:column;gap:8px; }
+.exp-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:3px; }
+.exp-textarea {
+  width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;
+  color:var(--text);font-size:11px;font-family:inherit;padding:7px 9px;
+  resize:vertical;min-height:60px;line-height:1.5;box-sizing:border-box;
+}
+.exp-textarea:focus { outline:none;border-color:var(--accent); }
+.exp-textarea.rem { border-color:var(--green)44; }
+.exp-textarea.rem:focus { border-color:var(--green); }
+.exp-saved-dot { width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:auto;opacity:0;transition:opacity .3s; }
+.exp-saved-dot.show { opacity:1; }
+
+/* Evidence picker in editor */
+.exp-evidence-row { display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:5px 7px;
+  background:var(--bg);border:1px solid var(--border);border-radius:5px; }
+.exp-evidence-thumb { width:36px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0; }
+.exp-evidence-name { flex:1;font-family:var(--mono);font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+
+/* Toggle checkboxes */
+.exp-opt { display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text2);cursor:pointer;padding:3px 0; }
+.exp-opt input { accent-color:var(--accent);width:13px;height:13px;cursor:pointer; }
+
+/* Report preview styles */
+.rpt { font-family:'Inter',system-ui,sans-serif;color:var(--text);line-height:1.7; }
+.rpt h1 { font-size:26px;font-weight:800;margin:0 0 4px; }
+.rpt h2 { font-size:14px;font-weight:700;margin:36px 0 12px;color:var(--accent);
           text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);padding-bottom:6px; }
-.rpt h3 { font-size:13px;font-weight:700;margin:20px 0 8px;color:var(--text); }
+.rpt h3 { font-size:13px;font-weight:700;margin:20px 0 8px; }
 .rpt p  { margin:4px 0 8px;color:var(--text2);font-size:13px; }
 .rpt-meta { display:flex;gap:20px;margin:8px 0 24px;flex-wrap:wrap; }
 .rpt-meta-item { font-size:12px;color:var(--text3);font-family:var(--mono); }
 .rpt-meta-item strong { color:var(--text2); }
-
 .rpt-summary { display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 20px; }
 .rpt-summary-card { flex:1;min-width:90px;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:2px; }
 .rpt-summary-card .rpt-count { font-size:26px;font-weight:800; }
@@ -28,7 +77,6 @@
 .card-info    {background:#6b728018;border:1px solid #6b728040;color:#9ca3af;}
 .card-wstg    {background:var(--bg3);border:1px solid var(--border);color:var(--green);}
 .card-ps      {background:var(--bg3);border:1px solid var(--border);color:var(--blue);}
-
 .rpt-table { width:100%;border-collapse:collapse;font-size:12px;margin:10px 0; }
 .rpt-table th { text-align:left;padding:8px 12px;background:var(--bg3);font-family:var(--mono);
   font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);border-bottom:1px solid var(--border); }
@@ -39,12 +87,10 @@
 .rpt-progress-cell { display:flex;align-items:center;gap:8px; }
 .rpt-mini-bar { flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden; }
 .rpt-mini-fill { height:100%;background:var(--green);border-radius:2px; }
-
 .rpt-vuln { border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;page-break-inside:avoid; }
 .rpt-vuln-header { display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg2); }
 .rpt-vuln-name { font-weight:600;font-size:13px;flex:1; }
 .rpt-vuln-cat  { font-family:var(--mono);font-size:10px;color:var(--text3); }
-.rpt-vuln-body { padding:0; }
 .rpt-field { padding:10px 14px;border-top:1px solid var(--border); }
 .rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:4px; }
 .rpt-field-val  { font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6; }
@@ -53,19 +99,15 @@
 .rpt-divider { border:none;border-top:1px solid var(--border);margin:28px 0; }
 .rpt-wstg-vuln { padding:10px 14px;border:1px solid #ef444430;border-radius:6px;margin-bottom:8px;background:#ef444408; }
 .rpt-evidence-grid { display:flex;flex-wrap:wrap;gap:8px;margin-top:6px; }
-.rpt-evidence-img { max-width:280px;max-height:200px;border-radius:6px;border:1px solid var(--border);object-fit:contain; }
-.rpt-evidence-caption { font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:3px; }
-
-/* Export options panel */
-.export-opt { display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text2);cursor:pointer; }
-.export-opt input[type=checkbox] { accent-color:var(--accent);width:13px;height:13px;cursor:pointer; }
+.rpt-evidence-img { max-width:260px;max-height:190px;border-radius:6px;border:1px solid var(--border);object-fit:contain; }
+.rpt-evidence-cap { font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:3px; }
 
 @media print {
   * { -webkit-print-color-adjust:exact!important;print-color-adjust:exact!important; }
   body { background:#fff!important; }
-  .topbar,.sidebar,.export-controls,.no-print,.toast-container { display:none!important; }
-  .print-area { display:block!important;position:static!important;overflow:visible!important; }
-  .rpt { padding:0!important;max-width:100%!important; }
+  .topbar,.sidebar,.exp-editor,.export-controls,.no-print,.toast-container { display:none!important; }
+  .exp-layout { display:block!important; }
+  .exp-preview { overflow:visible!important;padding:0!important; }
   .rpt h2 { color:#555!important;border-color:#ccc!important; }
   .rpt-table th { background:#f5f5f5!important;color:#666!important; }
   .rpt-table td { color:#333!important;border-color:#ddd!important; }
@@ -73,59 +115,64 @@
   .rpt-vuln-header { background:#f9f9f9!important; }
   .rpt-code { background:#f4f4f4!important;color:#333!important; }
   .rpt-field-rem { color:#155724!important; }
-  .card-critical,.card-high,.card-medium,.card-low,.card-info,.card-wstg,.card-ps {
-    border:1px solid #ccc!important;background:#f5f5f5!important;color:#333!important; }
+  .card-critical,.card-high,.card-medium,.card-low,.card-info,.card-wstg,.card-ps { border:1px solid #ccc!important;background:#f5f5f5!important;color:#333!important; }
   .rpt-mini-fill { background:#555!important; }
   .rpt-mini-bar  { background:#ddd!important; }
-  .rpt-evidence-img { max-width:240px;max-height:180px; }
 }
 </style>
 </head>
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
-<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// generating report...</div></div>
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading report...</div></div>
 <div class="topbar" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden">
+<div style="display:flex;flex:1;overflow:hidden;min-height:0">
   <div class="sidebar no-print" id="sidebar"></div>
 
-  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
 
-    <!-- Controls -->
+    <!-- Topbar controls -->
     <div class="export-controls no-print"
-      style="padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;background:var(--bg2);flex-shrink:0;flex-wrap:wrap">
+      style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--bg2);flex-shrink:0;flex-wrap:wrap">
       <div>
-        <div class="page-title" style="font-size:17px">Export Report</div>
+        <div class="page-title" style="font-size:16px">Export Report</div>
         <div class="page-subtitle">// <span id="export-project-name">—</span></div>
       </div>
-
-      <!-- Scope -->
-      <select id="export-scope" class="form-input" style="width:170px;cursor:pointer" onchange="buildReport()">
+      <select id="export-scope" class="form-input" style="width:165px;cursor:pointer" onchange="buildReport()">
         <option value="all">Full Report</option>
         <option value="vulns">Custom Vulns Only</option>
         <option value="wstg">WSTG Only</option>
       </select>
-
-      <!-- Field toggles -->
-      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:6px 10px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
-        <label class="export-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
-        <label class="export-opt"><input type="checkbox" id="opt-rem"   checked onchange="buildReport()"> Remediation</label>
-        <label class="export-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
-        <label class="export-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
-        <label class="export-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;padding:5px 10px;background:var(--bg3);border-radius:7px;border:1px solid var(--border)">
+        <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-rem"   checked onchange="buildReport()"> Remediation</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
       </div>
-
       <div style="margin-left:auto;display:flex;gap:8px">
-        <button class="btn-secondary" onclick="copyMarkdown()" style="padding:8px 14px">📋 Markdown</button>
-        <button class="btn-accent"    onclick="window.print()"  style="padding:8px 14px">🖨 Export PDF</button>
+        <button class="btn-secondary" onclick="copyMarkdown()" style="padding:7px 13px;font-size:12px">📋 Markdown</button>
+        <button class="btn-accent"    onclick="window.print()"  style="padding:7px 13px;font-size:12px">🖨 Export PDF</button>
       </div>
     </div>
 
-    <!-- Report -->
-    <div class="print-area" style="flex:1;overflow-y:auto;padding:40px 48px">
-      <div id="report-preview" class="rpt" style="max-width:760px;margin:0 auto"></div>
-    </div>
+    <!-- Two-panel: editor left, preview right -->
+    <div class="exp-layout">
 
+      <!-- LEFT: editor panel -->
+      <div class="exp-editor no-print">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em">
+          REPORT EDITOR
+        </div>
+        <div id="editor-panel"></div>
+      </div>
+
+      <!-- RIGHT: live preview -->
+      <div class="exp-preview">
+        <div id="report-preview" class="rpt" style="max-width:720px;margin:0 auto"></div>
+      </div>
+
+    </div>
   </div>
 </div>
 
@@ -139,19 +186,234 @@
 <script src="js/components/activity.js"></script>
 <script src="js/page.js"></script>
 <script>
-const SEV_ORDER  = ['critical','high','medium','low','info'];
-const SEV_LABEL  = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
-const SEV_EMOJI  = { critical:'🔴', high:'🟠', medium:'🟡', low:'🔵', info:'⚪' };
-let _mdLines = [];
+const SEV_ORDER = ['critical','high','medium','low','info'];
+const SEV_LABEL = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
+const SEV_EMOJI = { critical:'🔴', high:'🟠', medium:'🟡', low:'🔵', info:'⚪' };
 
+// Local overrides for desc/rem/evidence (keyed by vuln id or test id)
+// These are pre-populated from state and saved back on blur
+const _localEdits = {}; // { [id]: { description, remediation, evidence: [] } }
+
+function getEdit(id) {
+  if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', evidence:[] };
+  return _localEdits[id];
+}
+
+// ── Autosave timers ───────────────────────────────────────────────
+const _saveTimers = {};
+
+function scheduleVulnSave(vulnId) {
+  clearTimeout(_saveTimers[vulnId]);
+  _saveTimers[vulnId] = setTimeout(async () => {
+    const e = _localEdits[vulnId] || {};
+    try {
+      const updated = await api.vulns.update(state.currentProject.id, vulnId, {
+        description: e.description || '',
+        remediation: e.remediation || '',
+        evidence:    e.evidence    || [],
+      });
+      const v = state.customVulns.find(x => x.id === vulnId);
+      if (v) Object.assign(v, updated);
+      flashSaved(vulnId);
+      buildReport();
+    } catch {}
+  }, 900);
+}
+
+function scheduleWSTGSave(testId) {
+  clearTimeout(_saveTimers[testId]);
+  _saveTimers[testId] = setTimeout(async () => {
+    const e = _localEdits[testId] || {};
+    try {
+      await api.wstg.saveReport(state.currentProject.id, testId, e.description||'', e.remediation||'');
+      if (state.wstgProgress[testId]) {
+        state.wstgProgress[testId].description = e.description||'';
+        state.wstgProgress[testId].remediation = e.remediation||'';
+      }
+      flashSaved(testId);
+      buildReport();
+    } catch {}
+  }, 900);
+}
+
+function flashSaved(id) {
+  const dot = document.getElementById(`saved-${id}`);
+  if (!dot) return;
+  dot.classList.add('show');
+  setTimeout(() => dot.classList.remove('show'), 1500);
+}
+
+// ── Evidence handling ─────────────────────────────────────────────
+function pickEvidence(id, isWSTG) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+  input.onchange = () => {
+    const files = Array.from(input.files);
+    let done = 0;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        getEdit(id).evidence.push({ name: file.name, data: e.target.result });
+        done++;
+        if (done === files.length) {
+          renderEvidenceList(id, isWSTG);
+          if (!isWSTG) scheduleVulnSave(id);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+  input.click();
+}
+
+function removeEvidence(id, idx, isWSTG) {
+  getEdit(id).evidence.splice(idx, 1);
+  renderEvidenceList(id, isWSTG);
+  if (!isWSTG) scheduleVulnSave(id);
+}
+
+function renderEvidenceList(id, isWSTG) {
+  const container = document.getElementById(`evid-list-${id}`);
+  if (!container) return;
+  const evid = getEdit(id).evidence;
+  container.innerHTML = evid.length
+    ? evid.map((img, i) => `
+        <div class="exp-evidence-row">
+          <img src="${img.data}" class="exp-evidence-thumb">
+          <span class="exp-evidence-name">${esc(img.name||'image')}</span>
+          <button class="btn-remove" onclick="removeEvidence('${id}',${i},${isWSTG})">✕</button>
+        </div>`).join('')
+    : `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">No images</div>`;
+  buildReport();
+}
+
+// ── Build editor panel ────────────────────────────────────────────
+function buildEditor() {
+  const scope  = document.getElementById('export-scope')?.value || 'all';
+  const vulns  = state.customVulns || [];
+  const bySev  = {};
+  SEV_ORDER.forEach(s => bySev[s] = vulns.filter(v => (v.severity||'medium') === s));
+
+  // Gather WSTG tests that have fail status
+  const failedTests = [];
+  if (scope !== 'vulns') {
+    WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
+      if (state.wstgProgress[t.id]?.status === 'fail')
+        failedTests.push({ cat: cat.name, test: t, prog: state.wstgProgress[t.id] });
+    }));
+  }
+
+  let html = '';
+
+  // ── Custom vulns section ──────────────────────────────────────
+  if (scope !== 'wstg' && vulns.length) {
+    html += editorSection('custom-vulns', '🛠 Custom Vulnerabilities', true, () => {
+      let inner = '';
+      SEV_ORDER.forEach(sev => {
+        bySev[sev].forEach(v => {
+          // Prime local edits from saved state
+          if (!_localEdits[v.id]) {
+            _localEdits[v.id] = {
+              description: v.description || '',
+              remediation: v.remediation || '',
+              evidence:    v.evidence    || [],
+            };
+          }
+          inner += findingEditor(v.id, v.name, v.severity, false);
+        });
+      });
+      return inner;
+    });
+  }
+
+  // ── WSTG vulns found ─────────────────────────────────────────
+  if (scope !== 'vulns' && failedTests.length) {
+    html += editorSection('wstg-vulns', '⚠ WSTG — Vulns Found', true, () => {
+      let inner = '';
+      failedTests.forEach(({ test, prog }) => {
+        const id = test.id;
+        if (!_localEdits[id]) {
+          _localEdits[id] = {
+            description: prog?.description || '',
+            remediation: prog?.remediation || '',
+            evidence:    [],
+          };
+        }
+        inner += findingEditor(id, `${id} — ${test.name}`, null, true);
+      });
+      return inner;
+    });
+  }
+
+  if (!html) html = `<div style="padding:20px 14px;font-family:var(--mono);font-size:11px;color:var(--text3)">No findings to edit for this scope.</div>`;
+
+  document.getElementById('editor-panel').innerHTML = html;
+  // Restore evidence lists
+  vulns.forEach(v => renderEvidenceList(v.id, false));
+  failedTests.forEach(({ test }) => renderEvidenceList(test.id, true));
+}
+
+function editorSection(id, title, startOpen, contentFn) {
+  return `<div class="exp-section">
+    <div class="exp-section-header ${startOpen?'open':''}" onclick="toggleEditorSection('${id}',this)">
+      <span>${title}</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="exp-section-body ${startOpen?'open':''}" id="esec-${id}">
+      ${contentFn()}
+    </div>
+  </div>`;
+}
+
+function findingEditor(id, name, sev, isWSTG) {
+  const sevBadge = sev ? `<span class="sev-badge sev-${sev}" style="font-size:9px;padding:1px 5px">${SEV_LABEL[sev]}</span>` : '';
+  return `<div class="exp-finding">
+    <div class="exp-finding-header" onclick="toggleFinding('${id}')">
+      ${sevBadge}
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(name)}">${esc(name)}</span>
+      <div class="exp-saved-dot" id="saved-${id}"></div>
+    </div>
+    <div class="exp-finding-body" id="fbody-${id}">
+      <div>
+        <div class="exp-field-label">Description</div>
+        <textarea class="exp-textarea" id="edesc-${id}" placeholder="What is this vulnerability and why does it matter..."
+          oninput="getEdit('${id}').description=this.value;${isWSTG?`scheduleWSTGSave('${id}')`:`scheduleVulnSave('${id}')`}"
+        >${esc(getEdit(id).description)}</textarea>
+      </div>
+      <div>
+        <div class="exp-field-label">Remediation</div>
+        <textarea class="exp-textarea rem" id="erem-${id}" placeholder="How to fix or mitigate this vulnerability..."
+          oninput="getEdit('${id}').remediation=this.value;${isWSTG?`scheduleWSTGSave('${id}')`:`scheduleVulnSave('${id}')`}"
+        >${esc(getEdit(id).remediation)}</textarea>
+      </div>
+      ${!isWSTG ? `<div>
+        <div class="exp-field-label">Evidence</div>
+        <div id="evid-list-${id}"></div>
+        <button class="btn-add-row" style="margin-top:5px;font-size:10px" onclick="pickEvidence('${id}',false)">+ Attach image</button>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+function toggleEditorSection(id, header) {
+  header.classList.toggle('open');
+  document.getElementById(`esec-${id}`)?.classList.toggle('open');
+}
+
+function toggleFinding(id) {
+  document.getElementById(`fbody-${id}`)?.classList.toggle('open');
+}
+
+// ── Build preview ─────────────────────────────────────────────────
+let _mdLines = [];
 function opt(id) { return document.getElementById(id)?.checked ?? true; }
 
 function buildReport() {
   const p     = state.currentProject;
   const scope = document.getElementById('export-scope')?.value || 'all';
   if (!p) return;
-  _mdLines = [];
 
+  _mdLines = [];
   const showDesc  = opt('opt-desc');
   const showRem   = opt('opt-rem');
   const showPay   = opt('opt-pay');
@@ -167,8 +429,8 @@ function buildReport() {
   WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
     wTotal++;
     const s = state.wstgProgress[t.id]?.status;
-    if (s === 'done') wDone++;
-    if (s === 'fail') wFail++;
+    if (s==='done') wDone++;
+    if (s==='fail') wFail++;
   }));
   const wTested = wDone + wFail;
   const wPct    = wTotal ? Math.round(wTested/wTotal*100) : 0;
@@ -177,197 +439,132 @@ function buildReport() {
   PS_DATA.forEach(cat => cat.labs.forEach((_,i) => {
     psTotal++;
     const v = state.psProgress[`${cat.id}_${i}`];
-    if (v === true || v?.done) psDone++;
+    if (v===true||v?.done) psDone++;
   }));
 
-  let html = '';
   const md = (...a) => _mdLines.push(a.join(' '));
+  let html = '';
 
-  // ── Header ────────────────────────────────────────────────
+  // Header
   md(`# ${p.name} — Pentest Report`);
   md(`**Date:** ${date}  **Target:** ${p.target||'—'}`); md('');
   html += `<h1>${esc(p.name)} — Pentest Report</h1>
     <div class="rpt-meta">
       <div class="rpt-meta-item"><strong>Date:</strong> ${date}</div>
-      ${p.target ? `<div class="rpt-meta-item"><strong>Target:</strong> ${esc(p.target)}</div>` : ''}
-      ${p.description ? `<div class="rpt-meta-item"><strong>Scope:</strong> ${esc(p.description)}</div>` : ''}
+      ${p.target?`<div class="rpt-meta-item"><strong>Target:</strong> ${esc(p.target)}</div>`:''}
+      ${p.description?`<div class="rpt-meta-item"><strong>Scope:</strong> ${esc(p.description)}</div>`:''}
     </div>`;
 
-  // ── Summary cards ─────────────────────────────────────────
-  if (scope === 'all' || scope === 'vulns') {
-    md('## Executive Summary');
-    md('| Severity | Count |'); md('|----------|-------|');
-    SEV_ORDER.forEach(s => { if(bySev[s].length) md(`| ${SEV_EMOJI[s]} ${SEV_LABEL[s]} | ${bySev[s].length} |`); });
+  // Summary
+  if (scope!=='wstg') {
+    md('## Executive Summary'); md('|Severity|Count|'); md('|--------|-----|');
+    SEV_ORDER.forEach(s => { if(bySev[s].length) md(`|${SEV_EMOJI[s]} ${SEV_LABEL[s]}|${bySev[s].length}|`); });
     md('');
     html += `<h2>Executive Summary</h2><div class="rpt-summary">`;
     SEV_ORDER.forEach(s => {
       if (!bySev[s].length) return;
-      html += `<div class="rpt-summary-card card-${s}">
-        <div class="rpt-count">${bySev[s].length}</div>
-        <div class="rpt-label">${SEV_EMOJI[s]} ${SEV_LABEL[s]}</div>
-      </div>`;
+      html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_EMOJI[s]} ${SEV_LABEL[s]}</div></div>`;
     });
-    if (scope === 'all') html += `
+    if (scope==='all') html += `
       <div class="rpt-summary-card card-wstg"><div class="rpt-count">${wPct}%</div><div class="rpt-label">WSTG Done</div></div>
       <div class="rpt-summary-card card-ps"><div class="rpt-count">${psDone}</div><div class="rpt-label">PS Labs</div></div>`;
     html += '</div>';
   }
 
-  // ── WSTG ─────────────────────────────────────────────────
-  if (scope === 'all' || scope === 'wstg') {
+  // WSTG
+  if (scope!=='vulns') {
     md('## OWASP WSTG Progress');
     md(`**Overall:** ${wTested}/${wTotal} (${wPct}%) · **Passed:** ${wDone} · **Vuln Found:** ${wFail}`); md('');
-    md('| Category | Tested | Total | Vulns |'); md('|----------|--------|-------|-------|');
-
     html += `<h2>OWASP WSTG Progress</h2>
       <p><strong>${wTested}/${wTotal}</strong> tests completed &nbsp;·&nbsp;
-         <strong style="color:var(--green)">${wDone} passed</strong> &nbsp;·&nbsp;
-         <strong style="color:var(--red)">${wFail} vuln found</strong></p>
+        <strong style="color:var(--green)">${wDone} passed</strong> &nbsp;·&nbsp;
+        <strong style="color:var(--red)">${wFail} vuln found</strong></p>
       <table class="rpt-table"><thead><tr>
         <th>Category</th><th style="text-align:center">Tested</th>
         <th style="text-align:center">Total</th><th style="text-align:center">Vulns</th>
         <th style="min-width:100px">Progress</th>
       </tr></thead><tbody>`;
-
     WSTG_DATA.forEach(cat => {
       const t = cat.tests.length;
-      const d = cat.tests.filter(x => state.wstgProgress[x.id]?.status === 'done').length;
-      const f = cat.tests.filter(x => state.wstgProgress[x.id]?.status === 'fail').length;
-      const tested = d + f;
-      if (!tested) return;
-      const pct = t ? Math.round(tested/t*100) : 0;
-      md(`| ${cat.name} | ${tested} | ${t} | ${f} |`);
-      html += `<tr>
-        <td>${esc(cat.name)}</td>
-        <td class="num">${tested}</td><td class="num">${t}</td>
-        <td class="num ${f>0?'vuln-found':''}">${f||'—'}</td>
-        <td><div class="rpt-progress-cell">
-          <div class="rpt-mini-bar"><div class="rpt-mini-fill" style="width:${pct}%"></div></div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:30px">${pct}%</span>
-        </div></td>
-      </tr>`;
+      const d = cat.tests.filter(x=>state.wstgProgress[x.id]?.status==='done').length;
+      const f = cat.tests.filter(x=>state.wstgProgress[x.id]?.status==='fail').length;
+      if (!d&&!f) return;
+      const pct = t?Math.round((d+f)/t*100):0;
+      html += `<tr><td>${esc(cat.name)}</td><td class="num">${d+f}</td><td class="num">${t}</td>
+        <td class="num ${f?'vuln-found':''}">${f||'—'}</td>
+        <td><div class="rpt-progress-cell"><div class="rpt-mini-bar"><div class="rpt-mini-fill" style="width:${pct}%"></div></div>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:30px">${pct}%</span></div></td></tr>`;
     });
     html += '</tbody></table>';
 
     const failedTests = [];
     WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
-      if (state.wstgProgress[t.id]?.status === 'fail')
-        failedTests.push({ cat: cat.name, test: t, prog: state.wstgProgress[t.id] });
+      if (state.wstgProgress[t.id]?.status==='fail')
+        failedTests.push({ cat:cat.name, test:t, prog:state.wstgProgress[t.id] });
     }));
     if (failedTests.length) {
-      html += `<h3 style="margin-top:24px;color:var(--red)">⚠ Vulnerabilities Found in WSTG</h3>`;
+      html += `<h3 style="margin-top:24px;color:var(--red)">⚠ Vulnerabilities Found</h3>`;
       failedTests.forEach(({ cat, test, prog }) => {
+        const edit = _localEdits[test.id] || {};
+        const desc = edit.description || prog?.description || '';
+        const rem  = edit.remediation || prog?.remediation || '';
         html += `<div class="rpt-wstg-vuln">
           <div style="font-weight:600;font-size:13px;margin-bottom:2px">✕ ${esc(test.id)} — ${esc(test.name)}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">Category: ${esc(cat)}</div>
-          ${prog.note && showNotes ? `<div style="margin-top:6px;font-size:12px;color:var(--text2)">${esc(prog.note)}</div>` : ''}
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">Category: ${esc(cat)}</div>
+          ${prog?.target_id ? `<div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:${desc||rem?'8px':'4px'}">🎯 ${esc((state.targets||[]).find(t=>t.id===prog.target_id)?.host||'')}</div>` : ''}
+          ${showDesc&&desc?`<div style="font-size:12px;color:var(--text2);margin-bottom:6px;white-space:pre-wrap">${esc(desc)}</div>`:''}
+          ${showRem&&rem?`<div style="font-size:12px;color:var(--green);white-space:pre-wrap"><strong>Remediation:</strong> ${esc(rem)}</div>`:''}
+          ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:12px;color:var(--text3)"><em>${esc(prog.note)}</em></div>`:''}
         </div>`;
       });
     }
     html += '<hr class="rpt-divider">';
   }
 
-  // ── Custom vulns ──────────────────────────────────────────
-  if ((scope === 'all' || scope === 'vulns') && vulns.length) {
-    md('## Custom Vulnerabilities'); md('');
+  // Custom vulns
+  if (scope!=='wstg' && vulns.length) {
     html += `<h2>Custom Vulnerabilities</h2>`;
-
     SEV_ORDER.forEach(sev => {
       if (!bySev[sev].length) return;
-      md(`### ${SEV_EMOJI[sev]} ${SEV_LABEL[sev]}`); md('');
       html += `<h3 style="margin-top:20px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
         <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
         <span style="font-family:var(--mono);font-size:11px;color:var(--text3);font-weight:400">${bySev[sev].length} finding${bySev[sev].length>1?'s':''}</span>
       </h3>`;
-
       bySev[sev].forEach(v => {
+        const edit = _localEdits[v.id] || {};
+        const desc = edit.description || v.description || '';
+        const rem  = edit.remediation || v.remediation || '';
+        const evid = edit.evidence    || v.evidence    || [];
         const statusLabel = v.status==='done'?'✓ Confirmed':v.status==='fail'?'✕ Reproduced':'○ Pending';
         const statusColor = v.status==='done'?'var(--green)':v.status==='fail'?'var(--red)':'var(--text3)';
-
-        md(`#### ${v.name}`);
-        md(`**Severity:** ${SEV_LABEL[sev]} · **Status:** ${statusLabel}`); md('');
 
         html += `<div class="rpt-vuln">
           <div class="rpt-vuln-header">
             <div class="rpt-vuln-name">${esc(v.name)}</div>
             <span class="rpt-vuln-cat">${esc(v.category||'Custom')}</span>
+            ${v.target_host ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">🎯 ${esc(v.target_host)}</span>` : ''}
             <span style="font-family:var(--mono);font-size:11px;color:${statusColor};font-weight:600">${statusLabel}</span>
           </div>
-          <div class="rpt-vuln-body">`;
+          <div>`;
 
-        // Description
-        if (showDesc && v.description) {
-          md('**Description:**'); md(v.description); md('');
-          html += `<div class="rpt-field">
-            <div class="rpt-field-label">Description</div>
-            <div class="rpt-field-val">${esc(v.description)}</div>
-          </div>`;
+        if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Description</div><div class="rpt-field-val">${esc(desc)}</div></div>`;
+        if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div><div class="rpt-code">${v.payloads.map(p=>esc(p)).join('\n')}</div></div>`;
+        if ((v.items||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Checklist</div><div>${v.items.map((item,i)=>`<div style="font-size:12px;color:var(--text2);padding:2px 0">${v.checked_items?.[i]?'✅':'☐'} ${esc(item)}</div>`).join('')}</div></div>`;
+        if (showNotes && v.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notes</div><div class="rpt-field-val">${esc(v.notes)}</div></div>`;
+        if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediation</div><div class="rpt-field-rem">${esc(rem)}</div></div>`;
+        if (showEvid && evid.length) {
+          html += `<div class="rpt-field"><div class="rpt-field-label">Evidence</div><div class="rpt-evidence-grid">`;
+          evid.forEach(img => { html += `<div><img src="${img.data}" class="rpt-evidence-img"><div class="rpt-evidence-cap">${esc(img.name||'')}</div></div>`; });
+          html += '</div></div>';
         }
-
-        // Payloads
-        if (showPay && (v.payloads||[]).length) {
-          md('**Payloads:**'); md('```'); v.payloads.forEach(p => md(p)); md('```'); md('');
-          html += `<div class="rpt-field">
-            <div class="rpt-field-label">Payloads</div>
-            <div class="rpt-code">${v.payloads.map(p=>esc(p)).join('\n')}</div>
-          </div>`;
-        }
-
-        // Checklist
-        if ((v.items||[]).length) {
-          html += `<div class="rpt-field">
-            <div class="rpt-field-label">Checklist</div>
-            <div>${v.items.map((item,i) => {
-              const chk = v.checked_items?.[i];
-              return `<div style="font-size:12px;color:var(--text2);padding:2px 0">${chk?'✅':'☐'} ${esc(item)}</div>`;
-            }).join('')}</div>
-          </div>`;
-        }
-
-        // Notes
-        if (showNotes && v.notes) {
-          md('**Notes:**'); md(v.notes); md('');
-          html += `<div class="rpt-field">
-            <div class="rpt-field-label">Notes</div>
-            <div class="rpt-field-val">${esc(v.notes)}</div>
-          </div>`;
-        }
-
-        // Remediation
-        if (showRem && v.remediation) {
-          md('**Remediation:**'); md(v.remediation); md('');
-          html += `<div class="rpt-field">
-            <div class="rpt-field-label">Remediation</div>
-            <div class="rpt-field-rem">${esc(v.remediation)}</div>
-          </div>`;
-        }
-
-        // Evidence
-        if (showEvid && (v.evidence||[]).length) {
-          html += `<div class="rpt-field">
-            <div class="rpt-field-label">Evidence (${v.evidence.length} image${v.evidence.length>1?'s':''})</div>
-            <div class="rpt-evidence-grid">`;
-          v.evidence.forEach(img => {
-            html += `<div>
-              <img src="${img.data}" class="rpt-evidence-img" alt="${esc(img.name||'evidence')}">
-              <div class="rpt-evidence-caption">${esc(img.name||'')}</div>
-            </div>`;
-          });
-          html += `</div></div>`;
-        }
-
-        html += '</div></div>'; // close rpt-vuln-body + rpt-vuln
-        md('---'); md('');
+        html += '</div></div>';
       });
     });
   }
 
-  // ── PortSwigger ───────────────────────────────────────────
-  if (scope === 'all' && psDone > 0) {
-    html += `<hr class="rpt-divider"><h2>PortSwigger Academy</h2>
-      <p><strong>${psDone}</strong> of <strong>${psTotal}</strong> labs completed</p>`;
-    md('## PortSwigger Academy');
-    md(`**Completed:** ${psDone} / ${psTotal} labs`);
+  // PS
+  if (scope==='all' && psDone>0) {
+    html += `<hr class="rpt-divider"><h2>PortSwigger Academy</h2><p><strong>${psDone}</strong> of <strong>${psTotal}</strong> labs completed</p>`;
   }
 
   document.getElementById('report-preview').innerHTML = html;
@@ -376,8 +573,7 @@ function buildReport() {
 
 function copyMarkdown() {
   if (!_mdLines.length) return;
-  navigator.clipboard.writeText(_mdLines.join('\n'))
-    .then(() => showToast('📋 Markdown copied!', 'success'));
+  navigator.clipboard.writeText(_mdLines.join('\n')).then(() => showToast('📋 Markdown copied!', 'success'));
 }
 
 function pageInit() {
@@ -390,6 +586,7 @@ function pageInit() {
     </div>`;
   });
   document.getElementById('sidebar').innerHTML = html;
+  buildEditor();
   buildReport();
 }
 

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flowdit — Dashboard</title>
 <link rel="stylesheet" href="css/main.css">
+  <link rel="icon" type="image/x-icon" href="img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
 </head>
 <body style="display:flex;flex-direction:column;min-height:100vh">
@@ -17,36 +20,20 @@
 
   <div class="main-content">
     <div class="page-header">
-      <div>
+      <div style="flex:1">
         <div class="page-title">Dashboard</div>
         <div class="page-subtitle" id="dash-subtitle">// select a project</div>
       </div>
       <div class="page-actions">
         <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Project:</span>
         <select id="project-select"
-          style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer"
           onchange="switchProject(this.value)"></select>
         <button class="btn-accent" onclick="openNewProjectModal()" style="padding:5px 12px;font-size:12px">+ New</button>
       </div>
     </div>
 
-    <div class="stats-grid">
-      <div class="stat-card green"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">0</div><div class="stat-sub">WSTG tests</div></div>
-      <div class="stat-card red"><div class="stat-label">Remaining</div><div class="stat-value" id="stat-remaining">0</div><div class="stat-sub">tests pending</div></div>
-      <div class="stat-card orange"><div class="stat-label">Vulns Found</div><div class="stat-value" id="stat-failed">0</div><div class="stat-sub">vulnerabilities</div></div>
-      <div class="stat-card purple"><div class="stat-label">Team</div><div class="stat-value" id="stat-members">1</div><div class="stat-sub">members</div></div>
-    </div>
-
-    <div class="progress-section">
-      <div class="progress-label-row"><span class="progress-label">WSTG Progress</span><span class="progress-pct" id="dash-wstg-pct">0%</span></div>
-      <div class="progress-bar"><div class="progress-bar-fill" id="dash-wstg-bar" style="width:0%"></div></div>
-    </div>
-    <div class="progress-section">
-      <div class="progress-label-row"><span class="progress-label">PortSwigger Labs</span><span class="progress-pct" id="dash-ps-pct">0%</span></div>
-      <div class="progress-bar"><div class="progress-bar-fill" id="dash-ps-bar" style="width:0%"></div></div>
-    </div>
-
-    <div id="dash-cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px;margin-top:4px"></div>
+    <div id="dash-main" style="padding-bottom:32px"></div>
   </div>
 
   <div class="activity-panel">
@@ -87,12 +74,12 @@
 <script src="js/page.js"></script>
 <script>
   function pageInit() {
-    // Populate project selector
     const sel = document.getElementById('project-select');
-    sel.innerHTML = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    sel.innerHTML = state.projects.map(p =>
+      `<option value="${p.id}">${esc(p.name)}</option>`
+    ).join('');
     if (state.currentProject) sel.value = state.currentProject.id;
 
-    // Sidebar: project list
     let html = '<div class="sidebar-section-label">Projects</div>';
     state.projects.forEach(p => {
       const active = p.id === state.currentProject?.id;
@@ -102,7 +89,6 @@
       </div>`;
     });
     document.getElementById('sidebar').innerHTML = html;
-
     updateDashboard();
   }
 

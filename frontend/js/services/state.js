@@ -6,6 +6,7 @@ const state = {
   wstgProgress:   {},
   psProgress:     {},
   customVulns:    [],
+  targets:        [],
   members:        [],
   activityFeed:   [],
   onlineUsers:    [],

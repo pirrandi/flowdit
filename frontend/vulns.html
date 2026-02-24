@@ -14,21 +14,16 @@
 
 <div style="display:flex;flex:1;overflow:hidden">
   <div class="sidebar" id="sidebar"></div>
-
   <div class="main-content">
     <div class="page-header">
       <div>
         <div class="page-title">My Custom Vulns</div>
-        <div class="page-subtitle">// personal findings with custom payloads</div>
+        <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--accent);text-decoration:none">add descriptions & export →</a></div>
       </div>
-      <div style="display:flex;gap:8px">
-        <a href="export.html" class="btn-secondary" style="padding:7px 14px;font-size:12px;text-decoration:none">↓ Export</a>
-        <button class="btn-accent" onclick="openAddVulnModal()">+ Add Vulnerability</button>
-      </div>
+      <button class="btn-accent" onclick="openAddVulnModal()">+ Add Vulnerability</button>
     </div>
     <div id="custom-content"></div>
   </div>
-
   <div class="activity-panel">
     <div class="activity-header">
       <span class="activity-title">Activity</span>
@@ -41,12 +36,11 @@
   </div>
 </div>
 
-<!-- Add/Edit Vuln Modal -->
+<!-- Modal — focused on operational data only -->
 <div class="modal-overlay" id="vuln-modal">
-  <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
+  <div class="modal" style="max-width:580px">
     <div class="modal-title" id="modal-title">Add Vulnerability</div>
 
-    <!-- Name + Severity -->
     <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
       <div class="form-group" style="margin:0">
         <label class="form-label">Name *</label>
@@ -64,14 +58,17 @@
       </div>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Category</label>
-      <input type="text" class="form-input" id="modal-vuln-cat" placeholder="e.g. GraphQL, Auth, API...">
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Description <span style="color:var(--text3);font-weight:400">(what it is, why it matters)</span></label>
-      <textarea class="form-input note-textarea" id="modal-vuln-desc" placeholder="Describe the vulnerability, its impact and attack vector..."></textarea>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Category</label>
+        <input type="text" class="form-input" id="modal-vuln-cat" placeholder="e.g. GraphQL, Auth, API...">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Target <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+        <select class="form-input" id="modal-vuln-target" style="cursor:pointer">
+          <option value="">— No target —</option>
+        </select>
+      </div>
     </div>
 
     <div class="form-group">
@@ -87,27 +84,17 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Notes <span style="color:var(--text3);font-weight:400">(internal, not in report)</span></label>
-      <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="References, context, raw observations..."></textarea>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Remediation <span style="color:var(--text3);font-weight:400">(recommendation for the client)</span></label>
-      <textarea class="form-input note-textarea" id="modal-vuln-rem"
-        style="border-color:var(--green)33"
-        placeholder="Describe how to fix or mitigate this vulnerability..."></textarea>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Evidence <span style="color:var(--text3);font-weight:400">(screenshots, optional)</span></label>
-      <div id="modal-evidence-list" style="margin-bottom:8px"></div>
-      <button class="btn-add-row" onclick="pickEvidenceFile()">+ Attach image</button>
+      <label class="form-label">Notes <span style="color:var(--text3);font-weight:400">(quick observations)</span></label>
+      <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="Quick notes, references..."></textarea>
     </div>
 
     <div class="form-error" id="vuln-error"></div>
     <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
-      <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">Description & remediation → Export page</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
+        <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
+      </div>
     </div>
   </div>
 </div>
