@@ -92,7 +92,7 @@ function renderTopbar() {
   const u = state.user;
   const pages = [
     { href:'dashboard.html',   label:'Dashboard' },
-    { href:'wstg.html',        label:'OWASP WSTG' },
+    { href:'owstg.html',        label:'OWASP WSTG' },
     { href:'portswigger.html', label:'PortSwigger' },
     { href:'vulns.html',       label:'Vulnerabilities' },
     { href:'members.html',     label:'Team' },
