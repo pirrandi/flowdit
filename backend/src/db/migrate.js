@@ -36,6 +36,21 @@ const migrations = [
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
+  `CREATE TABLE IF NOT EXISTS targets (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    host        VARCHAR(500) NOT NULL,
+    type        VARCHAR(20)  NOT NULL DEFAULT 'domain'
+                  CHECK (type IN ('domain','ip','cidr','url','other')),
+    scope       VARCHAR(10)  NOT NULL DEFAULT 'in'
+                  CHECK (scope IN ('in','out')),
+    status      VARCHAR(20)  NOT NULL DEFAULT 'active'
+                  CHECK (status IN ('active','completed','out-of-scope')),
+    notes       TEXT,
+    added_by    UUID REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
   `CREATE TABLE IF NOT EXISTS project_members (
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
@@ -130,6 +145,11 @@ const migrations = [
 
 
   // ── Column patches (safe to run on existing DBs) ────────────────
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS target_id UUID REFERENCES targets(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_targets_project ON targets(project_id)`,
+  `ALTER TABLE wstg_progress ADD COLUMN IF NOT EXISTS target_id UUID REFERENCES targets(id) ON DELETE SET NULL`,
+  `ALTER TABLE wstg_progress ADD COLUMN IF NOT EXISTS description TEXT`,
+  `ALTER TABLE wstg_progress ADD COLUMN IF NOT EXISTS remediation TEXT`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS description TEXT`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediation TEXT`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS evidence JSONB NOT NULL DEFAULT '[]'`,

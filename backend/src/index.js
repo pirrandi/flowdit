@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../..', '.env') });
+
 const http      = require('http');
 const express   = require('express');
 const helmet    = require('helmet');
@@ -9,51 +11,62 @@ const wsService = require('./services/ws');
 
 const app    = express();
 const server = http.createServer(app);
+const PORT   = process.env.PORT || 4000;
+const isDev  = process.env.NODE_ENV !== 'production';
 
-// Setup WebSocket server attached to the same HTTP server
+// WebSocket must be attached before listen
 wsService.setup(server);
 
-const PORT = process.env.PORT || 4000;
+// Security headers
+app.use(helmet({ crossOriginEmbedderPolicy: false }));
 
-// ── Security ──────────────────────────────────────────────────────
-app.use(helmet());
-
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000').split(',');
+// CORS — open in dev, strict in production
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error('Not allowed by CORS'));
-  },
+  origin: isDev
+    ? true
+    : (origin, cb) => {
+        const allowed = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim());
+        if (!origin || allowed.includes(origin)) return cb(null, true);
+        cb(new Error('Not allowed by CORS'));
+      },
   credentials: true,
 }));
 
 app.use(express.json({ limit: '1mb' }));
 
-// ── Rate limiting ─────────────────────────────────────────────────
-app.use(rateLimit({ windowMs:15*60*1000, max:3000, standardHeaders:true, legacyHeaders:false }));
-app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20 }));
-app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10 }));
+// Rate limiting
+app.use(rateLimit({ windowMs:15*60*1000, max:500, standardHeaders:true, legacyHeaders:false }));
+app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20,  message:{ error:'Too many attempts' } }));
+app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10,  message:{ error:'Too many attempts' } }));
 
-// ── Health ────────────────────────────────────────────────────────
+// Health check
 app.get('/health', (_, res) => res.json({ status:'ok', ts: new Date() }));
 
-// ── Routes ────────────────────────────────────────────────────────
+// Top-level routes
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/projects', require('./routes/projects'));
-app.use('/api/projects/:projectId/wstg',     require('./routes/wstg'));
-app.use('/api/projects/:projectId/ps',       require('./routes/ps'));
-app.use('/api/projects/:projectId/vulns',    require('./routes/vulns'));
-app.use('/api/projects/:projectId/activity', require('./routes/activity'));
 
-// ── Error handler ─────────────────────────────────────────────────
-app.use((req, res) => res.status(404).json({ error:'Not found' }));
-app.use((err, req, res, next) => {
+// Nested project routes — mergeParams makes :projectId available in child routers
+const projectRouter = express.Router({ mergeParams: true });
+projectRouter.use('/wstg',     require('./routes/wstg'));
+projectRouter.use('/ps',       require('./routes/ps'));
+projectRouter.use('/vulns',    require('./routes/vulns'));
+projectRouter.use('/activity', require('./routes/activity'));
+projectRouter.use('/targets',  require('./routes/targets'));
+app.use('/api/projects/:projectId', projectRouter);
+
+// 404
+app.use((req, res) => res.status(404).json({ error: `Not found: ${req.method} ${req.path}` }));
+
+// Error handler
+app.use((err, req, res, _next) => {
   console.error(err.stack);
-  res.status(500).json({ error:'Internal server error' });
+  res.status(500).json({ error: 'Internal server error' });
 });
 
-// ── Start ─────────────────────────────────────────────────────────
+// Start
 server.listen(PORT, () => {
-  console.log(`🚀 Flowdit API on port ${PORT}`);
-  console.log(`🔌 WebSocket ready at ws://localhost:${PORT}/ws`);
+  console.log(`🚀 Flowdit API  ->  http://localhost:${PORT}`);
+  console.log(`🔌 WebSocket    ->  ws://localhost:${PORT}/ws`);
+  console.log(`   Mode: ${isDev ? 'development (CORS open)' : 'production'}`);
 });
