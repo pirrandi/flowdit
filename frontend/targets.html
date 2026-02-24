@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Targets</title>
+<link rel="stylesheet" href="css/main.css">
+<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
+
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<div class="topbar" id="topbar"></div>
+
+<div style="display:flex;flex:1;overflow:hidden">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Targets & Scope</div>
+        <div class="page-subtitle">// hosts, IPs, CIDRs and URLs in scope</div>
+      </div>
+      <button class="btn-accent" onclick="openAddTargetModal()">+ Add Target</button>
+    </div>
+
+    <!-- Scope summary bar -->
+    <div id="scope-summary" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+
+    <div id="targets-content"></div>
+  </div>
+
+  <div class="activity-panel">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- Add/Edit Target Modal -->
+<div class="modal-overlay" id="target-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title" id="target-modal-title">Add Target</div>
+
+    <div class="form-group">
+      <label class="form-label">Host *</label>
+      <input type="text" class="form-input" id="modal-target-host"
+        placeholder="e.g. example.com / 192.168.1.0 / 10.0.0.0/24"
+        onkeydown="if(event.key==='Enter') saveTarget()">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Type</label>
+        <select class="form-input" id="modal-target-type" style="cursor:pointer">
+          <option value="domain">🌐 Domain</option>
+          <option value="ip">🖥 IP</option>
+          <option value="cidr">🔲 CIDR</option>
+          <option value="url">🔗 URL</option>
+          <option value="other">📌 Other</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Scope</label>
+        <select class="form-input" id="modal-target-scope" style="cursor:pointer">
+          <option value="in">✅ In Scope</option>
+          <option value="out">🚫 Out of Scope</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="modal-target-status" style="cursor:pointer">
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="out-of-scope">Out of Scope</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notes <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <textarea class="form-input note-textarea" id="modal-target-notes"
+        placeholder="Technologies, open ports, relevant info..."></textarea>
+    </div>
+
+    <div class="form-error" id="target-error"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeTargetModal()">Cancel</button>
+      <button class="btn-save" id="target-save-btn" onclick="saveTarget()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/targets.js"></script>
+<script src="js/page.js"></script>
+<script>
+function renderScopeSummary() {
+  const t     = state.targets;
+  const inSc  = t.filter(x => x.scope==='in').length;
+  const outSc = t.filter(x => x.scope==='out').length;
+  const vulns = state.customVulns.length;
+  const withFindings = new Set(state.customVulns.filter(v=>v.target_id).map(v=>v.target_id)).size;
+
+  document.getElementById('scope-summary').innerHTML = `
+    <div class="rpt-summary-card card-wstg" style="flex:none;min-width:110px;padding:10px 14px">
+      <div class="rpt-count" style="font-size:22px">${inSc}</div>
+      <div class="rpt-label">In Scope</div>
+    </div>
+    <div class="rpt-summary-card card-info" style="flex:none;min-width:110px;padding:10px 14px">
+      <div class="rpt-count" style="font-size:22px">${outSc}</div>
+      <div class="rpt-label">Out of Scope</div>
+    </div>
+    <div class="rpt-summary-card card-high" style="flex:none;min-width:110px;padding:10px 14px">
+      <div class="rpt-count" style="font-size:22px">${vulns}</div>
+      <div class="rpt-label">Total Findings</div>
+    </div>
+    <div class="rpt-summary-card card-critical" style="flex:none;min-width:110px;padding:10px 14px">
+      <div class="rpt-count" style="font-size:22px">${withFindings}</div>
+      <div class="rpt-label">Targets w/ Findings</div>
+    </div>`;
+}
+
+function pageInit() {
+  updateTargetsSidebar();
+  renderTargets();
+  renderScopeSummary();
+}
+
+bootPage('targets');
+</script>
+</body>
+</html>
