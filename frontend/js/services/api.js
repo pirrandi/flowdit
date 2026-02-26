@@ -104,6 +104,20 @@ const api = {
     update: (pid, id,d) => request('PATCH',  `/projects/${pid}/vulns/${id}`, d),
     delete: (pid, id)   => request('DELETE', `/projects/${pid}/vulns/${id}`),
   },
+  methodologies: {
+    list:        ()                        => request('GET',    '/methodologies'),
+    create:      (d)                       => request('POST',   '/methodologies', d),
+    update:      (id, d)                   => request('PATCH',  `/methodologies/${id}`, d),
+    delete:      (id)                      => request('DELETE', `/methodologies/${id}`),
+    getProgress: (methodId, projectId)     => request('GET',    `/methodologies/${methodId}/progress/${projectId}`),
+    setProgress: (methodId, projectId, testIdx, d) =>
+                                              request('PATCH',  `/methodologies/${methodId}/progress/${projectId}/${testIdx}`, d),
+    // project-active endpoints
+    getActive:   (projectId)           => request('GET',    `/methodologies/project/${projectId}`),
+    activate:        (methodId, projectId, active) =>
+                                              request('PATCH',  `/methodologies/${methodId}/activate/${projectId}`, { active }),
+    projectProgress: (projectId)             => request('GET',   `/methodologies/project-progress/${projectId}`),
+  },
   targets: {
     list:   (pid)        => request('GET',    `/projects/${pid}/targets`),
     create: (pid, d)     => request('POST',   `/projects/${pid}/targets`, d),

@@ -31,13 +31,15 @@ async function bootPage(viewName) {
 // ── PROJECT LOADING ───────────────────────────────────────────────
 async function loadProjectData(pid) {
   wsClient.connect(pid);
-  [state.wstgProgress, state.psProgress, state.customVulns, state.members, state.targets] = await Promise.all([
+  [state.wstgProgress, state.psProgress, state.customVulns, state.members, state.targets, state.methodologies] = await Promise.all([
     api.wstg.getAll(pid),
     api.ps.getAll(pid),
     api.vulns.list(pid),
     api.members.list(pid),
-    api.targets.list(pid),
+    api.targets.list(pid).catch(() => []),
+    api.methodologies.list().catch(() => []),
   ]);
+  state.activeMethodProgress = await (api.methodologies.projectProgress?.(pid) ?? Promise.resolve({})).catch(() => ({}));
   await loadActivity(pid);
 }
 
@@ -92,11 +94,12 @@ function renderTopbar() {
   const u = state.user;
   const pages = [
     { href:'dashboard.html',   label:'Dashboard' },
-    { href:'owstg.html',        label:'OWASP WSTG' },
+    { href:'wstg.html',        label:'OWASP WSTG' },
     { href:'portswigger.html', label:'PortSwigger' },
-    { href:'vulns.html',       label:'Vulnerabilities' },
+    { href:'targets.html',     label:'Targets'  },
+    { href:'methodology.html',  label:'Methods'  },
+    { href:'vulns.html',       label:'My Vulns' },
     { href:'members.html',     label:'Team' },
-    { href:'targets.html',     label:'Targets' },
     { href:'export.html',      label:'↓ Export' },
   ];
   const current = window.location.pathname.split('/').pop() || 'dashboard.html';
@@ -106,7 +109,7 @@ function renderTopbar() {
 
   document.getElementById('topbar').innerHTML = `
     <div class="topbar-logo">
-      <div class="topbar-logo-icon">🎯</div>
+      <img src="img/flowdit-logo.png" class="topbar-logo-img" alt="Flowdit">
       <span class="topbar-logo-text">Flowdit</span>
     </div>
     <nav style="display:flex;gap:2px;margin-left:8px">${nav}</nav>

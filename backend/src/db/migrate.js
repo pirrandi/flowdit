@@ -121,6 +121,44 @@ const migrations = [
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
+  // ── CUSTOM METHODOLOGIES ─────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS methodologies (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        VARCHAR(200) NOT NULL,
+    description TEXT,
+    is_shared   BOOLEAN NOT NULL DEFAULT false,
+    tests       JSONB NOT NULL DEFAULT '[]',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS methodology_progress (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    methodology_id  UUID NOT NULL REFERENCES methodologies(id) ON DELETE CASCADE,
+    test_idx        INTEGER NOT NULL,
+    status          VARCHAR(10) CHECK (status IN ('done','fail',null)),
+    note            TEXT,
+    target_id       UUID REFERENCES targets(id) ON DELETE SET NULL,
+    updated_by      UUID REFERENCES users(id),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, methodology_id, test_idx)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS project_methodologies (
+    project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    methodology_id  UUID NOT NULL REFERENCES methodologies(id) ON DELETE CASCADE,
+    added_by        UUID REFERENCES users(id),
+    added_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (project_id, methodology_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_project_methodologies ON project_methodologies(project_id)`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS active_methodology_ids UUID[] NOT NULL DEFAULT '{}'`,
+  `CREATE INDEX IF NOT EXISTS idx_methodologies_owner    ON methodologies(owner_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_method_progress_proj   ON methodology_progress(project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_method_progress_method ON methodology_progress(methodology_id)`,
+
   // ── ACTIVITY LOG ─────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS activity_log (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

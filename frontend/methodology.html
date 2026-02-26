@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Methodologies</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<div class="topbar" id="topbar"></div>
+
+<div style="display:flex;flex:1;overflow:hidden">
+
+  <!-- Left: methodology library -->
+  <div class="method-library">
+    <div class="method-library-header">
+      <span style="font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Library</span>
+      <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="openCreateMethodModal()">+ New</button>
+    </div>
+    <div id="method-list"></div>
+  </div>
+
+  <!-- Right: runner -->
+  <div class="main-content" style="flex:1;overflow-y:auto">
+    <div class="page-header" style="padding-bottom:0;border-bottom:none">
+      <div>
+        <div class="page-title">Methodologies</div>
+        <div class="page-subtitle">// custom checklists · reusable across projects</div>
+      </div>
+    </div>
+    <div id="method-runner" style="padding:0 0 32px">
+      <div class="empty-state" style="padding:48px 0">
+        <div class="empty-icon">📋</div>
+        <div class="empty-title">Select a methodology</div>
+        <div class="empty-sub">Choose from your library on the left or create a new one</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="activity-panel">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- Create/Edit Methodology Modal -->
+<div class="modal-overlay" id="method-modal">
+  <div class="modal" style="max-width:640px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="modal-title" id="method-modal-title">New Methodology</div>
+
+    <div style="overflow-y:auto;flex:1;padding-right:4px">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input type="text" class="form-input" id="modal-method-name" placeholder="e.g. API Security Review, Mobile Pentest...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+        <textarea class="form-input note-textarea" id="modal-method-desc" placeholder="When to use this methodology, scope..."></textarea>
+      </div>
+      <label class="exp-opt" style="margin-bottom:14px">
+        <input type="checkbox" id="modal-method-shared">
+        Share with team <span style="color:var(--text3);font-weight:400">(visible to all project members)</span>
+      </label>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="form-label" style="margin:0">Tests</div>
+        <button class="btn-add-row" style="font-size:11px" onclick="addMethodTestRow()">+ Add test</button>
+      </div>
+      <div id="method-tests-editor" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div class="form-error" id="method-modal-error"></div>
+    <div class="modal-footer" style="margin-top:12px">
+      <button class="btn-secondary" onclick="closeMethodModal()">Cancel</button>
+      <button class="btn-save" id="method-modal-save" onclick="saveMethodology()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/methodology.js"></script>
+<script src="js/page.js"></script>
+<script>
+function pageInit() {
+  let html = '<div class="sidebar-section-label">Projects</div>';
+  state.projects.forEach(p => {
+    const active = p.id === state.currentProject?.id;
+    html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
+      <span class="sidebar-item-text">${esc(p.name)}</span>
+      <span class="sidebar-item-badge">${p.member_role}</span>
+    </div>`;
+  });
+  // sidebar hidden on this page — we use the method-library panel instead
+  renderMethodologyList();
+}
+bootPage('methodology');
+</script>
+</body>
+</html>

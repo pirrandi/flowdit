@@ -53,6 +53,7 @@ projectRouter.use('/ps',       require('./routes/ps'));
 projectRouter.use('/vulns',    require('./routes/vulns'));
 projectRouter.use('/activity', require('./routes/activity'));
 projectRouter.use('/targets',  require('./routes/targets'));
+app.use('/api/methodologies', require('./routes/methodologies'));
 app.use('/api/projects/:projectId', projectRouter);
 
 // 404

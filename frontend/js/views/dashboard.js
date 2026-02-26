@@ -151,6 +151,40 @@ function updateDashboard() {
       </div>
     </div>
 
+    <!-- Custom Methodologies section -->
+    ${(()=>{
+      const activeProg = state.activeMethodProgress || {};
+      const entries = Object.entries(activeProg);
+      if (!entries.length) return '';
+      return `<div class="dash-row" style="margin-bottom:16px">
+        <div class="dash-panel" style="flex:1">
+          <div class="dash-panel-title">Custom Methodologies
+            <a href="methodology.html" style="font-family:var(--mono);font-size:10px;color:var(--accent);text-decoration:none;font-weight:400;margin-left:8px">manage →</a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            ${entries.map(([id, m]) => {
+              const pct  = m.total ? Math.round((m.done+m.fail)/m.total*100) : 0;
+              const pending = m.total - m.done - m.fail;
+              return `<div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                  <span style="font-size:12px;font-weight:600">${esc(m.name)}</span>
+                  <div style="display:flex;gap:10px;align-items:center">
+                    <span style="font-family:var(--mono);font-size:11px;color:var(--green)">${m.done} ✓</span>
+                    ${m.fail ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red)">⚠ ${m.fail}</span>` : ''}
+                    <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${pending} pending</span>
+                    <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">${pct}%</span>
+                  </div>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-bar-fill" style="width:${pct}%;${m.fail?'background:var(--red)':''}"></div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>`;
+    })()}
+
     <!-- Recent findings + Team row -->
     <div class="dash-row">
       <!-- Recent custom vulns -->

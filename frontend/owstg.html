@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flowdit — OWASP WSTG</title>
 <link rel="stylesheet" href="css/main.css">
-<script>window.FLOWDIT_API='http://localhost:4000/api'; window.FLOWDIT_WS='ws://localhost:4000/ws';</script>
+  <link rel="icon" type="image/x-icon" href="img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
 </head>
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
@@ -17,17 +20,9 @@
 
   <div class="main-content">
     <div class="page-header">
-      <div style="flex:1">
+      <div>
         <div class="page-title">OWASP WSTG</div>
         <div class="page-subtitle">// 109 tests · 12 categories</div>
-        <!-- Progress bar -->
-        <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
-          <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
-            <div id="wstg-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--green),#34d399);border-radius:3px;transition:width .4s ease;width:0%"></div>
-          </div>
-          <span id="wstg-progress-pct" style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);min-width:36px;text-align:right">0%</span>
-          <span id="wstg-progress-count" style="font-family:var(--mono);font-size:11px;color:var(--text3)">0 / 109</span>
-        </div>
       </div>
     </div>
     <div class="filter-row" id="wstg-filters">
@@ -62,46 +57,30 @@
 <script src="js/views/wstg.js"></script>
 <script src="js/page.js"></script>
 <script>
-  function updateWSTGProgress() {
-    let tested = 0, total = 0;
-    WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
-      total++;
-      if (state.wstgProgress[t.id]?.status) tested++;
-    }));
-    const pct = total ? Math.round(tested / total * 100) : 0;
-    const bar = document.getElementById('wstg-progress-bar');
-    const pctEl = document.getElementById('wstg-progress-pct');
-    const countEl = document.getElementById('wstg-progress-count');
-    if (bar)     bar.style.width   = `${pct}%`;
-    if (pctEl)   pctEl.textContent = `${pct}%`;
-    if (countEl) countEl.textContent = `${tested} / ${total}`;
-  }
-
   function pageInit() {
-    // Sidebar
+    // Sidebar: WSTG categories
     let html = '<div class="sidebar-section-label">Categories</div>';
     WSTG_DATA.forEach(cat => {
-      const t      = cat.tests.length;
-      const tested = cat.tests.filter(test => !!state.wstgProgress[test.id]?.status).length;
-      const p      = t ? Math.round(tested / t * 100) : 0;
+      const t = cat.tests.length;
+      const d = cat.tests.filter(test => state.wstgProgress[test.id]?.status === 'done').length;
+      const p = t ? Math.round(d/t*100) : 0;
       html += `<div class="sidebar-item" onclick="scrollToCat('${cat.id}')">
         <div class="sidebar-mini-bar"><div class="sidebar-mini-fill" style="width:${p}%"></div></div>
         <span class="sidebar-item-text">${esc(cat.name)}</span>
-        <span class="sidebar-item-badge">${tested}/${t}</span>
+        <span class="sidebar-item-badge">${d}/${t}</span>
       </div>`;
     });
     document.getElementById('sidebar').innerHTML = html;
     renderWSTG();
-    updateWSTGProgress();
-    refreshTopbarProgress();
-  }
 
-  // Keep page progress bar in sync when a teammate makes a change
-  const _origPatch = window.patchWSTGTestDOM;
-  window.patchWSTGTestDOM = function(testId, progress) {
-    if (_origPatch) _origPatch(testId, progress);
-    updateWSTGProgress();
-  };
+    // Update topbar progress
+    let done=0, total=0;
+    WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
+      total++;
+      if (state.wstgProgress[t.id]?.status === 'done') done++;
+    }));
+    updateTopbarProgress(done, total);
+  }
 
   bootPage('wstg');
 </script>
