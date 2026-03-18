@@ -1,9 +1,15 @@
-# Flowdit
+<p align="center">
+  <img src="frontend/img/flowdit-logo.png" alt="Flowdit" height="60">
+</p>
 
-> Pentest engagement management platform with real-time client portal, vulnerability tracking, and professional PDF reporting.
+<p align="center">
+  Pentest engagement management platform with real-time client portal, vulnerability tracking, and professional PDF reporting.
+</p>
 
-![Stack](https://img.shields.io/badge/stack-Node.js%20%2F%20PostgreSQL%20%2F%20Nginx-informational?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+<p align="center">
+  <img src="https://img.shields.io/badge/stack-Node.js%20%2F%20PostgreSQL%20%2F%20Nginx-informational?style=flat-square" alt="Stack">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+</p>
 
 ---
 
