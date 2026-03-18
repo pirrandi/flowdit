@@ -1,5 +1,16 @@
 // ── components/activity.js ───────────────────────────────────────────
 
+function _actorColor(username, fallbackColor) {
+  const m = (state.members || []).find(m => m.username === username);
+  return m ? roleColor(m.role) : (fallbackColor || '#7c3aed');
+}
+
+function _actorAvatarUrl(username) {
+  // Activity items don't carry avatar_url; only the current user's is known
+  if (username === state.user?.username) return state.user?.avatar_url || null;
+  return null;
+}
+
 function renderActivityFeed() {
   const list = document.getElementById('activity-list');
   if (!list) return;
@@ -11,7 +22,7 @@ function renderActivityFeed() {
 
   list.innerHTML = state.activityFeed.map(item => `
     <div class="activity-item" id="act-${item.id}">
-      ${avatarHtml(item.username, item.avatar_color, 24)}
+      ${avatarHtml(item.username, _actorColor(item.username, item.avatar_color), 24, _actorAvatarUrl(item.username))}
       <div class="activity-content">
         <div class="activity-text">
           <strong>${esc(item.username)}</strong>
@@ -29,18 +40,18 @@ function prependActivity(item) {
   const list = document.getElementById('activity-list');
   if (!list) return;
 
-  // Remove empty state if present
   const empty = list.querySelector('.activity-empty');
   if (empty) empty.remove();
 
+  const username = item.user?.username || item.username;
   const div = document.createElement('div');
   div.className = 'activity-item';
   div.id = `act-${item.id}`;
   div.innerHTML = `
-    ${avatarHtml(item.user?.username || item.username, item.user?.avatar_color || item.avatar_color, 24)}
+    ${avatarHtml(username, _actorColor(username, item.user?.avatar_color || item.avatar_color), 24, _actorAvatarUrl(username))}
     <div class="activity-content">
       <div class="activity-text">
-        <strong>${esc(item.user?.username || item.username)}</strong>
+        <strong>${esc(username)}</strong>
         ${actionLabel(item.action, item.entity_type, item.entity_name, item.meta)}
       </div>
       <div class="activity-time">${timeAgo(item.created_at)}</div>
@@ -48,7 +59,6 @@ function prependActivity(item) {
   div.style.animation = 'toastIn .3s ease';
   list.prepend(div);
 
-  // Keep max 50 visible
   while (list.children.length > 50) list.lastChild.remove();
 }
 
@@ -61,11 +71,20 @@ function renderOnlinePresence(onlineUsers) {
 
   const shown = onlineUsers.slice(0, 5);
   const extra = onlineUsers.length - shown.length;
-  el.innerHTML = shown.map(u =>
-    `<div class="online-dot" title="${esc(u.username)}">
-      ${avatarHtml(u.username, '#7c3aed', 24)}
-    </div>`
-  ).join('') + (extra > 0 ? `<span class="online-count">+${extra}</span>` : '');
+  el.innerHTML = shown.map(u => {
+    const member    = (state.members || []).find(m => m.id === u.id || m.username === u.username);
+    const role      = member?.role || (u.id === state.user?.id ? state.currentProject?.member_role : null);
+    const color     = role ? roleColor(role) : '#7c3aed';
+    const avatarUrl = u.username === state.user?.username
+      ? (state.user?.avatar_url || null)
+      : (member?.avatar_url || null);
+    const size = 26;
+    const base = `width:${size}px;height:${size}px;font-size:11px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;line-height:1;box-shadow:0 0 0 2px ${color},0 0 0 4px var(--bg2)`;
+    const inner = avatarUrl
+      ? `<div style="${base};background:${color};overflow:hidden;padding:0"><img src="${esc(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>`
+      : `<div style="${base};background:${color}">${(u.username||'?')[0].toUpperCase()}</div>`;
+    return `<div class="online-dot" title="${esc(u.username)}">${inner}</div>`;
+  }).join('') + (extra > 0 ? `<span class="online-count">+${extra}</span>` : '');
 }
 
 async function loadActivity(projectId) {

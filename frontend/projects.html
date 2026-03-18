@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Projects</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+<style>
+.proj-topbar {
+  height:50px;display:flex;align-items:center;gap:14px;padding:0 28px;
+  border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;
+}
+.proj-topbar-logo { display:flex;align-items:center;gap:8px;text-decoration:none; }
+.proj-topbar-logo img { height:22px; }
+.proj-topbar-logo span { font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);letter-spacing:.04em; }
+
+.proj-body { flex:1;overflow-y:auto;padding:36px 40px; }
+@media(max-width:700px){ .proj-body { padding:24px 16px; } }
+
+.proj-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:14px;
+  margin-top:24px;
+}
+.proj-card {
+  border:1px solid var(--border);border-radius:10px;padding:18px 20px;
+  cursor:pointer;transition:border-color .15s,transform .1s;
+  background:var(--bg2);display:flex;flex-direction:column;gap:6px;
+  text-decoration:none;color:inherit;
+}
+.proj-card:hover { border-color:var(--accent);transform:translateY(-1px); }
+.proj-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0; }
+.proj-card-name { font-size:14px;font-weight:700;color:var(--text);line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.proj-card-target { font-family:var(--mono);font-size:11px;color:var(--accent);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.proj-card-desc { font-size:12px;color:var(--text3);line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+.proj-card-footer { display:flex;align-items:center;gap:10px;margin-top:6px;padding-top:10px;
+  border-top:1px solid var(--border); }
+.proj-card-meta { font-family:var(--mono);font-size:10px;color:var(--text3); }
+
+.proj-add-card {
+  border:1px dashed var(--border);border-radius:10px;padding:18px 20px;
+  cursor:pointer;transition:border-color .15s,background .15s;
+  background:transparent;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;min-height:120px;color:var(--text3);
+}
+.proj-add-card:hover { border-color:var(--accent);background:var(--bg2);color:var(--text2); }
+.proj-add-card-icon { font-size:22px;opacity:.5; }
+.proj-add-card-label { font-family:var(--mono);font-size:12px; }
+</style>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+
+<div class="proj-topbar">
+  <a href="projects.html" class="proj-topbar-logo">
+    <img src="img/flowdit-logo.png" alt="Flowdit">
+    <span>Flowdit</span>
+  </a>
+  <div style="flex:1"></div>
+  <div id="proj-topbar-user"></div>
+</div>
+
+<div class="proj-body">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Projects</div>
+      <div class="page-subtitle">// select a project to begin</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-secondary" onclick="openJoinModal()" style="padding:7px 14px;font-size:12px">Join Project</button>
+      <button class="btn-accent" onclick="openNewProjectModal()" style="padding:7px 14px;font-size:12px">+ New Project</button>
+    </div>
+  </div>
+
+  <div class="proj-grid" id="projects-grid">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Loading projects...</div>
+  </div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="project-modal">
+  <div class="modal">
+    <div class="modal-title">New Project</div>
+    <div class="form-group"><label class="form-label">Project Name</label><input type="text" class="form-input" id="proj-name" placeholder="Client Corp — Q3 Pentest"></div>
+    <div class="form-group"><label class="form-label">Target / Scope</label><input type="text" class="form-input" id="proj-target" placeholder="https://target.com"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input note-textarea" id="proj-desc" placeholder="Scope, objectives..."></textarea></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('project-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="proj-save-btn" onclick="saveNewProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Join Project Modal -->
+<div class="modal-overlay" id="join-modal">
+  <div class="modal">
+    <div class="modal-title">Join a Project</div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:16px">
+      Paste the invite code shared with you by a project owner.
+    </p>
+    <div class="form-group">
+      <label class="form-label">Invite Code</label>
+      <input type="text" class="form-input" id="join-code-input"
+        placeholder="FD-XXXXXXXXXXXXXXXX"
+        style="text-transform:uppercase;letter-spacing:.1em;font-family:var(--mono)"
+        onkeydown="if(event.key==='Enter')doJoin()">
+    </div>
+    <div class="form-error" id="join-error"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('join-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="join-btn" onclick="doJoin()">Join</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/utils.js"></script>
+<script>
+// ── AUTH GUARD + BOOT ──────────────────────────────────────────────
+async function bootProjects() {
+  if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
+  try { state.user = await api.auth.me(); }
+  catch { window.location.href = 'index.html'; return; }
+
+  renderUserPill();
+
+  try {
+    state.projects = await api.projects.list();
+  } catch {
+    state.projects = [];
+  }
+
+  renderProjects();
+  hide('loading-overlay');
+}
+
+// ── USER PILL ─────────────────────────────────────────────────────
+function renderUserPill() {
+  const u = state.user;
+  const color = u.avatar_color || '#7c3aed';
+  document.getElementById('proj-topbar-user').innerHTML = `
+    <div class="user-pill" onclick="toggleUserMenu()">
+      ${avatarHtml(u.username, color, 24, u.avatar_url)}
+      <span>${esc(u.username)}</span>
+      <div class="user-dropdown" id="user-dropdown">
+        <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">◎ Edit Profile</button>
+        <button class="dropdown-item danger" onclick="doLogout()">↪ Logout</button>
+      </div>
+    </div>`;
+}
+function toggleUserMenu() { document.getElementById('user-dropdown')?.classList.toggle('open'); }
+function closeUserMenu()  { document.getElementById('user-dropdown')?.classList.remove('open'); }
+document.addEventListener('click', e => { if (!e.target.closest('.user-pill')) closeUserMenu(); });
+
+async function doLogout() {
+  await api.auth.logout().catch(() => {});
+  localStorage.removeItem('fd_project');
+  window.location.href = 'index.html';
+}
+
+// ── PROFILE MODAL ─────────────────────────────────────────────────
+let _pendingAvatarUrl = undefined;
+
+function _injectProfileModal() {
+  if (document.getElementById('profile-modal')) return;
+  const div = document.createElement('div');
+  div.innerHTML = `
+  <div class="modal-overlay" id="profile-modal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-title">Edit Profile</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px">
+        <div id="profile-avatar-preview" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0"></div>
+        <label style="font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:4px">
+          ↑ Change photo
+          <input type="file" id="profile-avatar-input" accept="image/*" style="display:none">
+        </label>
+        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Display name</label>
+        <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="off">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:4px">Letters, numbers, _ and - only.</div>
+      </div>
+      <div class="form-error" id="profile-error"></div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeProfileModal()">Cancel</button>
+        <button class="btn-save" id="profile-save-btn" onclick="saveProfile()">Save changes</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(div.firstElementChild);
+  document.getElementById('profile-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeProfileModal();
+  });
+  document.getElementById('profile-avatar-input').addEventListener('change', _onAvatarPick);
+  document.getElementById('profile-avatar-remove').addEventListener('click', _removeAvatar);
+}
+
+function openProfileModal() {
+  _injectProfileModal();
+  closeUserMenu();
+  _pendingAvatarUrl = undefined;
+  const u = state.user;
+  document.getElementById('profile-username').value = u.username;
+  document.getElementById('profile-error').textContent = '';
+  _refreshAvatarPreview(u.avatar_url || null);
+  document.getElementById('profile-modal').classList.add('open');
+}
+
+function closeProfileModal() {
+  document.getElementById('profile-modal')?.classList.remove('open');
+}
+
+function _refreshAvatarPreview(url) {
+  const preview    = document.getElementById('profile-avatar-preview');
+  const removeBtn  = document.getElementById('profile-avatar-remove');
+  const color      = state.user?.avatar_color || '#7c3aed';
+  if (url) {
+    preview.innerHTML  = `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover">`;
+    preview.style.background  = color;
+    preview.style.boxShadow   = `0 0 0 3px ${color}`;
+    removeBtn.style.display   = 'block';
+  } else {
+    preview.innerHTML  = (state.user?.username || '?')[0].toUpperCase();
+    preview.style.background  = color;
+    preview.style.boxShadow   = 'none';
+    removeBtn.style.display   = 'none';
+  }
+}
+
+function _onAvatarPick(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 1_500_000) { showToast('Image too large (max 1.5 MB)', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => { _pendingAvatarUrl = ev.target.result; _refreshAvatarPreview(_pendingAvatarUrl); };
+  reader.readAsDataURL(file);
+}
+
+function _removeAvatar() {
+  _pendingAvatarUrl = null;
+  document.getElementById('profile-avatar-input').value = '';
+  _refreshAvatarPreview(null);
+}
+
+async function saveProfile() {
+  const username = document.getElementById('profile-username').value.trim();
+  const errEl    = document.getElementById('profile-error');
+  const btn      = document.getElementById('profile-save-btn');
+  errEl.textContent = '';
+  if (!username) { errEl.textContent = 'Display name is required.'; return; }
+  if (!/^[a-zA-Z0-9_-]{2,50}$/.test(username)) {
+    errEl.textContent = 'Only letters, numbers, _ and - (2–50 chars).'; return;
+  }
+  const payload = {};
+  if (username !== state.user.username) payload.username = username;
+  if (_pendingAvatarUrl !== undefined) payload.avatar_url = _pendingAvatarUrl;
+  if (!Object.keys(payload).length) { closeProfileModal(); return; }
+  btn.disabled = true;
+  try {
+    const updated = await api.auth.updateProfile(payload);
+    state.user = { ...state.user, ...updated };
+    closeProfileModal();
+    renderUserPill();
+    showToast('Profile updated', 'success');
+  } catch(e) { errEl.textContent = e.message; }
+  finally { btn.disabled = false; }
+}
+
+// ── RENDER PROJECTS ───────────────────────────────────────────────
+function projectHref(p) {
+  if (p.member_role === 'viewer') return `client.html?pid=${p.id}`;
+  return `dashboard.html?pid=${p.id}`;
+}
+
+function renderProjects() {
+  const grid = document.getElementById('projects-grid');
+  if (!state.projects.length) {
+    grid.innerHTML = `
+      <div class="proj-add-card" onclick="openNewProjectModal()">
+        <div class="proj-add-card-icon">＋</div>
+        <div class="proj-add-card-label">New Project</div>
+      </div>
+      <div class="proj-add-card" onclick="openJoinModal()">
+        <div class="proj-add-card-icon">⌗</div>
+        <div class="proj-add-card-label">Join a Project</div>
+      </div>`;
+    return;
+  }
+
+  let html = state.projects.map(p => {
+    const role = p.member_role || 'member';
+    const updated = relativeDate(p.updated_at);
+    const members = p.member_count || 1;
+    return `<a href="${projectHref(p)}" class="proj-card" onclick="localStorage.setItem('fd_project','${p.id}')">
+      <div class="proj-card-top">
+        <div style="min-width:0;flex:1;overflow:hidden">
+          <div class="proj-card-name">${esc(p.name)}</div>
+          ${p.target ? `<div class="proj-card-target">${esc(p.target)}</div>` : ''}
+        </div>
+        <span class="role-badge role-${role}">${role}</span>
+      </div>
+      ${p.description ? `<div class="proj-card-desc">${esc(p.description)}</div>` : ''}
+      <div class="proj-card-footer">
+        <span class="proj-card-meta">◎ ${members} member${members>1?'s':''}</span>
+        <span class="proj-card-meta" style="margin-left:auto">Updated ${updated}</span>
+      </div>
+    </a>`;
+  }).join('');
+
+  // Always add a "New Project" tile at the end
+  html += `<div class="proj-add-card" onclick="openNewProjectModal()">
+    <div class="proj-add-card-icon">＋</div>
+    <div class="proj-add-card-label">New Project</div>
+  </div>`;
+
+  grid.innerHTML = html;
+}
+
+// ── NEW PROJECT ───────────────────────────────────────────────────
+function openNewProjectModal() {
+  ['proj-name','proj-target','proj-desc'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('project-modal').classList.add('open');
+  setTimeout(() => document.getElementById('proj-name')?.focus(), 50);
+}
+
+async function saveNewProject() {
+  const name   = document.getElementById('proj-name')?.value.trim();
+  const target = document.getElementById('proj-target')?.value.trim();
+  const desc   = document.getElementById('proj-desc')?.value.trim();
+  const btn    = document.getElementById('proj-save-btn');
+  if (!name) return;
+  btn.disabled = true;
+  try {
+    const proj = await api.projects.create({ name, target, description: desc });
+    document.getElementById('project-modal').classList.remove('open');
+    localStorage.setItem('fd_project', proj.id);
+    window.location.href = `dashboard.html?pid=${proj.id}`;
+  } catch(e) { showToast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+// ── JOIN PROJECT ──────────────────────────────────────────────────
+function openJoinModal() {
+  const el = document.getElementById('join-code-input');
+  if (el) el.value = '';
+  document.getElementById('join-error').style.display = 'none';
+  document.getElementById('join-modal').classList.add('open');
+  setTimeout(() => el?.focus(), 50);
+}
+
+async function doJoin() {
+  const input = document.getElementById('join-code-input');
+  const err   = document.getElementById('join-error');
+  const btn   = document.getElementById('join-btn');
+  const code  = (input?.value || '').trim().toUpperCase();
+  if (!code) return;
+  err.style.display = 'none';
+  btn.disabled = true;
+  try {
+    const res = await api.projects.join(code);
+    document.getElementById('join-modal').classList.remove('open');
+    localStorage.setItem('fd_project', res.projectId);
+    const dest = res.role === 'viewer' ? `client.html?pid=${res.projectId}` : `dashboard.html?pid=${res.projectId}`;
+    window.location.href = dest;
+  } catch(e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally { btn.disabled = false; }
+}
+
+// ── MODAL CLOSE ON BACKDROP ────────────────────────────────────────
+['project-modal','join-modal'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  });
+});
+
+window.toggleUserMenu      = toggleUserMenu;
+window.doLogout            = doLogout;
+window.openProfileModal    = openProfileModal;
+window.closeProfileModal   = closeProfileModal;
+window.saveProfile         = saveProfile;
+window.openNewProjectModal = openNewProjectModal;
+window.saveNewProject      = saveNewProject;
+window.openJoinModal       = openJoinModal;
+window.doJoin              = doJoin;
+
+bootProjects();
+</script>
+</body>
+</html>

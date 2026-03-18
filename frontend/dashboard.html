@@ -13,23 +13,21 @@
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="topbar" id="topbar"></div>
+<div class="sidenav" id="sidenav"></div>
+<div class="app-main">
+<div class="topbar slim" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden">
-  <div class="sidebar" id="sidebar"></div>
+<div style="display:flex;flex:1;overflow:hidden;min-height:0">
 
   <div class="main-content">
     <div class="page-header">
       <div style="flex:1">
         <div class="page-title">Dashboard</div>
-        <div class="page-subtitle" id="dash-subtitle">// select a project</div>
+        <div class="page-subtitle" id="dash-subtitle">// overview</div>
       </div>
       <div class="page-actions">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Project:</span>
-        <select id="project-select"
-          style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer"
-          onchange="switchProject(this.value)"></select>
-        <button class="btn-accent" onclick="openNewProjectModal()" style="padding:5px 12px;font-size:12px">+ New</button>
+        <button class="btn-secondary" onclick="window.location.href='projects.html'" style="padding:5px 12px;font-size:12px">← Projects</button>
+        <button class="btn-accent" onclick="openNewProjectModal()" style="padding:5px 12px;font-size:12px">+ New Project</button>
       </div>
     </div>
 
@@ -74,25 +72,14 @@
 <script src="js/page.js"></script>
 <script>
   function pageInit() {
-    const sel = document.getElementById('project-select');
-    sel.innerHTML = state.projects.map(p =>
-      `<option value="${p.id}">${esc(p.name)}</option>`
-    ).join('');
-    if (state.currentProject) sel.value = state.currentProject.id;
-
-    let html = '<div class="sidebar-section-label">Projects</div>';
-    state.projects.forEach(p => {
-      const active = p.id === state.currentProject?.id;
-      html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
-        <span class="sidebar-item-text">${esc(p.name)}</span>
-        <span class="sidebar-item-badge">${p.member_role}</span>
-      </div>`;
-    });
-    document.getElementById('sidebar').innerHTML = html;
+    if (state.currentProject) {
+      document.getElementById('dash-subtitle').textContent = `// ${state.currentProject.name}`;
+    }
     updateDashboard();
   }
 
   bootPage('dashboard');
 </script>
+</div>
 </body>
 </html>

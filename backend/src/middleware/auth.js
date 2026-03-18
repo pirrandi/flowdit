@@ -11,7 +11,7 @@ async function requireAuth(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     // Attach full user (including avatar_color) so activity log can use it
     const { rows } = await db.query(
-      'SELECT id, username, email, avatar_color FROM users WHERE id = $1', [payload.sub]
+      'SELECT id, username, email, avatar_color, avatar_url FROM users WHERE id = $1', [payload.sub]
     );
     if (!rows.length) return res.status(401).json({ error: 'User not found' });
     req.user = rows[0];

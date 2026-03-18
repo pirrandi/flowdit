@@ -55,7 +55,7 @@ router.get('/:projectId', requireProjectAccess, (req, res) => res.json(req.proje
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const fields = ['name','target','description','status'];
+  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg'];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
   if (!updates.length) return res.json(req.project);
@@ -79,7 +79,7 @@ router.delete('/:projectId', requireProjectAccess, requireOwner, async (req, res
 router.get('/:projectId/members', requireProjectAccess, async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT u.id, u.username, u.email, u.avatar_color, pm.role, pm.joined_at,
+      `SELECT u.id, u.username, u.email, u.avatar_color, u.avatar_url, pm.role, pm.joined_at,
               inv.username AS invited_by_username
        FROM project_members pm
        JOIN users u ON u.id=pm.user_id

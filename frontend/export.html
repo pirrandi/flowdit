@@ -59,80 +59,217 @@
 .exp-opt { display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text2);cursor:pointer;padding:3px 0; }
 .exp-opt input { accent-color:var(--accent);width:13px;height:13px;cursor:pointer; }
 
-/* Report preview styles */
+/* ── Report base ─────────────────────────────────────────────────── */
 .rpt { font-family:'Inter',system-ui,sans-serif;color:var(--text);line-height:1.7; }
-.rpt h1 { font-size:26px;font-weight:800;margin:0 0 4px; }
-.rpt h2 { font-size:14px;font-weight:700;margin:36px 0 12px;color:var(--accent);
-          text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);padding-bottom:6px; }
-.rpt h3 { font-size:13px;font-weight:700;margin:20px 0 8px; }
-.rpt p  { margin:4px 0 8px;color:var(--text2);font-size:13px; }
-.rpt-meta { display:flex;gap:20px;margin:8px 0 24px;flex-wrap:wrap; }
-.rpt-meta-item { font-size:12px;color:var(--text3);font-family:var(--mono); }
-.rpt-meta-item strong { color:var(--text2); }
-.rpt-summary { display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 20px; }
-.rpt-summary-card { flex:1;min-width:90px;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:2px; }
-.rpt-summary-card .rpt-count { font-size:26px;font-weight:800; }
-.rpt-summary-card .rpt-label { font-size:9px;text-transform:uppercase;letter-spacing:.1em;opacity:.7;font-family:var(--mono); }
+.rpt h1 { font-size:28px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em; }
+.rpt h2 { font-size:11px;font-weight:700;margin:40px 0 14px;color:var(--text3);
+          text-transform:uppercase;letter-spacing:.12em;
+          border-bottom:1px solid var(--border);padding-bottom:8px;display:flex;align-items:center;gap:8px; }
+.rpt h2::before { content:'';display:inline-block;width:3px;height:12px;border-radius:2px;background:var(--accent);flex-shrink:0; }
+.rpt h3 { font-size:13px;font-weight:700;margin:22px 0 10px; }
+.rpt p  { margin:4px 0 10px;color:var(--text2);font-size:13px; }
+
+/* ── Cover / header ──────────────────────────────────────────────── */
+.rpt-cover { margin-bottom:36px; }
+.rpt-cover-bar { height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent),#8b5cf6 60%,var(--blue));margin-bottom:28px; }
+.rpt-cover-labels { display:flex;align-items:center;gap:10px;margin-bottom:14px; }
+.rpt-cover-type { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--accent)44;border-radius:3px;padding:3px 9px; }
+.rpt-cover-conf { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--red);border:1px solid var(--red)44;border-radius:3px;padding:3px 9px; }
+.rpt-cover-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:22px; }
+.rpt-cover-cell { background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:11px 14px; }
+.rpt-cover-cell-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:4px; }
+.rpt-cover-cell-val   { font-size:13px;font-weight:600;color:var(--text); }
+
+/* ── Summary cards ───────────────────────────────────────────────── */
+.rpt-summary { display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 16px; }
+.rpt-summary-card { flex:1;min-width:80px;border-radius:9px;padding:14px 16px;display:flex;flex-direction:column;gap:3px;position:relative;overflow:hidden; }
+.rpt-summary-card::after { content:'';position:absolute;right:-8px;bottom:-8px;width:50px;height:50px;border-radius:50%;opacity:.12;background:currentColor; }
+.rpt-summary-card .rpt-count { font-size:28px;font-weight:800;line-height:1; }
+.rpt-summary-card .rpt-label { font-size:9px;text-transform:uppercase;letter-spacing:.1em;opacity:.75;font-family:var(--mono);margin-top:2px; }
 .card-critical{background:#ef444418;border:1px solid #ef444440;color:#ef4444;}
 .card-high    {background:#f9731618;border:1px solid #f9731640;color:#f97316;}
 .card-medium  {background:#eab30818;border:1px solid #eab30840;color:#eab308;}
-.card-low     {background:#3b82f618;border:1px solid #3b82f640;color:#3b82f6;}
+.card-low     {background:#05966918;border:1px solid #05966940;color:#059669;}
 .card-info    {background:#6b728018;border:1px solid #6b728040;color:#9ca3af;}
 .card-wstg    {background:var(--bg3);border:1px solid var(--border);color:var(--green);}
-.card-ps      {background:var(--bg3);border:1px solid var(--border);color:var(--blue);}
+
+/* ── Risk distribution bar ───────────────────────────────────────── */
+.rpt-risk-wrap { margin:4px 0 24px; }
+.rpt-risk-bar  { display:flex;height:7px;border-radius:4px;overflow:hidden;gap:2px; }
+.rpt-risk-seg  { height:100%;border-radius:2px;transition:width .3s; }
+.rpt-risk-critical { background:#ef4444; }
+.rpt-risk-high     { background:#f97316; }
+.rpt-risk-medium   { background:#eab308; }
+.rpt-risk-low      { background:#059669; }
+.rpt-risk-info     { background:#6b7280; }
+.rpt-risk-legend   { display:flex;gap:14px;margin-top:8px;flex-wrap:wrap; }
+.rpt-risk-legend-item { display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--text3); }
+.rpt-risk-legend-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+
+/* ── Findings overview table ─────────────────────────────────────── */
 .rpt-table { width:100%;border-collapse:collapse;font-size:12px;margin:10px 0; }
-.rpt-table th { text-align:left;padding:8px 12px;background:var(--bg3);font-family:var(--mono);
-  font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);border-bottom:1px solid var(--border); }
-.rpt-table td { padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text2); }
+.rpt-table th { text-align:left;padding:9px 12px;background:var(--bg3);font-family:var(--mono);
+  font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);border-bottom:1px solid var(--border); }
+.rpt-table td { padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2); }
 .rpt-table tr:last-child td { border-bottom:none; }
+.rpt-table tr:hover td { background:var(--bg2); }
 .rpt-table td.num { text-align:center;font-family:var(--mono);font-weight:600; }
 .rpt-table td.vuln-found { color:var(--red);font-weight:700; }
 .rpt-progress-cell { display:flex;align-items:center;gap:8px; }
 .rpt-mini-bar { flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden; }
 .rpt-mini-fill { height:100%;background:var(--green);border-radius:2px; }
-.rpt-vuln { border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;page-break-inside:avoid; }
-.rpt-vuln-header { display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg2); }
+
+/* ── Vulnerability cards ─────────────────────────────────────────── */
+.rpt-vuln { border:1px solid var(--border);border-radius:8px;margin-bottom:14px;overflow:hidden;page-break-inside:avoid; }
+.rpt-vuln-critical { border-left:4px solid #ef4444!important; }
+.rpt-vuln-high     { border-left:4px solid #f97316!important; }
+.rpt-vuln-medium   { border-left:4px solid #eab308!important; }
+.rpt-vuln-low      { border-left:4px solid #059669!important; }
+.rpt-vuln-info     { border-left:4px solid #6b7280!important; }
+.rpt-vuln-header { display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--bg2); }
 .rpt-vuln-name { font-weight:600;font-size:13px;flex:1; }
 .rpt-vuln-cat  { font-family:var(--mono);font-size:10px;color:var(--text3); }
+.rpt-vuln-status { font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px; }
+.rpt-status-done { color:var(--green);background:var(--green)18;border:1px solid var(--green)30; }
+.rpt-status-fail { color:var(--red);background:var(--red)18;border:1px solid var(--red)30; }
+.rpt-status-pending { color:var(--text3);background:var(--bg3);border:1px solid var(--border); }
 .rpt-field { padding:10px 14px;border-top:1px solid var(--border); }
-.rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:4px; }
+.rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:5px; }
 .rpt-field-val  { font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6; }
 .rpt-field-rem  { font-size:12px;color:var(--green);white-space:pre-wrap;line-height:1.6; }
 .rpt-code { background:var(--bg);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6;border:1px solid var(--border); }
-.rpt-divider { border:none;border-top:1px solid var(--border);margin:28px 0; }
-.rpt-wstg-vuln { padding:10px 14px;border:1px solid #ef444430;border-radius:6px;margin-bottom:8px;background:#ef444408; }
+.rpt-divider { border:none;border-top:1px solid var(--border);margin:32px 0; }
+
+/* ── WSTG vuln items ─────────────────────────────────────────────── */
+.rpt-wstg-vuln { padding:11px 14px;border:1px solid var(--border);border-left:4px solid var(--red);border-radius:6px;margin-bottom:8px;background:var(--bg2); }
+
+/* ── Evidence ────────────────────────────────────────────────────── */
 .rpt-evidence-grid { display:flex;flex-wrap:wrap;gap:8px;margin-top:6px; }
 .rpt-evidence-img { max-width:260px;max-height:190px;border-radius:6px;border:1px solid var(--border);object-fit:contain; }
 .rpt-evidence-cap { font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:3px; }
 
+/* ── Findings index table (before details) ───────────────────────── */
+.rpt-idx-num  { width:32px;font-family:var(--mono);color:var(--text3); }
+.rpt-idx-sev  { width:90px; }
+.rpt-idx-status { width:100px; }
+
+@page { margin:1.8cm 2cm; }
+
 @media print {
+  :root {
+    --text:    #111111;
+    --text2:   #333333;
+    --text3:   #666666;
+    --bg:      #ffffff;
+    --bg2:     #f7f7f7;
+    --bg3:     #eeeeee;
+    --surface: #f9f9f9;
+    --border:  #e0e0e0;
+    --border2: #d0d0d0;
+    --green:   #15803d;
+    --red:     #b91c1c;
+    --accent:  #6d28d9;
+    --accent2: #22d3a3;
+    --blue:    #1d4ed8;
+    --mono:    'JetBrains Mono', monospace;
+  }
   * { -webkit-print-color-adjust:exact!important;print-color-adjust:exact!important; }
-  body { background:#fff!important; }
-  .topbar,.sidebar,.exp-editor,.export-controls,.no-print,.toast-container { display:none!important; }
-  .exp-layout { display:block!important; }
-  .exp-preview { overflow:visible!important;padding:0!important; }
-  .rpt h2 { color:#555!important;border-color:#ccc!important; }
-  .rpt-table th { background:#f5f5f5!important;color:#666!important; }
-  .rpt-table td { color:#333!important;border-color:#ddd!important; }
-  .rpt-vuln { border-color:#ddd!important;page-break-inside:avoid; }
-  .rpt-vuln-header { background:#f9f9f9!important; }
-  .rpt-code { background:#f4f4f4!important;color:#333!important; }
-  .rpt-field-rem { color:#155724!important; }
-  .card-critical,.card-high,.card-medium,.card-low,.card-info,.card-wstg,.card-ps { border:1px solid #ccc!important;background:#f5f5f5!important;color:#333!important; }
-  .rpt-mini-fill { background:#555!important; }
-  .rpt-mini-bar  { background:#ddd!important; }
+
+  /* ── Hide UI chrome ─────────────────────────────────── */
+  .topbar,.sidenav,.sidebar,.exp-editor,.export-controls,
+  .no-print,.toast-container,#loading-overlay { display:none!important; }
+
+  /* ── Reset layout — prevent clipping ────────────────── */
+  html,body { display:block!important;background:#fff!important;margin:0!important;padding:0!important;height:auto!important;overflow:visible!important; }
+  .app-main  { display:block!important;margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important; }
+  .exp-outer,.exp-inner { display:block!important;overflow:visible!important;height:auto!important;min-height:0!important; }
+  .exp-layout  { display:block!important;overflow:visible!important;height:auto!important; }
+  .exp-preview { display:block!important;overflow:visible!important;padding:0!important;width:100%!important;height:auto!important; }
+  #report-preview { max-width:100%!important;margin:0!important; }
+
+  /* ── URL / long text wrapping ───────────────────────── */
+  .rpt-cover-cell-val, .rpt-field-val, .rpt-code, .rpt-table td {
+    word-break:break-all!important;overflow-wrap:break-word!important;
+  }
+
+  /* ── Page-break rules ───────────────────────────────── */
+  .rpt-vuln      { page-break-inside:avoid;break-inside:avoid; }
+  .rpt-wstg-vuln { page-break-inside:avoid;break-inside:avoid; }
+  .rpt-summary   { page-break-inside:avoid;break-inside:avoid; }
+  .rpt-cover-grid{ page-break-inside:avoid;break-inside:avoid; }
+  .rpt h2 { page-break-after:avoid;break-after:avoid; }
+  .rpt h3 { page-break-after:avoid;break-after:avoid; }
+  .rpt-table { page-break-inside:auto; }
+  .rpt-table tr { page-break-inside:avoid;break-inside:avoid; }
+
+  /* ── Base text ──────────────────────────────────────── */
+  .rpt p, .rpt-field-val  { color:#333!important; }
+  .rpt h2 { color:#444!important;border-color:#ccc!important; }
+  .rpt h2::before { background:#666!important; }
+  .rpt h3 { color:#222!important; }
+  .rpt-cover-cell { background:#f7f7f7!important;border-color:#ddd!important; }
+  .rpt-cover-cell-label { color:#888!important; }
+  .rpt-cover-cell-val   { color:#111!important; }
+  .rpt-cover-type { color:#3b82f6!important;border-color:#3b82f644!important; }
+  .rpt-cover-conf { color:#ef4444!important;border-color:#ef444444!important; }
+  .rpt-cover-bar  { background:linear-gradient(90deg,#3b82f6,#8b5cf6)!important; }
+
+  /* ── Severity colours (keep in print) ───────────────── */
+  .sev-critical,.sev-badge.sev-critical { background:#fef2f2!important;color:#b91c1c!important;border-color:#fca5a5!important; }
+  .sev-high,    .sev-badge.sev-high     { background:#fff7ed!important;color:#c2410c!important;border-color:#fdba74!important; }
+  .sev-medium,  .sev-badge.sev-medium   { background:#fefce8!important;color:#92400e!important;border-color:#fde68a!important; }
+  .sev-low,     .sev-badge.sev-low      { background:#f0fdf4!important;color:#15803d!important;border-color:#86efac!important; }
+  .sev-info,    .sev-badge.sev-info     { background:#f9fafb!important;color:#374151!important;border-color:#d1d5db!important; }
+
+  .card-critical { background:#fef2f2!important;border-color:#fca5a5!important;color:#b91c1c!important; }
+  .card-high     { background:#fff7ed!important;border-color:#fdba74!important;color:#c2410c!important; }
+  .card-medium   { background:#fefce8!important;border-color:#fde68a!important;color:#92400e!important; }
+  .card-low      { background:#f0fdf4!important;border-color:#86efac!important;color:#15803d!important; }
+  .card-info     { background:#f9fafb!important;border-color:#d1d5db!important;color:#374151!important; }
+  .card-wstg     { background:#f0fdf4!important;border-color:#86efac!important;color:#15803d!important; }
+
+  /* ── Vuln card coloured borders (keep in print) ──────── */
+  .rpt-vuln          { border-color:#ddd!important;overflow:visible!important; }
+  .rpt-vuln-critical { border-left:4px solid #ef4444!important; }
+  .rpt-vuln-high     { border-left:4px solid #f97316!important; }
+  .rpt-vuln-medium   { border-left:4px solid #eab308!important; }
+  .rpt-vuln-low      { border-left:4px solid #059669!important; }
+  .rpt-vuln-info     { border-left:4px solid #6b7280!important; }
+  .rpt-vuln-header   { background:#f9f9f9!important; }
+  .rpt-vuln-name     { color:#111!important; }
+  .rpt-vuln-cat      { color:#666!important; }
+  .rpt-vuln-status   { background:#f0f0f0!important;border-color:#ddd!important;color:#444!important; }
+
+  /* ── Other elements ─────────────────────────────────── */
+  .rpt-field-label { color:#888!important; }
+  .rpt-field-rem   { color:#155724!important; }
+  .rpt-field-val   { color:#333!important; }
+  .rpt-code        { background:#f4f4f4!important;color:#333!important;border-color:#ddd!important; }
+  .rpt-wstg-vuln   { background:#fafafa!important;border-color:#ddd!important;border-left-color:#ef4444!important; }
+  .rpt-table th    { background:#f5f5f5!important;color:#666!important;border-color:#ddd!important; }
+  .rpt-table td    { color:#333!important;border-color:#eee!important; }
+  .rpt-table tr:hover td { background:transparent!important; }
+  .rpt-mini-fill   { background:#555!important; }
+  .rpt-mini-bar    { background:#ddd!important; }
+  .rpt-divider     { border-color:#ddd!important; }
+  .rpt-risk-bar    { gap:2px; }
+  .rpt-risk-legend-item { color:#555!important; }
+  .rpt-status-done { background:#f0fdf4!important;color:#15803d!important;border-color:#86efac!important; }
+  .rpt-status-fail { background:#fef2f2!important;color:#b91c1c!important;border-color:#fca5a5!important; }
 }
 </style>
 </head>
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading report...</div></div>
-<div class="topbar" id="topbar"></div>
+<div class="sidenav" id="sidenav"></div>
+<div class="app-main">
+<div class="topbar slim" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden;min-height:0">
-  <div class="sidebar no-print" id="sidebar"></div>
-
-  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+<div class="exp-outer" style="display:flex;flex:1;overflow:hidden;min-height:0">
+  <div class="exp-inner" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
 
     <!-- Topbar controls -->
     <div class="export-controls no-print"
@@ -145,6 +282,10 @@
         <option value="all">Full Report</option>
         <option value="vulns">Custom Vulns Only</option>
         <option value="wstg">WSTG Only</option>
+      </select>
+      <select id="report-type" class="form-input" style="width:145px;cursor:pointer" onchange="buildReport()">
+        <option value="technical">Technical</option>
+        <option value="executive">Executive</option>
       </select>
       <div style="display:flex;gap:10px;flex-wrap:wrap;padding:5px 10px;background:var(--bg3);border-radius:7px;border:1px solid var(--border)">
         <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
@@ -196,6 +337,23 @@ const SEV_EMOJI = { critical:'🔴', high:'🟠', medium:'🟡', low:'🔵', inf
 // Local overrides for desc/rem/evidence (keyed by vuln id or test id)
 // These are pre-populated from state and saved back on blur
 const _localEdits = {}; // { [id]: { description, remediation, evidence: [] } }
+
+// Target detail cache (ports + endpoints fetched for report)
+const _targetFull = {};
+
+async function loadAllTargetDetails() {
+  const pid = state.currentProject?.id;
+  if (!pid || !state.targets?.length) return;
+  await Promise.all(state.targets.map(async t => {
+    try {
+      const [ports, endpoints] = await Promise.all([
+        api.targets.listPorts(pid, t.id).catch(() => []),
+        api.targets.listEndpoints(pid, t.id).catch(() => []),
+      ]);
+      _targetFull[t.id] = { ports, endpoints };
+    } catch {}
+  }));
+}
 
 function getEdit(id) {
   if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', evidence:[] };
@@ -412,8 +570,9 @@ let _mdLines = [];
 function opt(id) { return document.getElementById(id)?.checked ?? true; }
 
 function buildReport() {
-  const p     = state.currentProject;
-  const scope = document.getElementById('export-scope')?.value || 'all';
+  const p          = state.currentProject;
+  const scope      = document.getElementById('export-scope')?.value || 'all';
+  const reportType = document.getElementById('report-type')?.value || 'technical';
   if (!p) return;
 
   _mdLines = [];
@@ -438,40 +597,91 @@ function buildReport() {
   const wTested = wDone + wFail;
   const wPct    = wTotal ? Math.round(wTested/wTotal*100) : 0;
 
-  let psDone=0, psTotal=0;
-  PS_DATA.forEach(cat => cat.labs.forEach((_,i) => {
-    psTotal++;
-    const v = state.psProgress[`${cat.id}_${i}`];
-    if (v===true||v?.done) psDone++;
-  }));
-
   const md = (...a) => _mdLines.push(a.join(' '));
   let html = '';
 
-  // Header
-  md(`# ${p.name} — Pentest Report`);
+  // ── Cover / Header ────────────────────────────────────────────────
+  md(`# ${p.name} — Security Assessment Report`);
   md(`**Date:** ${date}  **Target:** ${p.target||'—'}`); md('');
-  html += `<h1>${esc(p.name)} — Pentest Report</h1>
-    <div class="rpt-meta">
-      <div class="rpt-meta-item"><strong>Date:</strong> ${date}</div>
-      ${p.target?`<div class="rpt-meta-item"><strong>Target:</strong> ${esc(p.target)}</div>`:''}
-      ${p.description?`<div class="rpt-meta-item"><strong>Scope:</strong> ${esc(p.description)}</div>`:''}
-    </div>`;
 
-  // Summary
-  if (scope!=='wstg') {
+  html += `<div class="rpt-cover">
+    <div class="rpt-cover-bar"></div>
+    <div style="display:flex;align-items:flex-start;gap:24px;margin-bottom:18px">
+      ${p.logo_url ? `<div style="background:${p.logo_bg==='dark'?'#1e1e1e':'#fff'};border:1px solid ${p.logo_bg==='dark'?'rgba(255,255,255,.08)':'rgba(0,0,0,.09)'};border-radius:8px;padding:8px 14px;display:flex;align-items:center;flex-shrink:0;margin-top:2px"><img src="${p.logo_url}" style="height:48px;max-width:160px;object-fit:contain" alt="Project logo"></div>` : ''}
+      <div style="flex:1">
+        <div class="rpt-cover-labels">
+          <span class="rpt-cover-type">Security Assessment Report</span>
+          <span class="rpt-cover-conf">Confidential</span>
+        </div>
+        <h1 style="margin:0">${esc(p.name)}</h1>
+      </div>
+    </div>
+    <div class="rpt-cover-grid">
+      <div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Date</div><div class="rpt-cover-cell-val">${date}</div></div>
+      ${p.target?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Target</div><div class="rpt-cover-cell-val">${esc(p.target)}</div></div>`:''}
+      ${p.description?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Scope</div><div class="rpt-cover-cell-val">${esc(p.description)}</div></div>`:''}
+      ${scope!=='wstg'?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Total Findings</div><div class="rpt-cover-cell-val">${vulns.length}</div></div>`:''}
+      ${scope!=='vulns'?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">WSTG Coverage</div><div class="rpt-cover-cell-val">${wPct}% (${wTested}/${wTotal})</div></div>`:''}
+    </div>
+  </div>`;
+
+  // ── Executive Summary ─────────────────────────────────────────────
+  if (scope!=='wstg' && vulns.length) {
     md('## Executive Summary'); md('|Severity|Count|'); md('|--------|-----|');
     SEV_ORDER.forEach(s => { if(bySev[s].length) md(`|${SEV_EMOJI[s]} ${SEV_LABEL[s]}|${bySev[s].length}|`); });
     md('');
+
     html += `<h2>Executive Summary</h2><div class="rpt-summary">`;
     SEV_ORDER.forEach(s => {
       if (!bySev[s].length) return;
-      html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_EMOJI[s]} ${SEV_LABEL[s]}</div></div>`;
+      html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_LABEL[s]}</div></div>`;
     });
     if (scope==='all') html += `
-      <div class="rpt-summary-card card-wstg"><div class="rpt-count">${wPct}%</div><div class="rpt-label">WSTG Done</div></div>
-      <div class="rpt-summary-card card-ps"><div class="rpt-count">${psDone}</div><div class="rpt-label">PS Labs</div></div>`;
+      <div class="rpt-summary-card card-wstg"><div class="rpt-count">${wPct}%</div><div class="rpt-label">WSTG</div></div>`;
     html += '</div>';
+
+    // Risk distribution bar
+    if (vulns.length) {
+      html += `<div class="rpt-risk-wrap"><div class="rpt-risk-bar">`;
+      SEV_ORDER.forEach(s => {
+        if (!bySev[s].length) return;
+        const pct = Math.round(bySev[s].length / vulns.length * 100);
+        html += `<div class="rpt-risk-seg rpt-risk-${s}" style="width:${pct}%" title="${SEV_LABEL[s]}: ${bySev[s].length}"></div>`;
+      });
+      html += `</div><div class="rpt-risk-legend">`;
+      SEV_ORDER.forEach(s => {
+        if (!bySev[s].length) return;
+        const colors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#059669',info:'#6b7280'};
+        html += `<div class="rpt-risk-legend-item"><div class="rpt-risk-legend-dot" style="background:${colors[s]}"></div>${SEV_LABEL[s]} (${bySev[s].length})</div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    // Findings index table
+    html += `<h2>Findings Index</h2>
+      <table class="rpt-table"><thead><tr>
+        <th class="rpt-idx-num">#</th>
+        <th class="rpt-idx-sev">Severity</th>
+        <th>Vulnerability</th>
+        <th>Category</th>
+        <th class="rpt-idx-status">Status</th>
+      </tr></thead><tbody>`;
+    let idx = 1;
+    SEV_ORDER.forEach(sev => {
+      bySev[sev].forEach(v => {
+        const statusLabel = v.status==='done'?'Confirmed':v.status==='fail'?'Reproduced':'Pending';
+        html += `<tr>
+          <td class="num" style="color:var(--text3)">${idx++}</td>
+          <td><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></td>
+          <td style="font-weight:600;color:var(--text)">${esc(v.name)}</td>
+          <td style="font-family:var(--mono);font-size:11px">${esc(v.category||'Custom')}</td>
+          <td><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${statusLabel}</span></td>
+        </tr>`;
+      });
+    });
+    html += '</tbody></table>';
+  } else if (scope!=='wstg') {
+    html += `<h2>Executive Summary</h2><p style="color:var(--text3);font-style:italic">No custom findings recorded for this project.</p>`;
   }
 
   // WSTG
@@ -505,48 +715,56 @@ function buildReport() {
       if (state.wstgProgress[t.id]?.status==='fail')
         failedTests.push({ cat:cat.name, test:t, prog:state.wstgProgress[t.id] });
     }));
-    if (failedTests.length) {
-      html += `<h3 style="margin-top:24px;color:var(--red)">⚠ Vulnerabilities Found</h3>`;
+    if (failedTests.length && reportType === 'technical') {
+      html += `<h3 style="margin-top:24px">Vulnerabilities Found <span style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--red);margin-left:6px">${failedTests.length} issue${failedTests.length>1?'s':''}</span></h3>`;
       failedTests.forEach(({ cat, test, prog }) => {
         const edit = _localEdits[test.id] || {};
         const desc = edit.description || prog?.description || '';
         const rem  = edit.remediation || prog?.remediation || '';
+        const targetHost = prog?.target_id ? (state.targets||[]).find(t=>t.id===prog.target_id)?.host : null;
         html += `<div class="rpt-wstg-vuln">
-          <div style="font-weight:600;font-size:13px;margin-bottom:2px">✕ ${esc(test.id)} — ${esc(test.name)}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">Category: ${esc(cat)}</div>
-          ${prog?.target_id ? `<div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:${desc||rem?'8px':'4px'}">🎯 ${esc((state.targets||[]).find(t=>t.id===prog.target_id)?.host||'')}</div>` : ''}
-          ${showDesc&&desc?`<div style="font-size:12px;color:var(--text2);margin-bottom:6px;white-space:pre-wrap">${esc(desc)}</div>`:''}
-          ${showRem&&rem?`<div style="font-size:12px;color:var(--green);white-space:pre-wrap"><strong>Remediation:</strong> ${esc(rem)}</div>`:''}
-          ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:12px;color:var(--text3)"><em>${esc(prog.note)}</em></div>`:''}
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:var(--red)18;border:1px solid var(--red)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
+            <span style="font-weight:600;font-size:13px;color:var(--text)">${esc(test.name)}</span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${desc||rem?'8px':'0'}">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">📁 ${esc(cat)}</span>
+            ${targetHost ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">🎯 ${esc(targetHost)}</span>` : ''}
+          </div>
+          ${showDesc&&desc?`<div class="rpt-field-label" style="margin-top:4px">Description</div><div style="font-size:12px;color:var(--text2);margin-bottom:6px;white-space:pre-wrap;line-height:1.6">${esc(desc)}</div>`:''}
+          ${showRem&&rem?`<div class="rpt-field-label">Remediation</div><div style="font-size:12px;color:var(--green);white-space:pre-wrap;line-height:1.6">${esc(rem)}</div>`:''}
+          ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic">${esc(prog.note)}</div>`:''}
         </div>`;
       });
     }
     html += '<hr class="rpt-divider">';
   }
 
-  // Custom vulns
-  if (scope!=='wstg' && vulns.length) {
-    html += `<h2>Custom Vulnerabilities</h2>`;
+  // Custom vulns — technical only
+  if (scope!=='wstg' && vulns.length && reportType === 'technical') {
+    html += `<h2>Detailed Findings</h2>`;
     SEV_ORDER.forEach(sev => {
       if (!bySev[sev].length) return;
-      html += `<h3 style="margin-top:20px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
-        <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text3);font-weight:400">${bySev[sev].length} finding${bySev[sev].length>1?'s':''}</span>
-      </h3>`;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px">
+        <span class="sev-badge sev-${sev}" style="font-size:11px;padding:3px 10px">${SEV_LABEL[sev]}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${bySev[sev].length} finding${bySev[sev].length>1?'s':''}</span>
+        <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+      </div>`;
       bySev[sev].forEach(v => {
         const edit = _localEdits[v.id] || {};
         const desc = edit.description || v.description || '';
         const rem  = edit.remediation || v.remediation || '';
         const evid = edit.evidence    || v.evidence    || [];
-        const statusLabel = v.status==='done'?'✓ Confirmed':v.status==='fail'?'✕ Reproduced':'○ Pending';
-        const statusColor = v.status==='done'?'var(--green)':v.status==='fail'?'var(--red)':'var(--text3)';
+        const statusLabel = v.status==='done'?'Confirmed':v.status==='fail'?'Reproduced':'Pending';
 
-        html += `<div class="rpt-vuln">
+        html += `<div class="rpt-vuln rpt-vuln-${sev}">
           <div class="rpt-vuln-header">
+            <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
+            ${v.cvss_score != null ? (()=>{ const sc={critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b'; return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${sc};background:${sc}18;border:1px solid ${sc}33;border-radius:4px;padding:2px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>`; })() : ''}
             <div class="rpt-vuln-name">${esc(v.name)}</div>
-            <span class="rpt-vuln-cat">${esc(v.category||'Custom')}</span>
+            ${v.category ? `<span class="rpt-vuln-cat">${esc(v.category)}</span>` : ''}
             ${v.target_host ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">🎯 ${esc(v.target_host)}</span>` : ''}
-            <span style="font-family:var(--mono);font-size:11px;color:${statusColor};font-weight:600">${statusLabel}</span>
+            <span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${statusLabel}</span>
           </div>
           <div>`;
 
@@ -565,9 +783,102 @@ function buildReport() {
     });
   }
 
-  // PS
-  if (scope==='all' && psDone>0) {
-    html += `<hr class="rpt-divider"><h2>PortSwigger Academy</h2><p><strong>${psDone}</strong> of <strong>${psTotal}</strong> labs completed</p>`;
+  // ── Targets / Scope section ────────────────────────────────────────
+  if (scope !== 'wstg' && state.targets?.length) {
+    html += `<h2>Scope — Targets</h2>`;
+
+    if (reportType === 'executive') {
+      // Executive: simple table
+      html += `<table class="rpt-table"><thead><tr>
+        <th>Host</th><th>Type</th><th>Status</th><th>Notes</th>
+      </tr></thead><tbody>`;
+      state.targets.forEach(t => {
+        html += `<tr>
+          <td style="font-family:var(--mono);font-weight:600">${esc(t.host)}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${esc(t.type||'—')}</td>
+          <td><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></td>
+          <td style="font-size:12px;color:var(--text3)">${esc(t.notes||'')}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+    } else {
+      // Technical: cards with ports + endpoints
+      state.targets.forEach(t => {
+        const td = _targetFull[t.id] || {};
+        const ports     = td.ports     || [];
+        const endpoints = td.endpoints || [];
+        html += `<div class="rpt-vuln" style="margin-bottom:12px">
+          <div class="rpt-vuln-header">
+            <span style="font-family:var(--mono);font-size:12px;font-weight:700">${esc(t.host)}</span>
+            ${t.type ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(t.type)}</span>` : ''}
+            <span style="margin-left:auto"><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></span>
+          </div>`;
+        if (t.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notes</div><div class="rpt-field-val">${esc(t.notes)}</div></div>`;
+        if (ports.length) {
+          html += `<div class="rpt-field"><div class="rpt-field-label">Open Ports (${ports.length})</div>
+            <table class="rpt-table" style="margin:6px 0">
+              <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version</th></tr></thead>
+              <tbody>`;
+          ports.forEach(port => {
+            html += `<tr>
+              <td class="num" style="font-weight:700">${port.port}</td>
+              <td style="font-family:var(--mono);font-size:11px">${esc(port.protocol||'tcp')}</td>
+              <td style="font-family:var(--mono);font-size:11px">${esc(port.state||'open')}</td>
+              <td>${esc(port.service||'—')}</td>
+              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(port.version||'')}</td>
+            </tr>`;
+          });
+          html += '</tbody></table></div>';
+        }
+        if (endpoints.length) {
+          html += `<div class="rpt-field"><div class="rpt-field-label">Endpoints (${endpoints.length})</div>
+            <table class="rpt-table" style="margin:6px 0">
+              <thead><tr><th>Method</th><th>Path</th><th>Status</th><th>Notes</th></tr></thead>
+              <tbody>`;
+          endpoints.forEach(ep => {
+            html += `<tr>
+              <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent)">${esc(ep.method||'GET')}</td>
+              <td style="font-family:var(--mono);font-size:11px">${esc(ep.path||'')}</td>
+              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(ep.status_code||'')}</td>
+              <td style="font-size:11px;color:var(--text3)">${esc(ep.notes||'')}</td>
+            </tr>`;
+          });
+          html += '</tbody></table></div>';
+        }
+        html += '</div>';
+      });
+    }
+  }
+
+  // ── Active Methodologies (technical only) ──────────────────────────
+  if (reportType === 'technical' && scope !== 'wstg') {
+    const activeMethods = Object.entries(state.activeMethodProgress || {});
+    if (activeMethods.length) {
+      html += `<h2>Methodology Progress</h2>`;
+      activeMethods.forEach(([methodId, m]) => {
+        const pct = m.total ? Math.round((m.done + m.fail) / m.total * 100) : 0;
+        const tests = m.tests || [];
+        html += `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg2)">
+            <div style="font-weight:600;font-size:13px;flex:1">${esc(m.name)}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--green)">${m.done} done</div>
+            ${m.fail ? `<div style="font-family:var(--mono);font-size:11px;color:var(--red)">${m.fail} fail</div>` : ''}
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${m.total} total</div>
+          </div>
+          <div style="padding:10px 14px">
+            <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--border);gap:2px;margin-bottom:8px">
+              ${m.done ? `<div style="width:${Math.round(m.done/m.total*100)}%;background:var(--green);border-radius:2px"></div>` : ''}
+              ${m.fail ? `<div style="width:${Math.round(m.fail/m.total*100)}%;background:var(--red);border-radius:2px"></div>` : ''}
+            </div>
+            ${tests.filter(t => t.status === 'fail').length ? `
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Failed checks (${tests.filter(t=>t.status==='fail').length})</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                ${tests.map((t,i) => t.status==='fail' ? `<span style="font-family:var(--mono);font-size:10px;background:var(--red)18;border:1px solid var(--red)30;color:var(--red);border-radius:3px;padding:2px 6px">#${i+1}</span>` : '').filter(Boolean).join('')}
+              </div>` : ''}
+          </div>
+        </div>`;
+      });
+    }
   }
 
   document.getElementById('report-preview').innerHTML = html;
@@ -579,21 +890,14 @@ function copyMarkdown() {
   navigator.clipboard.writeText(_mdLines.join('\n')).then(() => showToast('📋 Markdown copied!', 'success'));
 }
 
-function pageInit() {
-  let html = '<div class="sidebar-section-label">Projects</div>';
-  state.projects.forEach(p => {
-    const active = p.id === state.currentProject?.id;
-    html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
-      <span class="sidebar-item-text">${esc(p.name)}</span>
-      <span class="sidebar-item-badge">${p.member_role}</span>
-    </div>`;
-  });
-  document.getElementById('sidebar').innerHTML = html;
+async function pageInit() {
+  await loadAllTargetDetails();
   buildEditor();
   buildReport();
 }
 
 bootPage('export');
 </script>
+</div>
 </body>
 </html>

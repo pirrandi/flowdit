@@ -4,45 +4,64 @@ const url  = require('url');
 
 // projectId → Set<ws>
 const rooms = new Map();
+// userId → Set<ws>  (for targeted logout)
+const userSockets = new Map();
 
 function setup(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
   wss.on('connection', (ws, req) => {
     const { query } = url.parse(req.url, true);
-    const token = query.token;
-
-    let user = null;
-    try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      user = { id: payload.sub, username: payload.username };
-    } catch {
-      ws.close(4001, 'Unauthorized');
-      return;
-    }
-
     const projectId = query.projectId;
     if (!projectId) { ws.close(4002, 'No projectId'); return; }
 
-    // Join room
-    if (!rooms.has(projectId)) rooms.set(projectId, new Set());
-    const room = rooms.get(projectId);
-    room.add(ws);
+    // Auth via first message (token not in query string)
+    ws.once('message', (data) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type !== 'auth' || !msg.token) { ws.close(4001, 'Unauthorized'); return; }
+        const payload = jwt.verify(msg.token, process.env.JWT_SECRET);
+        const user = { id: payload.sub, username: payload.username };
 
-    ws._user      = user;
-    ws._projectId = projectId;
+        // Join room
+        if (!rooms.has(projectId)) rooms.set(projectId, new Set());
+        const room = rooms.get(projectId);
+        room.add(ws);
 
-    // Send online presence list
-    broadcastPresence(projectId);
+        ws._user      = user;
+        ws._projectId = projectId;
 
-    ws.on('close', () => {
-      room.delete(ws);
-      if (room.size === 0) rooms.delete(projectId);
-      else broadcastPresence(projectId);
+        // Track by userId for logout
+        if (!userSockets.has(user.id)) userSockets.set(user.id, new Set());
+        userSockets.get(user.id).add(ws);
+
+        // Confirm auth and broadcast presence
+        ws.send(JSON.stringify({ type: 'auth_ok' }));
+        broadcastPresence(projectId);
+
+        ws.on('close', () => {
+          room.delete(ws);
+          if (room.size === 0) rooms.delete(projectId);
+          else broadcastPresence(projectId);
+          userSockets.get(user.id)?.delete(ws);
+          if (!userSockets.get(user.id)?.size) userSockets.delete(user.id);
+        });
+
+      } catch {
+        ws.close(4001, 'Unauthorized');
+      }
     });
 
     ws.on('error', () => {});
   });
+}
+
+// Close all WebSocket connections for a given userId (e.g. on logout)
+function disconnectUser(userId) {
+  const sockets = userSockets.get(userId);
+  if (!sockets) return;
+  sockets.forEach(ws => ws.close(4003, 'Logged out'));
+  userSockets.delete(userId);
 }
 
 // Broadcast an activity event to all members of a project
@@ -55,16 +74,17 @@ function broadcastActivity(projectId, event) {
   });
 }
 
-// Send online users list to the whole room
+// Send online users list to the whole room (deduplicated by user id)
 function broadcastPresence(projectId) {
   const room = rooms.get(projectId);
   if (!room) return;
-  const online = [];
-  room.forEach(ws => { if (ws._user) online.push(ws._user); });
+  const seen = new Map();
+  room.forEach(ws => { if (ws._user && !seen.has(ws._user.id)) seen.set(ws._user.id, ws._user); });
+  const online = [...seen.values()];
   const msg = JSON.stringify({ type: 'presence', online });
   room.forEach(ws => {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   });
 }
 
-module.exports = { setup, broadcastActivity };
+module.exports = { setup, broadcastActivity, disconnectUser };

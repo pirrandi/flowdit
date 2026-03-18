@@ -27,23 +27,28 @@ class WSClient {
   _open() {
     const token = tokens.access;
     if (!token || !this._projectId) return;
-    const url = `${WS_BASE}?token=${encodeURIComponent(token)}&projectId=${this._projectId}`;
+    // Token sent in first message (not query string) to avoid server log exposure
+    const url = `${WS_BASE}?projectId=${this._projectId}`;
     this._ws = new WebSocket(url);
 
     this._ws.onopen = () => {
-      this._reconnectN = 0;
-      this._emit('connected', {});
+      this._ws.send(JSON.stringify({ type: 'auth', token }));
     };
 
     this._ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
+        if (msg.type === 'auth_ok') {
+          this._reconnectN = 0;
+          this._emit('connected', {});
+          return;
+        }
         this._emit(msg.type, msg);
       } catch {}
     };
 
     this._ws.onclose = (ev) => {
-      if (ev.code === 4001 || ev.code === 4002) return; // auth error, don't retry
+      if (ev.code === 4001 || ev.code === 4002 || ev.code === 4003) return; // auth/logout, don't retry
       this._emit('disconnected', {});
       const delay = Math.min(1000 * 2 ** this._reconnectN, 30000);
       this._reconnectN++;

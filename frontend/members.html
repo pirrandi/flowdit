@@ -13,11 +13,11 @@
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="topbar" id="topbar"></div>
+<div class="sidenav" id="sidenav"></div>
+<div class="app-main">
+<div class="topbar slim" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden">
-  <div class="sidebar" id="sidebar"></div>
-
+<div style="display:flex;flex:1;overflow:hidden;min-height:0">
   <div class="main-content">
     <div id="view-members"></div>
   </div>
@@ -31,6 +31,31 @@
       </div>
     </div>
     <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- Generate Invite Modal -->
+<div class="modal-overlay" id="invite-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">Generate Invite Code</div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <div style="display:flex;gap:8px" id="invite-role-btns">
+        <button class="invite-role-btn active" data-role="editor" onclick="selectInviteRole('editor')">Editor</button>
+        <button class="invite-role-btn" data-role="viewer" onclick="selectInviteRole('viewer')">Viewer</button>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="invite-role-hint">
+        Can create findings, update methodology and manage the project.
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <input type="text" class="form-input" id="invite-label" placeholder="e.g. Alice, External Auditor…">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('invite-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="invite-save-btn" onclick="submitCreateInvite()">Generate & Copy</button>
+    </div>
   </div>
 </div>
 
@@ -60,19 +85,15 @@
 <script src="js/page.js"></script>
 <script>
   function pageInit() {
-    let html = '<div class="sidebar-section-label">Projects</div>';
-    state.projects.forEach(p => {
-      const active = p.id === state.currentProject?.id;
-      html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
-        <span class="sidebar-item-text">${esc(p.name)}</span>
-        <span class="sidebar-item-badge">${p.member_role}</span>
-      </div>`;
-    });
-    document.getElementById('sidebar').innerHTML = html;
     renderMembers();
   }
 
+  document.getElementById('invite-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  });
+
   bootPage('members');
 </script>
+</div>
 </body>
 </html>

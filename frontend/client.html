@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Client Portal</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+</head>
+<body style="display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--bg)">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+
+<!-- Topbar -->
+<div id="client-topbar" style="
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;border-bottom:1px solid var(--border);
+  background:var(--bg2);flex-shrink:0;gap:12px
+"></div>
+
+<!-- Main content -->
+<div style="flex:1;overflow-y:auto;min-height:0">
+  <div style="max-width:1100px;margin:0 auto;padding:24px 32px;box-sizing:border-box">
+    <div id="client-main"></div>
+  </div>
+</div>
+
+<!-- New Query Modal -->
+<div class="modal-overlay" id="client-ticket-modal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title">New Query</div>
+    <div class="form-group">
+      <label class="form-label">Title *</label>
+      <input type="text" class="form-input" id="ct-title" placeholder="Brief description of your question">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Related Finding <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <select class="form-input" id="ct-vuln" style="cursor:pointer"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <textarea class="form-input note-textarea" id="ct-desc" placeholder="Provide any additional context..."></textarea>
+    </div>
+    <div class="form-error" id="ct-error"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeTicketModal()">Cancel</button>
+      <button class="btn-save" id="ct-save-btn" onclick="submitTicket()">Submit Query</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ticket Detail Modal -->
+<div class="modal-overlay" id="client-ticket-detail">
+  <div class="modal" style="max-width:580px;max-height:80vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div class="modal-title" style="margin:0">Query Detail</div>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="closeTicketDetail()">✕ Close</button>
+    </div>
+    <div id="ctd-content" style="overflow-y:auto;flex:1"></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/views/client.js"></script>
+</body>
+</html>

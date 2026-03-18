@@ -13,11 +13,11 @@
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="topbar" id="topbar"></div>
+<div class="sidenav" id="sidenav"></div>
+<div class="app-main">
+<div class="topbar slim" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden">
-  <div class="sidebar" id="sidebar"></div>
-
+<div style="display:flex;flex:1;overflow:hidden;min-height:0">
   <div class="main-content">
     <div class="page-header">
       <div>
@@ -137,12 +137,12 @@ function renderScopeSummary() {
 }
 
 function pageInit() {
-  updateTargetsSidebar();
   renderTargets();
   renderScopeSummary();
 }
 
 bootPage('targets');
 </script>
+</div>
 </body>
 </html>

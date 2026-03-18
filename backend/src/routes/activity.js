@@ -13,7 +13,7 @@ router.get('/', async (req, res, next) => {
     const { rows } = await db.query(
       `SELECT al.id, al.action, al.entity_type, al.entity_id, al.entity_name,
               al.meta, al.created_at,
-              u.id AS user_id, u.username, u.avatar_color
+              u.id AS user_id, u.username, u.avatar_color, u.avatar_url
        FROM activity_log al
        JOIN users u ON u.id = al.user_id
        WHERE al.project_id = $1

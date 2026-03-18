@@ -28,7 +28,7 @@ async function renderMembers() {
       </div>
       ${state.members.map(m => `
         <div class="member-row">
-          <div class="member-avatar-lg" style="background:${esc(m.avatar_color||'#7c3aed')}">${m.username[0].toUpperCase()}</div>
+          <div class="member-avatar-lg" style="background:${roleColor(m.role)};overflow:hidden;padding:0${m.avatar_url ? `;box-shadow:0 0 0 2px ${roleColor(m.role)}` : ''}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${m.username[0].toUpperCase()}</span>`}</div>
           <div class="member-info">
             <div class="member-username">${esc(m.username)}</div>
             <div class="member-meta">
@@ -71,6 +71,14 @@ async function renderMembers() {
     </div>
 
     <div class="members-card">
+      <div class="members-card-title">Client Portal</div>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--text3);margin:0 0 14px">
+        Control what the client sees in their read-only portal.
+      </p>
+      ${buildClientSettings(state.currentProject)}
+    </div>
+
+    <div class="members-card">
       <div class="members-card-title">Danger Zone</div>
       <button class="btn-danger" onclick="deleteProject()">🗑 Delete Project</button>
     </div>` : ''}
@@ -89,16 +97,39 @@ async function renderMembers() {
   `;
 }
 
-async function createInvite() {
-  const role  = prompt('Role for this invite? (editor / viewer)', 'editor');
-  if (!role || !['editor','viewer'].includes(role.trim().toLowerCase())) return;
-  const label = prompt('Label for this invite? (optional, e.g. "Alice")', '');
+const INVITE_ROLE_HINTS = {
+  editor: 'Can create findings, update methodology and manage the project.',
+  viewer: 'Read-only access via the client portal.',
+};
+
+function createInvite() {
+  // Reset modal state
+  document.getElementById('invite-label').value = '';
+  selectInviteRole('editor');
+  document.getElementById('invite-modal').classList.add('open');
+}
+
+function selectInviteRole(role) {
+  document.querySelectorAll('.invite-role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
+  document.getElementById('invite-role-hint').textContent = INVITE_ROLE_HINTS[role] || '';
+}
+
+async function submitCreateInvite() {
+  const role  = document.querySelector('.invite-role-btn.active')?.dataset.role || 'editor';
+  const label = document.getElementById('invite-label').value.trim();
+  const btn   = document.getElementById('invite-save-btn');
+  btn.disabled = true;
   try {
-    const inv = await api.invites.create(state.currentProject.id, role.trim(), label || '');
-    showToast(`✓ Code created: ${inv.token}`, 'success');
+    const inv = await api.invites.create(state.currentProject.id, role, label);
     navigator.clipboard.writeText(inv.token).catch(() => {});
+    document.getElementById('invite-modal').classList.remove('open');
+    showToast(`✓ Code copied: ${inv.token}`, 'success');
     renderMembers();
-  } catch(e) { showToast(e.message, 'error'); }
+  } catch(e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function copyInviteCode(token) {
@@ -133,17 +164,19 @@ async function joinWithCode() {
   err.style.display = 'none';
   try {
     const res = await api.projects.join(code);
-    showToast('✓ Joined project!', 'success');
-
-    // Reload projects list and switch to the new one
     state.projects = await api.projects.list();
     state.currentProject = state.projects.find(p => p.id === res.projectId) || state.projects[0];
     localStorage.setItem('fd_project', state.currentProject.id);
-    await loadProjectData(state.currentProject.id);
 
-    // Re-run pageInit to refresh sidebar + members view
+    if (state.currentProject.member_role === 'viewer') {
+      window.location.href = 'client.html';
+      return;
+    }
+
+    await loadProjectData(state.currentProject.id);
     if (typeof pageInit === 'function') pageInit();
     refreshTopbarProgress();
+    showToast('✓ Joined project!', 'success');
   } catch(e) {
     err.textContent = e.message;
     err.style.display = 'block';
@@ -168,10 +201,131 @@ async function deleteProject() {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
-window.renderMembers   = renderMembers;
-window.createInvite    = createInvite;
-window.copyInviteCode  = copyInviteCode;
-window.revokeInvite    = revokeInvite;
-window.removeMember    = removeMember;
-window.joinWithCode    = joinWithCode;
-window.deleteProject   = deleteProject;
+function buildClientSettings(p) {
+  const toggle = (flag, label, desc) => {
+    const on = !!p[flag];
+    return `
+      <div class="client-setting-row">
+        <div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${label}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${desc}</div>
+        </div>
+        <button class="setting-toggle ${on?'on':''}" onclick="toggleProjectFlag('${flag}',${!on})">
+          <span class="setting-toggle-knob"></span>
+        </button>
+      </div>`;
+  };
+
+  const logoBg    = p.logo_bg || 'light';
+  const previewBg = logoBg === 'dark' ? '#1e1e1e' : '#ffffff';
+  const previewBd = logoBg === 'dark' ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.09)';
+
+  const logoPreview = p.logo_url
+    ? `<div style="background:${previewBg};border:1px solid ${previewBd};border-radius:8px;padding:8px 14px;display:flex;align-items:center;justify-content:center;min-width:80px">
+         <img src="${esc(p.logo_url)}" style="height:36px;max-width:120px;object-fit:contain">
+       </div>`
+    : `<div style="height:52px;width:90px;border-radius:8px;background:var(--bg3);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center">
+         <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">no logo</span>
+       </div>`;
+
+  const bgToggle = p.logo_url ? `
+    <div style="display:flex;gap:4px;margin-top:4px">
+      <button onclick="setLogoBg('light')" style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid ${logoBg==='light'?'var(--accent)':'var(--border)'};background:${logoBg==='light'?'var(--accent)18':'transparent'};color:${logoBg==='light'?'var(--accent)':'var(--text3)'};cursor:pointer">☀ Light</button>
+      <button onclick="setLogoBg('dark')"  style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid ${logoBg==='dark' ?'var(--accent)':'var(--border)'};background:${logoBg==='dark' ?'var(--accent)18':'transparent'};color:${logoBg==='dark' ?'var(--accent)':'var(--text3)'};cursor:pointer">◑ Dark</button>
+    </div>` : '';
+
+  const logoSection = `
+    <div style="padding:14px 0;border-bottom:1px solid var(--border);margin-bottom:4px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Project Logo</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        ${logoPreview}
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <label class="btn-secondary" style="font-size:11px;padding:4px 10px;cursor:pointer;display:inline-block;text-align:center">
+            ${p.logo_url ? 'Change' : 'Upload'}
+            <input type="file" accept="image/*" style="display:none" onchange="onLogoFileChange(this)">
+          </label>
+          ${p.logo_url ? `<button class="btn-secondary" style="font-size:11px;padding:4px 10px;color:#dc2626;border-color:#dc262644" onclick="removeLogo()">Remove</button>` : ''}
+          ${bgToggle}
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.6">Shown in the client<br>portal and sidebar.<br>PNG/JPG, max 1.5 MB.</span>
+      </div>
+    </div>`;
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:2px">
+      ${logoSection}
+      ${toggle('client_view_enabled', 'Client portal active',    'Allow invited viewers to access the client portal')}
+      ${toggle('show_findings',       'Show findings',           'Vulnerabilities with severity, description and remediation')}
+      ${toggle('show_wstg_progress',  'Show WSTG progress',      'Testing progress by category in real time')}
+      ${toggle('show_wstg_notes',     'Show WSTG notes',         'Notes written by pentesters on each test')}
+      ${toggle('show_targets',        'Show targets',            'In-scope hosts and their audit status')}
+      ${toggle('show_activity',       'Show activity log',       'Real-time feed of pentester actions on the project')}
+      ${toggle('tickets_enabled',     'Enable client queries',   'Client can open questions linked to a finding')}
+    </div>`;
+}
+
+async function onLogoFileChange(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 1.5 * 1024 * 1024) { showToast('Image too large (max 1.5 MB)', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    try {
+      const updated = await api.projects.update(state.currentProject.id, { logo_url: dataUrl });
+      state.currentProject = { ...state.currentProject, ...updated };
+      const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+      if (idx > -1) state.projects[idx] = state.currentProject;
+      showToast('✓ Logo saved', 'success');
+      renderMembers();
+    } catch(e) { showToast(e.message, 'error'); }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function removeLogo() {
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { logo_url: null });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    showToast('Logo removed', 'success');
+    renderMembers();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function setLogoBg(bg) {
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { logo_bg: bg });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    renderMembers();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function toggleProjectFlag(flag, value) {
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { [flag]: value });
+    state.currentProject = { ...state.currentProject, ...updated };
+    // Update in projects list too
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    renderMembers();
+    showToast('✓ Saved', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+window.renderMembers        = renderMembers;
+window.createInvite         = createInvite;
+window.selectInviteRole     = selectInviteRole;
+window.submitCreateInvite   = submitCreateInvite;
+window.copyInviteCode       = copyInviteCode;
+window.revokeInvite         = revokeInvite;
+window.removeMember         = removeMember;
+window.joinWithCode         = joinWithCode;
+window.deleteProject        = deleteProject;
+window.toggleProjectFlag    = toggleProjectFlag;
+window.onLogoFileChange     = onLogoFileChange;
+window.removeLogo           = removeLogo;
+window.setLogoBg            = setLogoBg;

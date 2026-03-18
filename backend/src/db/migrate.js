@@ -212,6 +212,92 @@ const migrations = [
       CREATE TRIGGER trg_custom_vulns_updated_at BEFORE UPDATE ON custom_vulns FOR EACH ROW EXECUTE FUNCTION update_updated_at();
     END IF;
   END $$`,
+
+  // ── CLIENT VIEW & TICKETS (Fase 2) ───────────────────────────────
+
+  // Flags en projects para habilitar vista cliente y tickets
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_view_enabled BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS tickets_enabled     BOOLEAN NOT NULL DEFAULT false`,
+
+  // Visibilidad granular para el cliente
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_findings      BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_wstg_progress BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_wstg_notes    BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_targets       BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_activity      BOOLEAN NOT NULL DEFAULT false`,
+
+  // Puertos/servicios por target
+  `CREATE TABLE IF NOT EXISTS target_ports (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    target_id   UUID NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+    port        INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
+    protocol    VARCHAR(3) NOT NULL DEFAULT 'tcp' CHECK (protocol IN ('tcp','udp')),
+    state       VARCHAR(10) NOT NULL DEFAULT 'open' CHECK (state IN ('open','filtered','closed')),
+    service     VARCHAR(100),
+    version     VARCHAR(200),
+    notes       TEXT,
+    added_by    UUID REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_target_ports_target ON target_ports(target_id)`,
+
+  // Endpoints testeados por target
+  `CREATE TABLE IF NOT EXISTS target_endpoints (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    target_id   UUID NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+    path        VARCHAR(1000) NOT NULL,
+    method      VARCHAR(10) NOT NULL DEFAULT 'GET' CHECK (method IN ('GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','OTHER')),
+    status_code INTEGER,
+    interesting BOOLEAN NOT NULL DEFAULT false,
+    notes       TEXT,
+    added_by    UUID REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_target_endpoints_target ON target_endpoints(target_id)`,
+
+  // Tickets de consulta por vulnerabilidad
+  `CREATE TABLE IF NOT EXISTS tickets (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    vuln_id     UUID REFERENCES custom_vulns(id) ON DELETE SET NULL,
+    title       VARCHAR(300) NOT NULL,
+    description TEXT,
+    status      VARCHAR(10) NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_review','closed')),
+    opened_by   UUID NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_tickets_project ON tickets(project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_tickets_vuln    ON tickets(vuln_id)`,
+
+  // Respuestas de tickets (hilo)
+  `CREATE TABLE IF NOT EXISTS ticket_replies (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id   UUID NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    body        TEXT NOT NULL,
+    author_id   UUID NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ticket_replies_ticket ON ticket_replies(ticket_id)`,
+
+  // ── PROFILE (Fase — avatar + display name) ───────────────────────
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
+
+  // ── PROJECT LOGO ─────────────────────────────────────────────────
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS logo_url TEXT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS logo_bg  VARCHAR(5) NOT NULL DEFAULT 'light' CHECK (logo_bg IN ('light','dark'))`,
+
+  // ── CVSS v3.1 on findings ────────────────────────────────────────
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cvss_vector TEXT`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cvss_score  NUMERIC(3,1)`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS logo_bg  VARCHAR(5) NOT NULL DEFAULT 'light' CHECK (logo_bg IN ('light','dark'))`,
+
+  // Trigger updated_at para tickets
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_tickets_updated_at') THEN
+      CREATE TRIGGER trg_tickets_updated_at BEFORE UPDATE ON tickets FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+    END IF;
+  END $$`,
 ];
 
 async function migrate() {

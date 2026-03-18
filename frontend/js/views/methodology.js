@@ -381,3 +381,4 @@ window.addMethodTestRow       = addMethodTestRow;
 window.closeMethodModal       = closeMethodModal;
 window.saveMethodology        = saveMethodology;
 window.deleteMethodology      = deleteMethodology;
+window.toggleActivate         = toggleActivate;

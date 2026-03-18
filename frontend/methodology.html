@@ -13,9 +13,11 @@
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="topbar" id="topbar"></div>
+<div class="sidenav" id="sidenav"></div>
+<div class="app-main">
+<div class="topbar slim" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden">
+<div style="display:flex;flex:1;overflow:hidden;min-height:0">
 
   <!-- Left: methodology library -->
   <div class="method-library">
@@ -115,5 +117,6 @@ function pageInit() {
 }
 bootPage('methodology');
 </script>
+</div>
 </body>
 </html>

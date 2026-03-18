@@ -185,6 +185,53 @@ function updateDashboard() {
       </div>`;
     })()}
 
+    <!-- Client Queries panel -->
+    ${(()=>{
+      const tickets = state.tickets || [];
+      if (!state.currentProject.tickets_enabled) return '';
+      const pid = state.currentProject.id;
+      const open      = tickets.filter(t => t.status === 'open').length;
+      const inReview  = tickets.filter(t => t.status === 'in_review').length;
+      const closed    = tickets.filter(t => t.status === 'closed').length;
+
+      const recent = tickets.filter(t => t.status !== 'closed').slice(0, 4);
+      const rows = recent.map(t => {
+        const color = t.status === 'open' ? 'var(--accent)' : '#f59e0b';
+        return `
+          <div class="dash-ticket-row" onclick="window.location.href='tickets.html?pid=${pid}'">
+            <div class="dash-ticket-dot" style="background:${color}"></div>
+            <span style="font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
+            ${t.reply_count ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">💬 ${t.reply_count}</span>` : ''}
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${relativeDate(t.updated_at)}</span>
+          </div>`;
+      }).join('');
+
+      return `<div class="dash-row" style="margin-bottom:16px">
+        <div class="dash-panel" style="flex:1">
+          <div class="dash-panel-title">Client Queries
+            <a href="tickets.html?pid=${pid}" style="font-family:var(--mono);font-size:10px;color:var(--accent);text-decoration:none;font-weight:400;margin-left:auto">view all →</a>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:14px">
+            <div class="dash-ticket-stat" style="border-color:#7c3aed44">
+              <span style="font-size:20px;font-weight:800;color:${open?'#7c3aed':'var(--text3)'};font-family:var(--mono)">${open}</span>
+              <span style="font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase">Open</span>
+            </div>
+            <div class="dash-ticket-stat" style="border-color:#f59e0b44">
+              <span style="font-size:20px;font-weight:800;color:${inReview?'#f59e0b':'var(--text3)'};font-family:var(--mono)">${inReview}</span>
+              <span style="font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase">In Review</span>
+            </div>
+            <div class="dash-ticket-stat" style="border-color:#22d3a344">
+              <span style="font-size:20px;font-weight:800;color:${closed?'#22d3a3':'var(--text3)'};font-family:var(--mono)">${closed}</span>
+              <span style="font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase">Closed</span>
+            </div>
+          </div>
+          ${recent.length
+            ? rows
+            : `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:4px 0">No open queries from the client.</div>`}
+        </div>
+      </div>`;
+    })()}
+
     <!-- Recent findings + Team row -->
     <div class="dash-row">
       <!-- Recent custom vulns -->
@@ -196,12 +243,10 @@ function updateDashboard() {
           ? `<div class="empty-state" style="padding:12px 0;gap:4px"><div class="empty-title" style="font-size:12px">No custom findings yet</div></div>`
           : [...vulns].reverse().slice(0,6).map(v => {
               const icon = {domain:'🌐',ip:'🖥',cidr:'🔲',url:'🔗',other:'📌'};
-              const tgt  = v.target_host ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">🎯 ${esc(v.target_host)}</span>` : '';
               return `<div class="dash-finding-row">
                 <span class="sev-badge sev-${v.severity||'medium'}" style="font-size:9px;flex-shrink:0">${v.severity||'medium'}</span>
                 <span style="font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.name)}</span>
-                ${tgt}
-                <span style="font-family:var(--mono);font-size:10px;color:${v.status==='done'?'var(--green)':v.status==='fail'?'var(--red)':'var(--text3)'}">${v.status==='done'?'✓ confirmed':v.status==='fail'?'✕ reproduced':'pending'}</span>
+                <span style="font-family:var(--mono);font-size:10px;color:${v.status==='done'?'var(--green)':v.status==='fail'?'var(--red)':'var(--text3)'};flex-shrink:0">${v.status==='done'?'✓ confirmed':v.status==='fail'?'✕ reproduced':'pending'}</span>
               </div>`;
             }).join('')
         }

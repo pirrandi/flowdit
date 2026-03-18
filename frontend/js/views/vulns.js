@@ -1,6 +1,139 @@
 // ── views/vulns.js ───────────────────────────────────────────────────
 let _editingVulnId = null;
 
+// ── CVSS v3.1 ────────────────────────────────────────────────────────
+const _CVSS_W = {
+  AV:  { N:0.85, A:0.62, L:0.55, P:0.2  },
+  AC:  { L:0.77, H:0.44 },
+  PR_U:{ N:0.85, L:0.62, H:0.27 },
+  PR_C:{ N:0.85, L:0.68, H:0.50 },
+  UI:  { N:0.85, R:0.62 },
+  CIA: { N:0,    L:0.22, H:0.56 },
+};
+let _cvss = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U', C:'N', I:'N', A:'N' };
+let _cvssModified = false;
+
+function _cvssRoundUp(x) {
+  const i = Math.ceil(x * 100000);
+  return (i % 10000 === 0) ? i / 100000 : (Math.floor(i / 10000) + 1) / 10;
+}
+
+function calcCVSSScore(m) {
+  const av  = _CVSS_W.AV[m.AV]  ?? 0.85;
+  const ac  = _CVSS_W.AC[m.AC]  ?? 0.77;
+  const pr  = (m.S === 'U' ? _CVSS_W.PR_U : _CVSS_W.PR_C)[m.PR] ?? 0.85;
+  const ui  = _CVSS_W.UI[m.UI]  ?? 0.85;
+  const c   = _CVSS_W.CIA[m.C]  ?? 0;
+  const ii  = _CVSS_W.CIA[m.I]  ?? 0;
+  const a   = _CVSS_W.CIA[m.A]  ?? 0;
+  const iscBase = 1 - (1-c)*(1-ii)*(1-a);
+  const isc = m.S === 'U'
+    ? 6.42 * iscBase
+    : 7.52*(iscBase-0.029) - 3.25*Math.pow(iscBase-0.02, 15);
+  const exp = 8.22 * av * ac * pr * ui;
+  if (isc <= 0) return 0;
+  const raw = m.S === 'U' ? Math.min(isc+exp,10) : Math.min(1.08*(isc+exp),10);
+  return _cvssRoundUp(raw);
+}
+
+function buildCVSSVector(m) {
+  return `CVSS:3.1/AV:${m.AV}/AC:${m.AC}/PR:${m.PR}/UI:${m.UI}/S:${m.S}/C:${m.C}/I:${m.I}/A:${m.A}`;
+}
+
+function parseCVSSVector(vec) {
+  if (!vec?.startsWith('CVSS:3.1/')) return null;
+  const r = {};
+  vec.replace('CVSS:3.1/','').split('/').forEach(p => { const [k,v]=p.split(':'); r[k]=v; });
+  return r;
+}
+
+function _cvssColor(s) {
+  if (s >= 9) return '#dc2626'; if (s >= 7) return '#f97316';
+  if (s >= 4) return '#f59e0b'; if (s > 0)  return '#059669';
+  return 'var(--text3)';
+}
+function _cvssLabel(s) {
+  if (s >= 9) return 'Critical'; if (s >= 7) return 'High';
+  if (s >= 4) return 'Medium';   if (s > 0)  return 'Low';
+  return 'None';
+}
+function _cvssSevClass(s) {
+  if (s >= 9) return 'critical'; if (s >= 7) return 'high';
+  if (s >= 4) return 'medium';   if (s > 0)  return 'low';
+  return 'info';
+}
+
+function setCVSSMetric(metric, value) {
+  _cvss[metric] = value;
+  _cvssModified = true;
+  _renderCVSSCalc();
+}
+
+function _renderCVSSCalc() {
+  const score  = calcCVSSScore(_cvss);
+  const vector = buildCVSSVector(_cvss);
+  const color  = _cvssColor(score);
+  const label  = _cvssLabel(score);
+
+  const sd = document.getElementById('cvss-score-display');
+  if (sd) sd.innerHTML = `
+    <span style="font-family:var(--mono);font-size:26px;font-weight:800;color:${color};line-height:1">${score.toFixed(1)}</span>
+    <span class="sev-badge sev-${_cvssSevClass(score)}" style="margin-left:4px">${label}</span>`;
+
+  const vd = document.getElementById('cvss-vector-display');
+  if (vd) vd.textContent = vector;
+
+  const hp = document.getElementById('cvss-header-pill');
+  if (hp) { hp.style.color = color; hp.textContent = `${score.toFixed(1)} · ${label}`; }
+
+  ['AV','AC','PR','UI','S','C','I','A'].forEach(m => {
+    document.querySelectorAll(`.cvss-btn[data-metric="${m}"]`).forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === _cvss[m]);
+    });
+  });
+}
+
+function toggleCVSSSection() {
+  const body = document.getElementById('cvss-calc');
+  const btn  = document.getElementById('cvss-toggle-btn');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (btn) btn.textContent = opening ? '▾ close' : '▸ open';
+  if (opening) _renderCVSSCalc();
+}
+
+function _initCVSS(vector) {
+  const parsed = parseCVSSVector(vector);
+  _cvss = parsed
+    ? { AV:parsed.AV||'N', AC:parsed.AC||'L', PR:parsed.PR||'N',
+        UI:parsed.UI||'N', S:parsed.S||'U',   C:parsed.C||'N',
+        I:parsed.I||'N',   A:parsed.A||'N' }
+    : { AV:'N', AC:'L', PR:'N', UI:'N', S:'U', C:'N', I:'N', A:'N' };
+  _cvssModified = !!vector;
+
+  const body = document.getElementById('cvss-calc');
+  const btn  = document.getElementById('cvss-toggle-btn');
+  const hp   = document.getElementById('cvss-header-pill');
+  if (body) body.style.display = vector ? 'block' : 'none';
+  if (btn)  btn.textContent    = vector ? '▾ close' : '▸ open';
+  if (hp) {
+    if (vector) {
+      const s = calcCVSSScore(_cvss);
+      hp.style.color = _cvssColor(s);
+      hp.textContent = `${s.toFixed(1)} · ${_cvssLabel(s)}`;
+    } else {
+      hp.style.color = ''; hp.textContent = 'not scored';
+    }
+  }
+  if (vector) _renderCVSSCalc();
+}
+
+async function copyCVSSVector() {
+  await navigator.clipboard.writeText(buildCVSSVector(_cvss)).catch(()=>{});
+  showToast('CVSS vector copied', 'info');
+}
+
 const SEVERITY_ORDER  = ['critical','high','medium','low','info'];
 const TARGET_ICONS    = { domain:'🌐', ip:'🖥', cidr:'🔲', url:'🔗', other:'📌' };
 const SEVERITY_LABELS = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
@@ -84,6 +217,7 @@ function buildVulnCard(v) {
         onclick="cycleVulnStatus('${v.id}',event)">${isDone?'✓':isFail?'✕':''}</div>
       <span class="vuln-tag">${esc(v.category||'Custom')}</span>
       ${severityBadge(v.severity)}
+      ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--accent);border-color:var(--accent)33">🎯 ${esc(v.target_host)}</span>` : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
@@ -160,6 +294,7 @@ function openAddVulnModal() {
   document.getElementById('vuln-error').style.display      = 'none';
   addModalRow('modal-items-list', 'Check item...');
   addModalRow('modal-payloads-list', 'Payload...');
+  _initCVSS(null);
   document.getElementById('vuln-modal').classList.add('open');
 }
 
@@ -182,6 +317,7 @@ function openEditVuln(id, e) {
   if (!v.items?.length) addModalRow('modal-items-list','Check item...');
   (v.payloads||[]).forEach(p => { addModalRow('modal-payloads-list','Payload...'); pList.lastChild.querySelector('input').value = p; });
   if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...');
+  _initCVSS(v.cvss_vector || null);
   document.getElementById('vuln-modal').classList.add('open');
 }
 
@@ -212,6 +348,10 @@ async function saveVuln() {
   try {
     const target_id = document.getElementById('modal-vuln-target')?.value || null;
     const payload = { name, category: category||'Custom', severity, items, payloads, notes, target_id: target_id||null };
+    if (_cvssModified) {
+      payload.cvss_vector = buildCVSSVector(_cvss);
+      payload.cvss_score  = calcCVSSScore(_cvss);
+    }
     if (_editingVulnId) {
       const updated = await api.vulns.update(state.currentProject.id, _editingVulnId, payload);
       const idx = state.customVulns.findIndex(v => v.id === _editingVulnId);
@@ -248,6 +388,9 @@ function populateTargetSelect(selectedId) {
     inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${TARGET_ICONS[t.type]||'📌'} ${esc(t.host)}</option>`).join('');
 }
 
+window.setCVSSMetric      = setCVSSMetric;
+window.toggleCVSSSection  = toggleCVSSSection;
+window.copyCVSSVector     = copyCVSSVector;
 window.renderCustomVulns  = renderCustomVulns;
 window.buildVulnCard      = buildVulnCard;
 window.openEvidenceViewer = openEvidenceViewer;

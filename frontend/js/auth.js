@@ -1,11 +1,10 @@
 // ── auth.js — only used by index.html ────────────────────────────────
 
 async function boot() {
-  // If already logged in, go straight to dashboard
   if (api.auth.hasSession()) {
     try {
-      await api.auth.me(); // validate token
-      window.location.href = 'dashboard.html';
+      await api.auth.me();
+      window.location.href = await resolveHome();
       return;
     } catch {
       api.auth.clearTokens();
@@ -13,6 +12,10 @@ async function boot() {
   }
   hide('loading-overlay');
   document.getElementById('login-screen').style.display = 'flex';
+}
+
+async function resolveHome() {
+  return 'projects.html';
 }
 
 function switchAuthTab(tab, btn) {
@@ -33,7 +36,7 @@ async function doLogin() {
     const data = await api.auth.login(login, pass);
     api.auth.setTokens(data.accessToken, data.refreshToken);
     localStorage.setItem('fd_user', JSON.stringify(data.user));
-    window.location.href = 'dashboard.html';
+    window.location.href = await resolveHome();
   } catch(e) {
     err.textContent = e.message;
     err.style.display = 'block';
@@ -56,7 +59,7 @@ async function doRegister() {
     const data = await api.auth.register(user, email, pass);
     api.auth.setTokens(data.accessToken, data.refreshToken);
     localStorage.setItem('fd_user', JSON.stringify(data.user));
-    window.location.href = 'dashboard.html';
+    window.location.href = await resolveHome();
   } catch(e) {
     err.textContent = e.message;
     err.style.display = 'block';

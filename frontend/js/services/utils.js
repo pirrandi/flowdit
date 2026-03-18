@@ -37,9 +37,17 @@ function relativeDate(dateStr) {
   return new Date(dateStr).toLocaleDateString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
-function avatarHtml(username, color, size = 24) {
-  const letter = (username || '?')[0].toUpperCase();
-  return `<div class="avatar-sm" style="width:${size}px;height:${size}px;background:${esc(color||'#7c3aed')};font-size:${Math.round(size*0.42)}px">${letter}</div>`;
+// ── Role-based avatar colors ──────────────────────────────────────
+const ROLE_COLOR = { owner:'#dc2626', editor:'#059669', viewer:'#2563eb' };
+function roleColor(role) { return ROLE_COLOR[role] || '#7c3aed'; }
+
+function avatarHtml(username, color, size = 24, avatarUrl = null) {
+  const s = `width:${size}px;height:${size}px;font-size:${Math.round(size*0.42)}px`;
+  const c = esc(color || '#7c3aed');
+  if (avatarUrl) {
+    return `<div class="avatar-sm" style="${s};background:${c};overflow:hidden;padding:0;box-shadow:0 0 0 2px ${c}"><img src="${esc(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>`;
+  }
+  return `<div class="avatar-sm" style="${s};background:${c}">${(username||'?')[0].toUpperCase()}</div>`;
 }
 
 function actionLabel(action, entityType, entityName, meta) {
@@ -69,5 +77,7 @@ window.showToast   = showToast;
 window.copyText    = copyText;
 window.timeAgo     = timeAgo;
 window.relativeDate = relativeDate;
+window.ROLE_COLOR  = ROLE_COLOR;
+window.roleColor   = roleColor;
 window.avatarHtml  = avatarHtml;
 window.actionLabel = actionLabel;

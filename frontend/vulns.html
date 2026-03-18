@@ -13,10 +13,11 @@
 <body style="display:flex;flex-direction:column;min-height:100vh">
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="topbar" id="topbar"></div>
+<div class="sidenav" id="sidenav"></div>
+<div class="app-main">
+<div class="topbar slim" id="topbar"></div>
 
-<div style="display:flex;flex:1;overflow:hidden">
-  <div class="sidebar" id="sidebar"></div>
+<div style="display:flex;flex:1;overflow:hidden;min-height:0">
   <div class="main-content">
     <div class="page-header">
       <div>
@@ -91,6 +92,76 @@
       <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="Quick notes, references..."></textarea>
     </div>
 
+    <!-- CVSS v3.1 Calculator -->
+    <div class="form-group" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">CVSS v3.1 <span style="font-size:10px;color:var(--text3);font-weight:400">(optional)</span></label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="cvss-header-pill" style="font-family:var(--mono);font-size:11px;color:var(--text3)">not scored</span>
+          <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">▸ open</button>
+        </div>
+      </div>
+      <div id="cvss-calc" style="display:none">
+        <div class="cvss-grid">
+          <span class="cvss-label">Attack Vector</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="AV" data-value="N" onclick="setCVSSMetric('AV','N')">Network</button>
+            <button type="button" class="cvss-btn" data-metric="AV" data-value="A" onclick="setCVSSMetric('AV','A')">Adjacent</button>
+            <button type="button" class="cvss-btn" data-metric="AV" data-value="L" onclick="setCVSSMetric('AV','L')">Local</button>
+            <button type="button" class="cvss-btn" data-metric="AV" data-value="P" onclick="setCVSSMetric('AV','P')">Physical</button>
+          </div>
+          <span class="cvss-label">Attack Complexity</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="AC" data-value="L" onclick="setCVSSMetric('AC','L')">Low</button>
+            <button type="button" class="cvss-btn" data-metric="AC" data-value="H" onclick="setCVSSMetric('AC','H')">High</button>
+          </div>
+          <span class="cvss-label">Privileges Required</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="PR" data-value="N" onclick="setCVSSMetric('PR','N')">None</button>
+            <button type="button" class="cvss-btn" data-metric="PR" data-value="L" onclick="setCVSSMetric('PR','L')">Low</button>
+            <button type="button" class="cvss-btn" data-metric="PR" data-value="H" onclick="setCVSSMetric('PR','H')">High</button>
+          </div>
+          <span class="cvss-label">User Interaction</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="UI" data-value="N" onclick="setCVSSMetric('UI','N')">None</button>
+            <button type="button" class="cvss-btn" data-metric="UI" data-value="R" onclick="setCVSSMetric('UI','R')">Required</button>
+          </div>
+          <span class="cvss-label">Scope</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="S" data-value="U" onclick="setCVSSMetric('S','U')">Unchanged</button>
+            <button type="button" class="cvss-btn" data-metric="S" data-value="C" onclick="setCVSSMetric('S','C')">Changed</button>
+          </div>
+          <div class="cvss-divider"></div>
+          <span class="cvss-label">Confidentiality</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="C" data-value="N" onclick="setCVSSMetric('C','N')">None</button>
+            <button type="button" class="cvss-btn" data-metric="C" data-value="L" onclick="setCVSSMetric('C','L')">Low</button>
+            <button type="button" class="cvss-btn" data-metric="C" data-value="H" onclick="setCVSSMetric('C','H')">High</button>
+          </div>
+          <span class="cvss-label">Integrity</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="I" data-value="N" onclick="setCVSSMetric('I','N')">None</button>
+            <button type="button" class="cvss-btn" data-metric="I" data-value="L" onclick="setCVSSMetric('I','L')">Low</button>
+            <button type="button" class="cvss-btn" data-metric="I" data-value="H" onclick="setCVSSMetric('I','H')">High</button>
+          </div>
+          <span class="cvss-label">Availability</span>
+          <div class="cvss-btns">
+            <button type="button" class="cvss-btn" data-metric="A" data-value="N" onclick="setCVSSMetric('A','N')">None</button>
+            <button type="button" class="cvss-btn" data-metric="A" data-value="L" onclick="setCVSSMetric('A','L')">Low</button>
+            <button type="button" class="cvss-btn" data-metric="A" data-value="H" onclick="setCVSSMetric('A','H')">High</button>
+          </div>
+        </div>
+        <div class="cvss-score-wrap">
+          <div id="cvss-score-display" style="display:flex;align-items:center;gap:8px;min-width:110px">
+            <span style="font-family:var(--mono);font-size:26px;font-weight:800;color:var(--text3);line-height:1">0.0</span>
+            <span class="sev-badge sev-info">None</span>
+          </div>
+          <div style="flex:1;font-family:var(--mono);font-size:10px;color:var(--text3);word-break:break-all" id="cvss-vector-display">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N</div>
+          <button type="button" onclick="copyCVSSVector()" style="font-family:var(--mono);font-size:10px;color:var(--accent);background:none;border:1px solid var(--accent)44;border-radius:4px;padding:3px 8px;cursor:pointer;flex-shrink:0">Copy</button>
+        </div>
+      </div>
+    </div>
+
     <div class="form-error" id="vuln-error"></div>
     <div class="modal-footer">
       <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">Description & remediation → Export page</span>
@@ -114,18 +185,10 @@
 <script src="js/page.js"></script>
 <script>
   function pageInit() {
-    let html = '<div class="sidebar-section-label">Projects</div>';
-    state.projects.forEach(p => {
-      const active = p.id === state.currentProject?.id;
-      html += `<div class="sidebar-item ${active?'active':''}" onclick="switchProject('${p.id}')">
-        <span class="sidebar-item-text">${esc(p.name)}</span>
-        <span class="sidebar-item-badge">${p.member_role}</span>
-      </div>`;
-    });
-    document.getElementById('sidebar').innerHTML = html;
     renderCustomVulns();
   }
   bootPage('custom');
 </script>
+</div>
 </body>
 </html>
