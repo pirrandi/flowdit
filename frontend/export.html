@@ -87,11 +87,16 @@
 /* ── Report base ─────────────────────────────────────────────────── */
 .rpt { font-family:var(--rpt-font,'Inter',system-ui,sans-serif);color:var(--text);line-height:1.7; }
 .rpt h1 { font-size:28px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em; }
-.rpt h2 { font-size:11px;font-weight:700;margin:40px 0 14px;color:var(--text3);
-          text-transform:uppercase;letter-spacing:.12em;
-          border-bottom:1px solid var(--border);padding-bottom:8px;display:flex;align-items:center;gap:8px; }
-.rpt h2::before { content:'';display:inline-block;width:3px;height:12px;border-radius:2px;background:var(--accent);flex-shrink:0; }
+.rpt h2 { font-size:var(--rpt-h2-size,13px);font-weight:700;margin:40px 0 16px;color:var(--text2);
+          text-transform:uppercase;letter-spacing:.1em;
+          border-bottom:1px solid var(--border);padding-bottom:10px;display:flex;align-items:center;gap:8px; }
+.rpt h2::before { content:'';display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--accent);flex-shrink:0; }
 .rpt h3 { font-size:13px;font-weight:700;margin:22px 0 10px; }
+.rpt-sub-title { font-size:var(--rpt-h3-size,11px)!important;font-weight:700;margin:28px 0 12px;color:var(--text3);
+                 text-transform:uppercase;letter-spacing:.09em;
+                 border-bottom:1px solid var(--border)88;padding-bottom:7px;display:flex;align-items:center;gap:7px; }
+.rpt-sub-title::before { content:'';display:inline-block;width:2px;height:10px;border-radius:2px;background:var(--accent);opacity:.55;flex-shrink:0; }
+.rpt-sec-desc { margin-bottom:16px!important; }
 .rpt p  { margin:4px 0 10px;color:var(--text2);font-size:var(--rpt-base-size,13px); }
 
 /* ── Cover / header ──────────────────────────────────────────────── */
@@ -250,7 +255,7 @@
   .rpt-summary   { page-break-inside:avoid;break-inside:avoid; }
   .rpt-cover-grid{ page-break-inside:avoid;break-inside:avoid; }
   .rpt h2 { page-break-after:avoid;break-after:avoid; }
-  .rpt h3 { page-break-after:avoid;break-after:avoid; }
+  .rpt h3,.rpt-sub-title { page-break-after:avoid;break-after:avoid; }
   .rpt-table { page-break-inside:auto;border-collapse:separate!important;border-spacing:0!important; }
   .rpt-table tr { page-break-inside:avoid;break-inside:avoid; }
   .rpt-table, .rpt-risk-class { border-collapse:separate!important;border-spacing:0!important; }
@@ -262,6 +267,8 @@
   .rpt h2 { color:#444!important;border-color:#ccc!important; }
   .rpt h2::before { background:#666!important; }
   .rpt h3 { color:#222!important; }
+  .rpt-sub-title { color:#555!important;border-bottom-color:#ccc!important; }
+  .rpt-sub-title::before { background:#888!important; }
   .rpt-cover-meta { border-color:#ddd!important; }
   .rpt-cover-meta-row { border-color:#e0e0e0!important; }
   .rpt-cover-meta-cell { border-color:#e0e0e0!important; }
@@ -335,7 +342,9 @@
 .rpt-toc { background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin:0 0 28px; }
 .rpt-toc-title { font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);margin-bottom:10px; }
 .rpt-toc-item { font-size:13px;color:var(--text2);padding:3px 0;display:flex;gap:8px; }
+.rpt-toc-item.rpt-toc-sub { font-size:11px;padding:1px 0 1px 22px;color:var(--text3); }
 .rpt-toc-num { font-family:var(--mono);font-size:11px;color:var(--text3);min-width:22px; }
+.rpt-toc-item.rpt-toc-sub .rpt-toc-num { min-width:32px; }
 
 /* ── Prose sections ──────────────────────────────────────────────── */
 .rpt-prose { font-size:var(--rpt-base-size,13px);color:var(--text2);line-height:1.7;margin:6px 0 20px; }
@@ -428,8 +437,9 @@
 .sec-row { display:flex;align-items:center;gap:5px;padding:5px 8px;min-height:32px; }
 .sec-drag { cursor:grab;color:var(--text3);font-size:13px;padding:0 3px;user-select:none;flex-shrink:0;line-height:1; }
 .sec-drag:active { cursor:grabbing; }
-.sec-eye { background:none;border:none;cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0;line-height:1;transition:opacity .15s; }
-.sec-eye.off { opacity:.2; }
+.sec-eye { background:none;border:none;cursor:pointer;padding:0 3px;flex-shrink:0;line-height:1;display:flex;align-items:center; }
+.sec-eye-dot { display:inline-block;width:8px;height:8px;border-radius:50%;background:#00e87a;box-shadow:0 0 5px #00e87a,0 0 2px #00e87a;transition:all .2s; }
+.sec-eye.off .sec-eye-dot { background:transparent;box-shadow:none;border:1.5px solid var(--text3);opacity:.5; }
 .sec-title-wrap { flex:1;min-width:0; }
 .sec-title { font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .sec-title.sec-dim { color:var(--text3);text-decoration:line-through;font-weight:400; }
@@ -441,6 +451,18 @@
 .sec-edit-body.open { display:block; }
 .sec-meta-header { padding:7px 14px 6px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--text2);font-weight:600;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none; }
 .sec-meta-header:hover { filter:brightness(1.08); }
+/* ── Subsections ── */
+.sec-sub-list { border-top:1px solid var(--border)55; }
+.sec-sub-item { border-bottom:1px solid var(--border)44; }
+.sec-sub-row { display:flex;align-items:center;gap:5px;padding:4px 8px 4px 20px;min-height:28px; }
+.sec-sub-indicator { color:var(--text3);font-size:10px;flex-shrink:0;margin-right:1px; }
+.sec-sub-title { flex:1;min-width:0;font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.sec-sub-title.sec-dim { color:var(--text3);text-decoration:line-through;font-weight:400; }
+.sec-sub-body { display:none;padding:6px 10px 8px 20px;background:var(--bg); }
+.sec-sub-body.open { display:block; }
+.sec-sub-add { display:flex;align-items:center;padding:4px 8px 6px 20px;border-top:1px dashed var(--border)55; }
+/* ── Numbering toggle ── */
+.sec-num-prefix { color:var(--text3);font-weight:400;margin-right:3px; }
 .sec-meta-chevron { font-size:8px;transition:transform .18s;margin-left:auto;margin-right:2px; }
 .sec-meta-header.collapsed .sec-meta-chevron { transform:rotate(-90deg); }
 .cover-fields-grid { display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;margin:4px 0 6px; }
@@ -917,6 +939,7 @@ function applyReportAccent(color) {
   tag.textContent = `
     /* accent override — screen */
     #report-preview .rpt h2::before { background:${color}!important; }
+    #report-preview .rpt-sub-title::before { background:${color}!important; }
     #report-preview .rpt-cover-bar,
     #report-preview .rpt-cover-page-bar { background:linear-gradient(90deg,${color},${c88})!important; }
     #report-preview .rpt-cover-type { color:${color}!important;border-color:${c44}!important; }
@@ -929,6 +952,7 @@ function applyReportAccent(color) {
     @media print {
       :root { --accent:${color}!important; }
       .rpt h2::before { background:${color}!important; }
+      .rpt-sub-title::before { background:${color}!important; }
       .rpt-cover-bar,.rpt-cover-page-bar { background:linear-gradient(90deg,${color},${c88})!important; }
       .rpt-cover-type,.rpt-cover-page-type { color:${color}!important;border-color:${c44}!important; }
       .rpt-cover-logo-ph { color:${color}!important;background:${c18}!important;border-color:${c33}!important; }
@@ -946,7 +970,24 @@ function saveReportData(data, rebuild = true) {
   applyBaseFontSize(data.meta?.baseFontSize);
   applyReportAccent(data.meta?.accentColor);
   applyWatermark(data.meta);
+  applyTitleSizes(data.meta?.h2Size, data.meta?.h3Size);
   if (rebuild) buildReport();
+}
+
+function applyTitleSizes(h2size, h3size) {
+  let tag = document.getElementById('rpt-title-size-style');
+  if (!tag) { tag = document.createElement('style'); tag.id = 'rpt-title-size-style'; document.head.appendChild(tag); }
+  const h2 = h2size || '13px';
+  const h3 = h3size || '11px';
+  tag.textContent = `:root { --rpt-h2-size:${h2}; --rpt-h3-size:${h3}; }`;
+}
+
+function setTitleSize(key, val) {
+  const d = getReportData();
+  if (key === 'h2') d.meta.h2Size = val;
+  else d.meta.h3Size = val;
+  saveReportData(d, false);
+  applyTitleSizes(d.meta.h2Size, d.meta.h3Size);
 }
 
 // ── Page Layout (header / footer) ────────────────────────────────
@@ -1111,6 +1152,13 @@ function secUpdateContent(id, val) {
   saveReportData(d);
 }
 
+function secUpdateDesc(id, val) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === id);
+  if (sec) sec.description = val;
+  saveReportData(d);
+}
+
 function secUpdateFontSize(id, val) {
   const d = getReportData();
   const sec = d.sections.find(s => s.id === id);
@@ -1134,6 +1182,109 @@ function secDelete(id) {
   saveReportData(d);
   document.getElementById(`sec-item-${id}`)?.remove();
   buildReport();
+}
+
+// ── Subsections ───────────────────────────────────────────────────
+function secAddSub(secId) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === secId);
+  if (!sec) return;
+  if (!sec.children) sec.children = [];
+  const subId = 'sub-' + Date.now();
+  sec.children.push({ id: subId, title: 'Subsection', content: '', visible: true });
+  saveReportData(d, false);
+  const list = document.getElementById(`sec-sub-list-${secId}`);
+  if (list) {
+    const div = document.createElement('div');
+    div.innerHTML = _buildSubItem(secId, { id: subId, title: 'Subsection', content: '', visible: true });
+    list.insertBefore(div.firstElementChild, list.querySelector('.sec-sub-add'));
+    setTimeout(() => {
+      document.getElementById(`sub-edit-${subId}`)?.classList.add('open');
+      document.getElementById(`sub-title-input-${subId}`)?.focus();
+    }, 30);
+  }
+  buildReport();
+}
+
+function secDelSub(secId, subId) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === secId);
+  if (!sec?.children) return;
+  sec.children = sec.children.filter(c => c.id !== subId);
+  saveReportData(d, false);
+  document.getElementById(`sec-sub-item-${subId}`)?.remove();
+  buildReport();
+}
+
+function secToggleSubVisible(secId, subId) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === secId);
+  const sub = sec?.children?.find(c => c.id === subId);
+  if (!sub) return;
+  sub.visible = !sub.visible;
+  saveReportData(d, false);
+  document.getElementById(`sub-eye-${subId}`)?.classList.toggle('off', !sub.visible);
+  const titleEl = document.getElementById(`sub-title-${subId}`);
+  if (titleEl) titleEl.classList.toggle('sec-dim', !sub.visible);
+  buildReport();
+}
+
+function secUpdateSubTitle(secId, subId, val) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === secId);
+  const sub = sec?.children?.find(c => c.id === subId);
+  if (!sub) return;
+  sub.title = val;
+  saveReportData(d, false);
+  const el = document.getElementById(`sub-title-${subId}`);
+  if (el) el.textContent = val || 'Subsection';
+  buildReport();
+}
+
+function secUpdateSubContent(secId, subId, html) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === secId);
+  const sub = sec?.children?.find(c => c.id === subId);
+  if (!sub) return;
+  sub.content = html;
+  saveReportData(d, false);
+  buildReport();
+}
+
+function secToggleSubEdit(subId) {
+  document.getElementById(`sub-edit-${subId}`)?.classList.toggle('open');
+}
+
+function _buildSubItem(secId, sub) {
+  return `<div class="sec-sub-item" id="sec-sub-item-${sub.id}">
+    <div class="sec-sub-row">
+      <span class="sec-sub-indicator">└</span>
+      <button class="sec-eye ${sub.visible?'':'off'}" id="sub-eye-${sub.id}"
+        onclick="secToggleSubVisible('${secId}','${sub.id}')" title="${sub.visible?'Hide':'Show'}"><span class="sec-eye-dot"></span></button>
+      <div class="sec-sub-title-wrap" style="flex:1;min-width:0">
+        <div class="sec-sub-title ${sub.visible?'':'sec-dim'}" id="sub-title-${sub.id}">${esc(sub.title)}</div>
+      </div>
+      <button class="sec-btn" onclick="secToggleSubEdit('${sub.id}')" title="Edit">✎</button>
+      <button class="sec-btn del" onclick="secDelSub('${secId}','${sub.id}')">✕</button>
+    </div>
+    <div class="sec-sub-body" id="sub-edit-${sub.id}">
+      <div class="exp-meta-row" style="margin-bottom:6px">
+        <div class="exp-field-label">Subsection Title</div>
+        <input class="exp-input" id="sub-title-input-${sub.id}" value="${esc(sub.title)}"
+          oninput="secUpdateSubTitle('${secId}','${sub.id}',this.value)">
+      </div>
+      ${_richToolbar(sub.id)}
+      <div class="rich-editor" contenteditable="true" id="rich-${sub.id}"
+        oninput="secUpdateSubContent('${secId}','${sub.id}',this.innerHTML)">${_secContentHtml(sub.content)}</div>
+    </div>
+  </div>`;
+}
+
+// ── Numbering ─────────────────────────────────────────────────────
+function secToggleNumbering(val) {
+  const d = getReportData();
+  d.meta.numbering = val;
+  saveReportData(d);
 }
 
 function secAddCustom() {
@@ -1588,13 +1739,13 @@ function _secContentHtml(content) {
 }
 
 // ── Rich editor expanded modal ────────────────────────────────────
-function openRichModal(secId, defaultSplit = false) {
+function openRichModal(secId, defaultSplit = false, field = 'content') {
   if (document.getElementById('rich-modal')) return;
   const d = getReportData();
   const sec = d.sections.find(s => s.id === secId);
   if (!sec) return;
   const title = sec.title;
-  const content = _secContentHtml(sec.content);
+  const content = _secContentHtml(field === 'description' ? sec.description : sec.content);
 
   const modal = document.createElement('div');
   modal.id = 'rich-modal';
@@ -1613,7 +1764,7 @@ function openRichModal(secId, defaultSplit = false) {
           ${_richToolbar(`rich-modal-ed-${secId}`, `rpal-modal-${secId}`)}
           <div class="rich-editor" contenteditable="true" id="rich-modal-ed-${secId}"
             style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--border)"
-            oninput="richModalInput('${secId}',this.innerHTML)">${content}</div>
+            oninput="richModalInput('${secId}',this.innerHTML,'${field}')">${content}</div>
         </div>
         <div id="rich-modal-preview-${secId}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none">
           <div class="rpt" style="max-width:640px;margin:0 auto">
@@ -1627,10 +1778,11 @@ function openRichModal(secId, defaultSplit = false) {
   if (defaultSplit) setTimeout(() => richModalToggleSplit(secId), 50);
 }
 
-function richModalInput(secId, html) {
-  secUpdateContent(secId, html);
+function richModalInput(secId, html, field = 'content') {
+  if (field === 'description') secUpdateDesc(secId, html);
+  else secUpdateContent(secId, html);
   // sync inline editor
-  const inline = document.getElementById(`rich-${secId}`);
+  const inline = document.getElementById(field === 'description' ? `rich-desc-${secId}` : `rich-${secId}`);
   if (inline) inline.innerHTML = html;
   // sync split preview
   const pv = document.getElementById(`rich-modal-pv-content-${secId}`);
@@ -1685,27 +1837,25 @@ function buildSecItem(sec) {
     <div class="sec-row">
       <span class="sec-drag" title="Drag to reorder" onmousedown="secDragHandleDown()">⠿</span>
       <button class="sec-eye ${sec.visible?'':'off'}" id="sec-eye-${sec.id}"
-        onclick="secToggleVisible('${sec.id}')" title="${sec.visible?'Hide':'Show'}">👁</button>
+        onclick="secToggleVisible('${sec.id}')" title="${sec.visible?'Hide':'Show'}"><span class="sec-eye-dot"></span></button>
       <div class="sec-title-wrap">
         <div class="sec-title ${sec.visible?'':'sec-dim'}" id="sec-title-${sec.id}">${esc(sec.title)}</div>
       </div>
       <button class="sec-btn sec-pb-btn ${sec.pageBreak?'sec-pb-on':''}" id="sec-pb-${sec.id}"
         title="${sec.pageBreak?'Remove page break':'Start on new page'}"
         onclick="secTogglePageBreak('${sec.id}')">⏎</button>
-      ${hasEditor ? `<button class="sec-btn" onclick="openRichModal('${sec.id}',true)" title="Full editor">⤢</button>` : ''}
+      <button class="sec-btn" onclick="openRichModal('${sec.id}',true,${isCustom?`'content'`:`'description'`})" title="Full editor">⤢</button>
       <button class="sec-btn" id="sec-edit-btn-${sec.id}" onclick="secToggleEdit('${sec.id}')" title="Inline edit">✎</button>
       ${isCustom ? `<button class="sec-btn del" onclick="secDelete('${sec.id}')">✕</button>` : ''}
     </div>`;
 
   html += `<div class="sec-edit-body" id="sec-edit-${sec.id}">`;
 
-  if (isCustom) {
-    html += `<div class="exp-meta-row" style="margin-bottom:6px">
-      <div class="exp-field-label">Section Title</div>
-      <input class="exp-input" id="sec-title-input-${sec.id}" value="${esc(sec.title)}"
-        oninput="secUpdateTitle('${sec.id}',this.value)">
-    </div>`;
-  }
+  html += `<div class="exp-meta-row" style="margin-bottom:6px">
+    <div class="exp-field-label">Section Title</div>
+    <input class="exp-input" id="sec-title-input-${sec.id}" value="${esc(sec.title)}"
+      oninput="secUpdateTitle('${sec.id}',this.value)">
+  </div>`;
 
   html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
     <div class="exp-field-label" style="margin:0;min-width:58px">Font Size</div>
@@ -1714,13 +1864,43 @@ function buildSecItem(sec) {
     </select>
   </div>`;
 
-  if (hasEditor) {
+  if (isCustom) {
     html += _richToolbar(sec.id);
     html += `<div class="rich-editor" contenteditable="true" id="rich-${sec.id}"
       oninput="secUpdateContent('${sec.id}',this.innerHTML)">${_secContentHtml(sec.content)}</div>`;
+  } else {
+    html += `<div class="exp-field-label" style="margin-bottom:4px">Intro text</div>`;
+    html += _richToolbar('desc-'+sec.id, 'desc-'+sec.id);
+    html += `<div class="rich-editor" contenteditable="true" id="rich-desc-${sec.id}"
+      oninput="secUpdateDesc('${sec.id}',this.innerHTML)">${_secContentHtml(sec.description)}</div>`;
   }
 
-  html += `</div></div>`;
+  html += `</div>`;
+
+  // ── Findings options (detailed-findings only) ──
+  if (sec.type === 'detailed-findings') {
+    html += `<div style="padding:4px 14px 8px;border-top:1px dashed var(--border)55">
+      <div class="exp-field-label" style="margin-bottom:4px;font-size:9px;text-transform:uppercase;letter-spacing:.06em">Include in findings</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px 10px">
+        <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-rem"   checked onchange="buildReport()"> Remediation</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
+      </div>
+    </div>`;
+  }
+
+  // ── Subsections ──
+  const children = sec.children || [];
+  html += `<div class="sec-sub-list" id="sec-sub-list-${sec.id}">`;
+  children.forEach(sub => { html += _buildSubItem(sec.id, sub); });
+  html += `<div class="sec-sub-add">
+    <button class="sec-btn" onclick="secAddSub('${sec.id}')" style="font-size:9px">+ Subsection</button>
+  </div>`;
+  html += `</div>`;
+
+  html += `</div>`;
   return html;
 }
 
@@ -2046,13 +2226,23 @@ function buildSectionList() {
     ${_sh('sections','Report Sections',`<button class="sec-btn" onclick="event.stopPropagation();secAddCustom()" style="font-size:9px;margin-left:6px">+ Custom</button>`)}
     <div id="esec-sections" style="display:${_secOpen.sections?'':'none'}">
       <div style="padding:8px 14px 6px;border-bottom:1px solid var(--border)">
-        <div class="exp-field-label" style="margin-bottom:5px">Findings include</div>
-        <div style="display:flex;flex-wrap:wrap;gap:2px 10px">
-          <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
-          <label class="exp-opt"><input type="checkbox" id="opt-rem"   checked onchange="buildReport()"> Remediation</label>
-          <label class="exp-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
-          <label class="exp-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
-          <label class="exp-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div class="exp-field-label" style="margin:0">Findings include</div>
+          <label class="exp-opt" style="margin:0"><input type="checkbox" ${m.numbering?'checked':''} onchange="secToggleNumbering(this.checked)"> Number sections</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:5px">
+            <span class="exp-field-label" style="margin:0;font-size:10px">H2 size</span>
+            <select class="exp-input" style="width:70px" onchange="setTitleSize('h2',this.value)">
+              ${['10px','11px','12px','13px','14px','15px','16px','18px','20px'].map(s=>`<option value="${s}" ${(m.h2Size||'13px')===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span class="exp-field-label" style="margin:0;font-size:10px">H3 size</span>
+            <select class="exp-input" style="width:70px" onchange="setTitleSize('h3',this.value)">
+              ${['9px','10px','11px','12px','13px','14px','15px'].map(s=>`<option value="${s}" ${(m.h3Size||'11px')===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
         </div>
       </div>
       <div class="sec-list" id="sec-list">
@@ -2415,22 +2605,25 @@ function buildReport() {
   const visibleSections = sections.filter(s => s.visible);
   const _tocItems = [];
   const PROSE_TYPES = new Set(['custom']);
+  let _tocSecNum = 0;
+  const _tocSubs = sec => (sec.children||[]).filter(c=>c.visible!==false);
+  const _tocPush = (sec, sid) => { _tocSecNum++; _tocItems.push({ title:sec.title, id:sid, num:_tocSecNum, subs:_tocSubs(sec) }); };
   visibleSections.forEach(sec => {
     const sid = `rpt-sec-${sec.id}`;
     if (PROSE_TYPES.has(sec.type)) {
-      if (sec.content) _tocItems.push({ title:sec.title, id:sid });
+      if (sec.content || _tocSubs(sec).length) _tocPush(sec, sid);
     } else if (sec.type === 'exec-summary' && scope !== 'wstg') {
-      _tocItems.push({ title:sec.title, id:sid });
+      _tocPush(sec, sid);
     } else if (sec.type === 'findings-index' && scope !== 'wstg' && vulns.length) {
-      _tocItems.push({ title:sec.title, id:sid });
+      _tocPush(sec, sid);
     } else if (sec.type === 'wstg' && scope !== 'vulns') {
-      _tocItems.push({ title:sec.title, id:sid });
+      _tocPush(sec, sid);
     } else if (sec.type === 'detailed-findings' && scope !== 'wstg' && vulns.length && reportType === 'technical') {
-      _tocItems.push({ title:sec.title, id:sid });
+      _tocPush(sec, sid);
     } else if (sec.type === 'targets' && state.targets?.length) {
-      _tocItems.push({ title:sec.title, id:sid });
+      _tocPush(sec, sid);
     } else if (sec.type === 'risk-table') {
-      _tocItems.push({ title:sec.title, id:sid });
+      _tocPush(sec, sid);
     }
   });
 
@@ -2440,36 +2633,65 @@ function buildReport() {
     md('');
     html += `<div class="rpt-toc">
       <div class="rpt-toc-title">Table of Contents</div>
-      ${_tocItems.map((t, i) => `<div class="rpt-toc-item"><span class="rpt-toc-num">${i+1}.</span><a href="#${t.id}">${esc(t.title)}</a></div>`).join('')}
+      ${_tocItems.map((t, i) => {
+        const sn = m.numbering ? t.num : (i+1);
+        let row = `<div class="rpt-toc-item"><span class="rpt-toc-num">${sn}.</span><a href="#${t.id}">${esc(t.title)}</a></div>`;
+        t.subs.forEach((sub, si) => {
+          row += `<div class="rpt-toc-item rpt-toc-sub"><span class="rpt-toc-num">${sn}.${si+1}.</span><a href="#sub-${sub.id}">${esc(sub.title)}</a></div>`;
+        });
+        return row;
+      }).join('')}
     </div>`;
   }
 
+  // ── Subsections helper ─────────────────────────────────────────────
+  function _subsHtml(sec, secNum) {
+    const subs = (sec.children || []).filter(c => c.visible !== false);
+    if (!subs.length) return '';
+    let out = '';
+    subs.forEach((sub, si) => {
+      const numPfx = m.numbering ? `<span class="sec-num-prefix">${secNum}.${si+1}</span>` : '';
+      out += `<h3 class="rpt-sub-title" id="sub-${sub.id}">${numPfx}${esc(sub.title)}</h3>`;
+      if (sub.content) out += `<div class="rpt-prose">${_secContentHtml(sub.content)}</div>`;
+    });
+    return out;
+  }
+
   // ── Sections in user-defined order ────────────────────────────────
+  let _secNum = 0;
   for (const sec of visibleSections) {
     const secId = `rpt-sec-${sec.id}`;
     const _pb   = sec.pageBreak ? 'page-break-before:always;break-before:page;' : '';
     const _fs   = sec.fontSize  ? `font-size:${sec.fontSize}px;` : '';
+    const _cw   = _fs ? `<div style="${_fs}">` : '';
+    const _ce   = _fs ? `</div>` : '';
+    const _desc = sec.description ? `<div class="rpt-prose rpt-sec-desc">${_secContentHtml(sec.description)}</div>` : '';
 
     // ── Prose / custom ────────────────────────────────────────────
     if (PROSE_TYPES.has(sec.type)) {
-      if (!sec.content) continue;
-      md(`## ${sec.title}`); md(sec.content); md('');
-      html += `<h2 id="${secId}" style="${_pb}">${esc(sec.title)}</h2><div class="rpt-prose" style="${_fs}">${_secContentHtml(sec.content)}</div>`;
+      if (!sec.content && !(sec.children||[]).filter(c=>c.visible!==false).length) continue;
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
+      md(`## ${sec.title}`); md(sec.content||''); md('');
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>`;
+      if (sec.content) html += `<div class="rpt-prose"${_fs ? ` style="${_fs}"` : ''}>${_secContentHtml(sec.content)}</div>`;
+      html += _subsHtml(sec, _secNum);
       continue;
     }
 
     // ── Executive Summary ─────────────────────────────────────────
     if (sec.type === 'exec-summary' && scope !== 'wstg') {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       if (vulns.length) {
         md('## Executive Summary'); md('|Severity|Count|'); md('|--------|-----|');
         SEV_ORDER.forEach(s => { if(bySev[s].length) md(`|${SEV_EMOJI[s]} ${SEV_LABEL[s]}|${bySev[s].length}|`); });
         md('');
-        html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2><div class="rpt-summary">`;
+        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<div class="rpt-summary">`;
         SEV_ORDER.forEach(s => {
           if (!bySev[s].length) return;
           html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_LABEL[s]}</div></div>`;
         });
-        if (scope==='all') html += `<div class="rpt-summary-card card-wstg"><div class="rpt-count">${wPct}%</div><div class="rpt-label">WSTG</div></div>`;
         html += '</div>';
         html += `<div class="rpt-risk-wrap"><div class="rpt-risk-bar">`;
         SEV_ORDER.forEach(s => {
@@ -2482,18 +2704,21 @@ function buildReport() {
           const colors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#059669',info:'#6b7280'};
           html += `<div class="rpt-risk-legend-item"><div class="rpt-risk-legend-dot" style="background:${colors[s]}"></div>${SEV_LABEL[s]} (${bySev[s].length})</div>`;
         });
-        html += `</div></div>`;
+        html += `</div></div>${_ce}`;
       } else {
-        html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2><p style="color:var(--text3);font-style:italic">No custom findings recorded for this project.</p>`;
+        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<p style="color:var(--text3);font-style:italic">No custom findings recorded for this project.</p>${_ce}`;
       }
+      html += _subsHtml(sec, _secNum);
       continue;
     }
 
     // ── Findings Index ────────────────────────────────────────────
     if (sec.type === 'findings-index' && scope !== 'wstg' && vulns.length) {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## Findings Index'); md('| # | Severity | Vulnerability | Category | Status |'); md('|---|----------|---------------|----------|--------|');
-      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>
-        <table class="rpt-table" style="${_fs}"><thead><tr>
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
+        <table class="rpt-table"><thead><tr>
           <th class="rpt-idx-num">#</th><th class="rpt-idx-sev">Severity</th>
           <th>Vulnerability</th><th>Category</th><th class="rpt-idx-status">Status</th>
         </tr></thead><tbody>`;
@@ -2512,16 +2737,19 @@ function buildReport() {
         });
       });
       md('');
-      html += '</tbody></table>';
+      html += `</tbody></table>${_ce}`;
+      html += _subsHtml(sec, _secNum);
       continue;
     }
 
     // ── OWASP WSTG ───────────────────────────────────────────────
     if (sec.type === 'wstg' && scope !== 'vulns') {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## OWASP WSTG Progress');
       md(`**Overall:** ${wTested}/${wTotal} (${wPct}%) · **Passed:** ${wDone} · **Vuln Found:** ${wFail}`); md('');
-      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>
-        <p style="${_fs}"><strong>${wTested}/${wTotal}</strong> tests completed &nbsp;·&nbsp;
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
+        <p><strong>${wTested}/${wTotal}</strong> tests completed &nbsp;·&nbsp;
           <strong style="color:var(--green)">${wDone} passed</strong> &nbsp;·&nbsp;
           <strong style="color:var(--red)">${wFail} vuln found</strong></p>
         <table class="rpt-table"><thead><tr>
@@ -2574,14 +2802,17 @@ function buildReport() {
           </div>`;
         });
       }
-      html += '<hr class="rpt-divider">';
+      html += `<hr class="rpt-divider">${_ce}`;
+      html += _subsHtml(sec, _secNum);
       continue;
     }
 
     // ── Detailed Findings ─────────────────────────────────────────
     if (sec.type === 'detailed-findings' && scope !== 'wstg' && vulns.length && reportType === 'technical') {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## Detailed Findings');
-      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>`;
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}`;
       SEV_ORDER.forEach(sev => {
         if (!bySev[sev].length) return;
         html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px">
@@ -2629,11 +2860,15 @@ function buildReport() {
           html += '</div></div>';
         });
       });
+      html += _ce;
+      html += _subsHtml(sec, _secNum);
       continue;
     }
 
     // ── Targets ───────────────────────────────────────────────────
     if (sec.type === 'targets' && state.targets?.length) {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## Scope — Targets'); md('| Host | Type | Status | Notes |'); md('|------|------|--------|-------|');
       state.targets.forEach(t => {
         md(`| ${t.host} | ${t.type||'—'} | ${t.status||'pending'} | ${t.notes||''} |`);
@@ -2641,7 +2876,7 @@ function buildReport() {
         if (td.ports?.length) md(`**Open ports:** ${td.ports.map(p => `${p.port}/${p.protocol||'tcp'} (${p.service||'?'})`).join(', ')}`);
       });
       md('');
-      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>`;
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}`;
       if (reportType === 'executive') {
         html += `<table class="rpt-table"><thead><tr><th>Host</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead><tbody>`;
         state.targets.forEach(t => {
@@ -2694,17 +2929,21 @@ function buildReport() {
           html += '</div>';
         });
       }
+      html += _ce;
+      html += _subsHtml(sec, _secNum);
       continue;
     }
 
     // ── Risk Classification ───────────────────────────────────────
     if (sec.type === 'risk-table') {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## Risk Classification'); md('| Rating | CVSS Score | Description |'); md('|--------|------------|-------------|');
       md('| Critical | 9.0 – 10.0 | Immediate risk... |'); md('| High | 7.0 – 8.9 | Significant vulnerability... |');
       md('| Medium | 4.0 – 6.9 | Moderate risk... |'); md('| Low | 0.1 – 3.9 | Minor issues... |');
       md('| Info | N/A | Informational finding... |'); md('');
-      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>
-        <table class="rpt-risk-class" style="${_fs}">
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
+        <table class="rpt-risk-class">
           <thead><tr><th>Rating</th><th>CVSS Score</th><th>Description</th></tr></thead>
           <tbody>
             <tr><td><div class="rpt-cell"><span class="sev-badge sev-critical">Critical</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">9.0 – 10.0</div></td><td><div class="rpt-cell">Immediate risk of exploitation with potential for complete system compromise or significant data breach. Requires urgent remediation.</div></td></tr>
@@ -2713,7 +2952,8 @@ function buildReport() {
             <tr><td><div class="rpt-cell"><span class="sev-badge sev-low">Low</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">0.1 – 3.9</div></td><td><div class="rpt-cell">Minor issues with limited impact. Should be addressed as part of routine security maintenance.</div></td></tr>
             <tr><td><div class="rpt-cell"><span class="sev-badge sev-info">Info</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">N/A</div></td><td><div class="rpt-cell">Informational findings with no direct security impact. Useful for hardening and best practice alignment.</div></td></tr>
           </tbody>
-        </table>`;
+        </table>${_ce}`;
+      html += _subsHtml(sec, _secNum);
       continue;
     }
   }
