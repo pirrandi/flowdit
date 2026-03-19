@@ -74,15 +74,36 @@ Respond with this exact JSON schema:
     const data = await response.json();
     const raw  = data.choices?.[0]?.message?.content || '';
 
+    // Escape literal control characters inside JSON string values
+    // (models often emit bare newlines in multi-line text fields)
+    function sanitizeJson(str) {
+      let inString = false, escaped = false, out = '';
+      for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (escaped)               { out += ch; escaped = false; continue; }
+        if (ch === '\\' && inString) { out += ch; escaped = true;  continue; }
+        if (ch === '"')              { inString = !inString; out += ch; continue; }
+        if (inString) {
+          if      (ch === '\n') { out += '\\n'; continue; }
+          else if (ch === '\r') { out += '\\r'; continue; }
+          else if (ch === '\t') { out += '\\t'; continue; }
+          else if (ch.charCodeAt(0) < 32) { continue; } // drop other ctrl chars
+        }
+        out += ch;
+      }
+      return out;
+    }
+
     let parsed;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(sanitizeJson(raw));
     } catch {
-      // Try extracting JSON from response in case model added extra text
       const match = raw.match(/\{[\s\S]*\}/);
       if (match) {
-        parsed = JSON.parse(match[0]);
-      } else {
+        try { parsed = JSON.parse(sanitizeJson(match[0])); }
+        catch { parsed = null; }
+      }
+      if (!parsed) {
         console.error('Could not parse AI response:', raw);
         return res.status(502).json({ error: 'Could not parse AI response' });
       }
