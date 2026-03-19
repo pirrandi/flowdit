@@ -386,13 +386,26 @@ async function _aiGenerate(type, context, btnId, btnLabel) {
   }
 }
 
+function _collectVulnContext() {
+  const targetSel = document.getElementById('modal-vuln-target');
+  const targetHost = targetSel?.selectedOptions?.[0]?.text?.replace(/^[^\s]+\s/, '') || '';
+  const payloads = [...document.querySelectorAll('#modal-payloads-list .dynamic-textarea')]
+    .map(i => i.value.trim()).filter(Boolean);
+  return {
+    name:        document.getElementById('modal-vuln-name').value.trim(),
+    category:    document.getElementById('modal-vuln-cat').value.trim(),
+    notes:       document.getElementById('modal-vuln-notes').value.trim(),
+    description: document.getElementById('modal-vuln-desc').value.trim(),
+    target:      targetHost === '— No target —' ? '' : targetHost,
+    payloads,
+  };
+}
+
 async function aiDraft() {
-  const name     = document.getElementById('modal-vuln-name').value.trim();
-  const category = document.getElementById('modal-vuln-cat').value.trim();
-  const notes    = document.getElementById('modal-vuln-notes').value.trim();
-  if (!name) { showToast('Enter a name first', 'error'); return; }
+  const ctx = _collectVulnContext();
+  if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
   try {
-    const result = await _aiGenerate('vuln-draft', { name, category, notes }, 'ai-draft-btn', '✦ Draft');
+    const result = await _aiGenerate('vuln-draft', ctx, 'ai-draft-btn', '✦ Draft');
     if (result.name)        document.getElementById('modal-vuln-name').value = result.name;
     if (result.category)    document.getElementById('modal-vuln-cat').value  = result.category;
     if (result.severity)    document.getElementById('modal-vuln-sev').value  = result.severity;
@@ -403,12 +416,10 @@ async function aiDraft() {
 }
 
 async function aiRemediation() {
-  const name        = document.getElementById('modal-vuln-name').value.trim();
-  const category    = document.getElementById('modal-vuln-cat').value.trim();
-  const description = document.getElementById('modal-vuln-desc').value.trim();
-  if (!name && !description) { showToast('Add a name or description first', 'error'); return; }
+  const ctx = _collectVulnContext();
+  if (!ctx.name && !ctx.description) { showToast('Add a name or description first', 'error'); return; }
   try {
-    const result = await _aiGenerate('remediation', { name, category, description }, 'ai-rem-btn', '✦ Suggest');
+    const result = await _aiGenerate('remediation', ctx, 'ai-rem-btn', '✦ Suggest');
     if (result.remediation) document.getElementById('modal-vuln-rem').value = result.remediation;
     showToast('✦ Remediation generated', 'success');
   } catch(e) { showToast(e.message, 'error'); }

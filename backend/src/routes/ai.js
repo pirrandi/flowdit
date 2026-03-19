@@ -6,9 +6,10 @@ const router = express.Router();
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL   = 'llama-3.3-70b-versatile';
 
-const SYSTEM_PROMPT = `You are a professional penetration tester writing technical security reports.
-Write concise, accurate, and professional content.
-Respond ONLY with valid JSON matching the requested schema — no markdown fences, no extra text.`;
+const SYSTEM_PROMPT = `You are a senior penetration tester writing professional security assessment reports.
+Your output must be technically accurate, specific to the evidence provided, and written in clear English.
+Always reference the exact endpoints, parameters, payloads, and targets mentioned in the input — never write generic descriptions.
+Respond ONLY with valid JSON matching the requested schema. No markdown fences, no extra text outside the JSON object.`;
 
 router.post('/generate', requireAuth, async (req, res) => {
   const { type, context = {} } = req.body;
@@ -17,30 +18,57 @@ router.post('/generate', requireAuth, async (req, res) => {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
 
+  const c = context;
+  const payloadBlock = c.payloads?.length
+    ? `Payloads used:\n${c.payloads.map(p => `  - ${p}`).join('\n')}`
+    : '';
+
   let userPrompt;
 
   if (type === 'vuln-draft') {
-    const hint = [context.name, context.category, context.notes].filter(Boolean).join(' | ');
-    userPrompt = `Generate a vulnerability report entry for: "${hint}"
+    userPrompt = `Write a penetration test finding report entry using ONLY the details below. Do not invent data not present.
+
+Finding name: ${c.name}
+${c.category  ? `Category: ${c.category}` : ''}
+${c.target    ? `Affected target: ${c.target}` : ''}
+${c.notes     ? `Tester notes: ${c.notes}` : ''}
+${payloadBlock}
+${c.description ? `Partial description already written: ${c.description}` : ''}
+
+Instructions:
+- "name": precise professional title referencing the specific endpoint/parameter if present (max 80 chars)
+- "category": most specific applicable OWASP category or technology label
+- "severity": choose critical/high/medium/low/info based on the vulnerability type and context
+- "description": 2-3 paragraphs — explain what the vulnerability is, reference the EXACT endpoint/parameter/payload from the input, explain root cause, and describe the real-world impact
+- "remediation": specific actionable steps to fix THIS vulnerability (not generic advice), use a markdown list
 
 Respond with this exact JSON schema:
 {
-  "name": "short descriptive title (max 80 chars)",
-  "category": "OWASP category or technology (max 40 chars)",
-  "severity": "critical|high|medium|low|info",
-  "description": "2-4 paragraph technical description explaining the vulnerability, root cause, and impact (markdown ok)",
-  "remediation": "actionable remediation steps (markdown list ok)"
+  "name": "...",
+  "category": "...",
+  "severity": "...",
+  "description": "...",
+  "remediation": "..."
 }`;
 
   } else if (type === 'remediation') {
-    userPrompt = `Generate a remediation for the following vulnerability:
-Name: ${context.name || 'Unknown'}
-Category: ${context.category || 'Unknown'}
-Description: ${context.description || '(no description provided)'}
+    userPrompt = `Write a specific remediation for the following penetration test finding. Reference the exact context provided.
+
+Finding name: ${c.name || 'Unknown'}
+${c.category    ? `Category: ${c.category}` : ''}
+${c.target      ? `Affected target: ${c.target}` : ''}
+${c.description ? `Description: ${c.description}` : ''}
+${payloadBlock}
+
+Instructions:
+- Provide concrete, actionable remediation steps specific to this finding
+- Reference the specific technology, endpoint, or parameter when relevant
+- Use a markdown list format
+- Do not write generic security advice
 
 Respond with this exact JSON schema:
 {
-  "remediation": "actionable remediation steps (markdown list ok)"
+  "remediation": "..."
 }`;
 
   } else {
