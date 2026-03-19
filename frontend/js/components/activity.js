@@ -6,7 +6,8 @@ function _actorColor(username, fallbackColor) {
 }
 
 function _actorAvatarUrl(username) {
-  // Activity items don't carry avatar_url; only the current user's is known
+  const member = (state.members || []).find(m => m.username === username);
+  if (member?.avatar_url) return member.avatar_url;
   if (username === state.user?.username) return state.user?.avatar_url || null;
   return null;
 }

@@ -10,7 +10,7 @@ router.use(requireAuth, requireProjectAccess);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT cv.*, u.username AS editor_username, u.avatar_color AS editor_color,
+      `SELECT cv.*, u.username AS editor_username, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url,
               t.host AS target_host, t.type AS target_type
        FROM custom_vulns cv
        LEFT JOIN users u ON u.id=cv.updated_by

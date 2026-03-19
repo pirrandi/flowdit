@@ -1,5 +1,7 @@
 // ── views/dashboard.js ───────────────────────────────────────────────
 
+let _confettiFired = false;
+
 function updateDashboard() {
   if (!state.currentProject) return;
 
@@ -31,6 +33,18 @@ function updateDashboard() {
 
   const wPct = wTotal ? Math.round((wDone+wFail)/wTotal*100) : 0;
   const pPct = psTotal ? Math.round(psDone/psTotal*100) : 0;
+
+  // ── Fun settings ───────────────────────────────────────────────
+  if (state.currentProject) {
+    applyFunSettings(state.currentProject.id);
+    if (wPct === 100 && !_confettiFired) {
+      if (getFunSettings(state.currentProject.id).confetti) {
+        _confettiFired = true;
+        setTimeout(launchConfetti, 500);
+      }
+    }
+    if (wPct < 100) _confettiFired = false;
+  }
 
   // ── Update subtitle ───────────────────────────────────────────
   const sub = document.getElementById('dash-subtitle');
@@ -260,7 +274,7 @@ function updateDashboard() {
         <div style="display:flex;flex-direction:column;gap:6px">
           ${(state.members||[]).map(m => `
             <div style="display:flex;align-items:center;gap:8px">
-              <div class="avatar-sm" style="background:${esc(m.avatar_color||'#7c3aed')}">${m.username[0].toUpperCase()}</div>
+              ${avatarHtml(m.username, roleColor(m.role), 24, m.avatar_url||null)}
               <span style="font-size:12px;flex:1">${esc(m.username)}</span>
               <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${m.role}</span>
             </div>`).join('')}

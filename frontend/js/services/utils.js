@@ -41,6 +41,12 @@ function relativeDate(dateStr) {
 const ROLE_COLOR = { owner:'#dc2626', editor:'#059669', viewer:'#2563eb' };
 function roleColor(role) { return ROLE_COLOR[role] || '#7c3aed'; }
 
+// Role color for a user by ID (looks up state.members)
+function memberRoleColor(userId, fallback) {
+  const m = (typeof state !== 'undefined' ? state.members || [] : []).find(m => m.id === userId);
+  return m ? roleColor(m.role) : (fallback || '#7c3aed');
+}
+
 function avatarHtml(username, color, size = 24, avatarUrl = null) {
   const s = `width:${size}px;height:${size}px;font-size:${Math.round(size*0.42)}px`;
   const c = esc(color || '#7c3aed');
@@ -65,19 +71,169 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'target_removed': return `deleted target ${name}`
     case 'target_updated': return `updated target ${name}`
     case 'invite_created': return `created an invite link`;
-    case 'member_joined':  return `<strong>${esc(entityName)}</strong> joined the project`;
+    case 'member_joined':  return `joined the project`;
     default: return `updated ${name}`;
   }
 }
 
-window.esc         = esc;
-window.hide        = hide;
-window.show        = show;
-window.showToast   = showToast;
-window.copyText    = copyText;
-window.timeAgo     = timeAgo;
-window.relativeDate = relativeDate;
-window.ROLE_COLOR  = ROLE_COLOR;
-window.roleColor   = roleColor;
-window.avatarHtml  = avatarHtml;
-window.actionLabel = actionLabel;
+// ── Markdown renderer (subset: code blocks, inline code, bold, italic, headers, lists) ──
+function _applyInline(text) {
+  return esc(text)
+    .replace(/\*\*([^*<>]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*<>]+)\*/g, '<em>$1</em>');
+}
+
+function _inlineMd(text) {
+  const parts = [];
+  const re = /`([^`]+)`/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(_applyInline(text.slice(last, m.index)));
+    parts.push(`<code class="md-ic">${esc(m[1])}</code>`);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(_applyInline(text.slice(last)));
+  return parts.join('');
+}
+
+function renderMd(raw) {
+  if (!raw) return '';
+  const lines = raw.split('\n');
+  const out = [];
+  let inCode = false, codeLines = [], tableRows = [];
+
+  function flushTable() {
+    if (!tableRows.length) return;
+    // First row = header, second = separator (skip), rest = data
+    const [head, , ...body] = tableRows;
+    const cols = head.split('|').slice(1,-1).map(c => c.trim());
+    let t = `<table class="rpt-table" style="margin:8px 0">`;
+    t += `<thead><tr>${cols.map(c => `<th>${_inlineMd(c)}</th>`).join('')}</tr></thead>`;
+    t += `<tbody>${body.map(row => {
+      const cells = row.split('|').slice(1,-1).map(c => c.trim());
+      return `<tr>${cells.map((c,i) => i < cols.length ? `<td>${_inlineMd(c)}</td>` : '').join('')}</tr>`;
+    }).join('')}</tbody></table>`;
+    out.push(t);
+    tableRows = [];
+  }
+
+  for (const line of lines) {
+    if (!inCode && line.startsWith('```')) { flushTable(); inCode = true; codeLines = []; continue; }
+    if (inCode) {
+      if (line.startsWith('```')) {
+        inCode = false;
+        out.push(`<pre class="md-pre"><code>${esc(codeLines.join('\n'))}</code></pre>`);
+        codeLines = [];
+      } else codeLines.push(line);
+      continue;
+    }
+    // Table rows
+    if (/^\|.+\|/.test(line)) { tableRows.push(line); continue; }
+    if (tableRows.length) flushTable();
+
+    if (line.startsWith('### ')) { out.push(`<div class="md-h3">${_inlineMd(line.slice(4))}</div>`); continue; }
+    if (line.startsWith('## '))  { out.push(`<div class="md-h2">${_inlineMd(line.slice(3))}</div>`); continue; }
+    if (line.startsWith('# '))   { out.push(`<div class="md-h2">${_inlineMd(line.slice(2))}</div>`); continue; }
+    if (/^[-*] /.test(line))     { out.push(`<div class="md-li">${_inlineMd(line.slice(2))}</div>`); continue; }
+    if (line.trim() === '')      { out.push('<div class="md-gap"></div>'); continue; }
+    out.push(`<div class="md-line">${_inlineMd(line)}</div>`);
+  }
+  if (inCode) out.push(`<pre class="md-pre"><code>${esc(codeLines.join('\n'))}</code></pre>`);
+  flushTable();
+  return out.join('');
+}
+
+// ── Fun settings (localStorage, owner-only) ──────────────────────
+function getFunSettings(projectId) {
+  try { return JSON.parse(localStorage.getItem(`fd_fun_${projectId}`) || '{}'); }
+  catch { return {}; }
+}
+
+function setFunSetting(projectId, key, value) {
+  const s = getFunSettings(projectId);
+  s[key] = value;
+  localStorage.setItem(`fd_fun_${projectId}`, JSON.stringify(s));
+  applyFunSettings(projectId);
+}
+
+function applyFunSettings(projectId) {
+  const s = getFunSettings(projectId);
+  document.body.classList.toggle('neon-mode',   !!s.neon);
+  document.body.classList.toggle('hacker-mode', !!s.hacker);
+}
+
+// ── Confetti cannon ───────────────────────────────────────────────
+function launchConfetti() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;z-index:99999;pointer-events:none';
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const COLORS = ['#7c3aed','#059669','#dc2626','#f59e0b','#2563eb','#ec4899','#10b981','#f97316','#06b6d4','#8b5cf6'];
+  const pieces = [];
+
+  for (let i = 0; i < 200; i++) {
+    const left = i % 2 === 0;
+    pieces.push({
+      x:    left ? -10 : W + 10,
+      y:    H * 0.15 + Math.random() * H * 0.45,
+      vx:   left ? (7 + Math.random() * 7) : -(7 + Math.random() * 7),
+      vy:   -(4 + Math.random() * 6),
+      w:    6 + Math.random() * 9,
+      h:    3 + Math.random() * 5,
+      color:COLORS[Math.floor(Math.random() * COLORS.length)],
+      rot:  Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.14,
+      grav: 0.1 + Math.random() * 0.08,
+      life: 1,
+    });
+  }
+
+  let frame = 0;
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    let alive = false;
+    for (const p of pieces) {
+      p.x  += p.vx;
+      p.vy += p.grav;
+      p.y  += p.vy;
+      p.rot += p.rotV;
+      p.vx *= 0.99;
+      if (frame > 80) p.life -= 0.013;
+      if (p.life <= 0 || p.y > H + 30) continue;
+      alive = true;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    frame++;
+    if (alive && frame < 320) requestAnimationFrame(draw);
+    else canvas.remove();
+  }
+  draw();
+}
+
+window.esc             = esc;
+window.hide            = hide;
+window.show            = show;
+window.showToast       = showToast;
+window.copyText        = copyText;
+window.timeAgo         = timeAgo;
+window.relativeDate    = relativeDate;
+window.ROLE_COLOR      = ROLE_COLOR;
+window.roleColor       = roleColor;
+window.avatarHtml      = avatarHtml;
+window.actionLabel     = actionLabel;
+window.renderMd        = renderMd;
+window.memberRoleColor = memberRoleColor;
+window.getFunSettings  = getFunSettings;
+window.setFunSetting   = setFunSetting;
+window.applyFunSettings= applyFunSettings;
+window.launchConfetti  = launchConfetti;

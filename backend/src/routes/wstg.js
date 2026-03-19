@@ -12,7 +12,7 @@ router.get('/', async (req, res, next) => {
     const [progressRes, checksRes] = await Promise.all([
       db.query(
         `SELECT wp.test_id, wp.status, wp.note, wp.description, wp.remediation, wp.target_id, wp.updated_at,
-                u.id AS editor_id, u.username AS editor_username, u.avatar_color AS editor_color
+                u.id AS editor_id, u.username AS editor_username, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url
          FROM wstg_progress wp
          LEFT JOIN users u ON u.id = wp.updated_by
          WHERE wp.project_id = $1`,
@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
         target_id:   r.target_id,
         updated_at:  r.updated_at,
         last_editor: r.editor_id ? {
-          id: r.editor_id, username: r.editor_username, avatar_color: r.editor_color,
+          id: r.editor_id, username: r.editor_username, avatar_color: r.editor_color, avatar_url: r.editor_avatar_url || null,
         } : null,
         items: {},
       };
@@ -72,7 +72,7 @@ router.patch('/:testId/status', requireEditor, async (req, res, next) => {
       meta:       { status },
     });
 
-    res.json({ ok:true, editor: { id:req.user.id, username:req.user.username, avatar_color:req.user.avatar_color }, updated_at: new Date() });
+    res.json({ ok:true, editor: { id:req.user.id, username:req.user.username, avatar_color:req.user.avatar_color, avatar_url: req.user.avatar_url||null }, updated_at: new Date() });
   } catch (err) { next(err); }
 });
 

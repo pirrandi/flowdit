@@ -192,11 +192,10 @@ function buildVulnCard(v) {
   const noteH = v.notes ? `<div class="items-section"><div class="items-label">Notes</div>
     <div class="payload-code" style="color:var(--text2);white-space:pre-wrap">${esc(v.notes)}</div></div>` : '';
 
-  // Show description/remediation/evidence if written from export page
   const descH = v.description ? `<div class="items-section"><div class="items-label">Description</div>
-    <div class="payload-code" style="color:var(--text2);white-space:pre-wrap">${esc(v.description)}</div></div>` : '';
+    <div class="md-body" style="color:var(--text2)">${renderMd(v.description)}</div></div>` : '';
   const remH  = v.remediation ? `<div class="items-section"><div class="items-label">Remediation</div>
-    <div class="payload-code" style="color:var(--green);white-space:pre-wrap">${esc(v.remediation)}</div></div>` : '';
+    <div class="md-body" style="color:var(--green)">${renderMd(v.remediation)}</div></div>` : '';
   const evidH = (v.evidence||[]).length ? `<div class="items-section">
     <div class="items-label">Evidence (${v.evidence.length})</div>
     <div class="evidence-thumbs">${v.evidence.map((img,i) =>
@@ -205,7 +204,7 @@ function buildVulnCard(v) {
 
   const editorBadge = v.editor_username ? `
     <div class="last-editor" style="margin-left:auto">
-      <div class="last-editor-avatar" style="background:${esc(v.editor_color||'#7c3aed')}">${v.editor_username[0].toUpperCase()}</div>
+      ${avatarHtml(v.editor_username, memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 20, v.editor_avatar_url||null)}
       <span class="last-editor-name">${esc(v.editor_username)}</span>
       <span class="last-editor-time">${timeAgo(v.updated_at)}</span>
     </div>` : '';
@@ -288,12 +287,14 @@ function openAddVulnModal() {
   document.getElementById('modal-vuln-cat').value          = '';
   document.getElementById('modal-vuln-sev').value          = 'medium';
   document.getElementById('modal-vuln-notes').value        = '';
+  document.getElementById('modal-vuln-desc').value         = '';
+  document.getElementById('modal-vuln-rem').value          = '';
   populateTargetSelect(null);
   document.getElementById('modal-items-list').innerHTML    = '';
   document.getElementById('modal-payloads-list').innerHTML = '';
   document.getElementById('vuln-error').style.display      = 'none';
   addModalRow('modal-items-list', 'Check item...');
-  addModalRow('modal-payloads-list', 'Payload...');
+  addModalRow('modal-payloads-list', 'Payload...', true);
   _initCVSS(null);
   document.getElementById('vuln-modal').classList.add('open');
 }
@@ -308,6 +309,8 @@ function openEditVuln(id, e) {
   document.getElementById('modal-vuln-cat').value         = v.category || '';
   document.getElementById('modal-vuln-sev').value         = v.severity || 'medium';
   document.getElementById('modal-vuln-notes').value       = v.notes || '';
+  document.getElementById('modal-vuln-desc').value        = v.description || '';
+  document.getElementById('modal-vuln-rem').value         = v.remediation || '';
   populateTargetSelect(v.target_id || null);
   document.getElementById('vuln-error').style.display     = 'none';
   const iList = document.getElementById('modal-items-list');
@@ -315,17 +318,19 @@ function openEditVuln(id, e) {
   iList.innerHTML = ''; pList.innerHTML = '';
   (v.items||[]).forEach(item => { addModalRow('modal-items-list','Check item...'); iList.lastChild.querySelector('input').value = item; });
   if (!v.items?.length) addModalRow('modal-items-list','Check item...');
-  (v.payloads||[]).forEach(p => { addModalRow('modal-payloads-list','Payload...'); pList.lastChild.querySelector('input').value = p; });
-  if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...');
+  (v.payloads||[]).forEach(p => { addModalRow('modal-payloads-list','Payload...',true); pList.lastChild.querySelector('textarea').value = p; });
+  if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...',true);
   _initCVSS(v.cvss_vector || null);
   document.getElementById('vuln-modal').classList.add('open');
 }
 
-function addModalRow(containerId, ph) {
+function addModalRow(containerId, ph, isTextarea = false) {
   const row = document.createElement('div');
   row.className = 'dynamic-row';
-  row.innerHTML = `<input type="text" class="dynamic-input" placeholder="${esc(ph)}">
-    <button class="btn-remove" onclick="this.parentElement.remove()">✕</button>`;
+  const field = isTextarea
+    ? `<textarea class="dynamic-textarea" placeholder="${esc(ph)}"></textarea>`
+    : `<input type="text" class="dynamic-input" placeholder="${esc(ph)}">`;
+  row.innerHTML = `${field}<button class="btn-remove" onclick="this.parentElement.remove()">✕</button>`;
   document.getElementById(containerId).appendChild(row);
 }
 
@@ -342,12 +347,14 @@ async function saveVuln() {
   const err      = document.getElementById('vuln-error');
   const btn      = document.getElementById('vuln-save-btn');
   if (!name) { err.textContent = 'Name is required'; err.style.display = 'block'; return; }
+  const description = document.getElementById('modal-vuln-desc').value;
+  const remediation = document.getElementById('modal-vuln-rem').value;
   const items    = [...document.querySelectorAll('#modal-items-list .dynamic-input')].map(i => i.value.trim()).filter(Boolean);
-  const payloads = [...document.querySelectorAll('#modal-payloads-list .dynamic-input')].map(i => i.value.trim()).filter(Boolean);
+  const payloads = [...document.querySelectorAll('#modal-payloads-list .dynamic-textarea')].map(i => i.value.trim()).filter(Boolean);
   btn.disabled = true;
   try {
     const target_id = document.getElementById('modal-vuln-target')?.value || null;
-    const payload = { name, category: category||'Custom', severity, items, payloads, notes, target_id: target_id||null };
+    const payload = { name, category: category||'Custom', severity, items, payloads, notes, description, remediation, target_id: target_id||null };
     if (_cvssModified) {
       payload.cvss_vector = buildCVSSVector(_cvss);
       payload.cvss_score  = calcCVSSScore(_cvss);

@@ -12,7 +12,8 @@
 <style>
 /* ── Two-panel layout ────────────────────────────────────────────── */
 .exp-layout { display:flex;flex:1;overflow:hidden;min-height:0; }
-.exp-editor { width:380px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow-y:auto;background:var(--bg2); }
+.exp-editor { width:400px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;background:var(--bg2); }
+#editor-panel { flex:1;overflow-y:auto;display:flex;flex-direction:column; }
 .exp-preview { flex:1;overflow-y:auto;padding:40px 48px; }
 
 /* Editor panel sections */
@@ -38,6 +39,7 @@
 .exp-finding-body { display:none;padding:10px; }
 .exp-finding-body.open { display:flex;flex-direction:column;gap:8px; }
 .exp-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:3px; }
+.exp-sub-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin:12px 0 6px;padding-top:10px;border-top:1px solid var(--border); }
 .exp-textarea {
   width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;
   color:var(--text);font-size:11px;font-family:inherit;padding:7px 9px;
@@ -57,30 +59,59 @@
 
 /* Toggle checkboxes */
 .exp-opt { display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text2);cursor:pointer;padding:3px 0; }
-.exp-opt input { accent-color:var(--accent);width:13px;height:13px;cursor:pointer; }
+.exp-opt input[type="checkbox"] {
+  appearance:none;-webkit-appearance:none;
+  width:13px;height:13px;border:1px solid var(--border2);border-radius:3px;
+  background:var(--bg3);cursor:pointer;position:relative;flex-shrink:0;
+  transition:background .12s,border-color .12s;
+}
+.exp-opt input[type="checkbox"]:checked { background:var(--accent);border-color:var(--accent); }
+.exp-opt input[type="checkbox"]:checked::after {
+  content:'';position:absolute;left:3px;top:1px;width:4px;height:7px;
+  border:2px solid #fff;border-top:none;border-left:none;transform:rotate(45deg);
+}
+.exp-opt input[type="checkbox"]:hover:not(:checked) { border-color:var(--accent);background:rgba(124,58,237,.1); }
+.exp-opt input[type="radio"] {
+  appearance:none;-webkit-appearance:none;
+  width:13px;height:13px;border:1px solid var(--border2);border-radius:50%;
+  background:var(--bg3);cursor:pointer;position:relative;flex-shrink:0;
+  transition:background .12s,border-color .12s;
+}
+.exp-opt input[type="radio"]:checked { border-color:var(--accent); }
+.exp-opt input[type="radio"]:checked::after {
+  content:'';position:absolute;left:3px;top:3px;width:5px;height:5px;
+  border-radius:50%;background:var(--accent);
+}
+.exp-opt input[type="radio"]:hover:not(:checked) { border-color:var(--accent);background:rgba(124,58,237,.1); }
 
 /* ── Report base ─────────────────────────────────────────────────── */
-.rpt { font-family:'Inter',system-ui,sans-serif;color:var(--text);line-height:1.7; }
+.rpt { font-family:var(--rpt-font,'Inter',system-ui,sans-serif);color:var(--text);line-height:1.7; }
 .rpt h1 { font-size:28px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em; }
 .rpt h2 { font-size:11px;font-weight:700;margin:40px 0 14px;color:var(--text3);
           text-transform:uppercase;letter-spacing:.12em;
           border-bottom:1px solid var(--border);padding-bottom:8px;display:flex;align-items:center;gap:8px; }
 .rpt h2::before { content:'';display:inline-block;width:3px;height:12px;border-radius:2px;background:var(--accent);flex-shrink:0; }
 .rpt h3 { font-size:13px;font-weight:700;margin:22px 0 10px; }
-.rpt p  { margin:4px 0 10px;color:var(--text2);font-size:13px; }
+.rpt p  { margin:4px 0 10px;color:var(--text2);font-size:var(--rpt-base-size,13px); }
 
 /* ── Cover / header ──────────────────────────────────────────────── */
-.rpt-cover { margin-bottom:36px; }
-.rpt-cover-bar { height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent),#8b5cf6 60%,var(--blue));margin-bottom:28px; }
-.rpt-cover-labels { display:flex;align-items:center;gap:10px;margin-bottom:14px; }
+.rpt-cover { margin-bottom:40px; }
+.rpt-cover-bar { height:3px;border-radius:0;background:var(--accent);margin-bottom:32px; }
+.rpt-cover-labels { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
 .rpt-cover-type { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--accent);border:1px solid var(--accent)44;border-radius:3px;padding:3px 9px; }
+  color:var(--accent);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:3px 9px; }
 .rpt-cover-conf { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--red);border:1px solid var(--red)44;border-radius:3px;padding:3px 9px; }
-.rpt-cover-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:22px; }
-.rpt-cover-cell { background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:11px 14px; }
-.rpt-cover-cell-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:4px; }
-.rpt-cover-cell-val   { font-size:13px;font-weight:600;color:var(--text); }
+/* ── Cover metadata table (replaces grid of cards) ───────────────── */
+.rpt-cover-meta { margin-top:28px;border-top:1px solid var(--border); }
+.rpt-cover-meta-row { display:flex;border-bottom:1px solid var(--border)66;padding:10px 0;gap:0; }
+.rpt-cover-meta-cell { flex:1;display:flex;gap:14px;align-items:baseline;padding:0 16px 0 0; }
+.rpt-cover-meta-cell + .rpt-cover-meta-cell { border-left:1px solid var(--border)44;padding-left:16px;padding-right:0; }
+.rpt-cover-meta-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);white-space:nowrap;min-width:100px;flex-shrink:0; }
+.rpt-cover-meta-val { font-size:13px;font-weight:500;color:var(--text);line-height:1.4; }
+/* ── TOC links ───────────────────────────────────────────────────── */
+.rpt-toc-item a { color:var(--text2);text-decoration:none;border-bottom:1px solid transparent;transition:color .15s,border-color .15s; }
+.rpt-toc-item a:hover { color:var(--accent);border-bottom-color:rgba(124,58,237,.27); }
 
 /* ── Summary cards ───────────────────────────────────────────────── */
 .rpt-summary { display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 16px; }
@@ -109,10 +140,11 @@
 .rpt-risk-legend-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
 
 /* ── Findings overview table ─────────────────────────────────────── */
-.rpt-table { width:100%;border-collapse:collapse;font-size:12px;margin:10px 0; }
+.rpt-cell { display:flex;align-items:center;min-height:20px; }
+.rpt-table { width:100%;border-collapse:separate;border-spacing:0;font-size:12px;margin:10px 0; }
 .rpt-table th { text-align:left;padding:9px 12px;background:var(--bg3);font-family:var(--mono);
   font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);border-bottom:1px solid var(--border); }
-.rpt-table td { padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2); }
+.rpt-table td { padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top; }
 .rpt-table tr:last-child td { border-bottom:none; }
 .rpt-table tr:hover td { background:var(--bg2); }
 .rpt-table td.num { text-align:center;font-family:var(--mono);font-weight:600; }
@@ -137,9 +169,9 @@
 .rpt-status-pending { color:var(--text3);background:var(--bg3);border:1px solid var(--border); }
 .rpt-field { padding:10px 14px;border-top:1px solid var(--border); }
 .rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:5px; }
-.rpt-field-val  { font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6; }
-.rpt-field-rem  { font-size:12px;color:var(--green);white-space:pre-wrap;line-height:1.6; }
-.rpt-code { background:var(--bg);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6;border:1px solid var(--border); }
+.rpt-field-val  { font-size:12px;color:var(--text2);line-height:1.6; }
+.rpt-field-rem  { font-size:12px;color:var(--green);line-height:1.6; }
+.rpt-code { background:var(--bg);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6;border:1px solid var(--border);white-space:pre-wrap;word-break:break-all; }
 .rpt-divider { border:none;border-top:1px solid var(--border);margin:32px 0; }
 
 /* ── WSTG vuln items ─────────────────────────────────────────────── */
@@ -155,7 +187,7 @@
 .rpt-idx-sev  { width:90px; }
 .rpt-idx-status { width:100px; }
 
-@page { margin:1.8cm 2cm; }
+@page { margin:0; }
 
 @media print {
   :root {
@@ -181,6 +213,21 @@
   .topbar,.sidenav,.sidebar,.exp-editor,.export-controls,
   .no-print,.toast-container,#loading-overlay { display:none!important; }
 
+  /* ── Page header / footer — real thead/tfoot repeating on every page ── */
+  .rpt-ph:not(.enabled),.rpt-pf:not(.enabled) { display:none!important; }
+  .rpt-ph.enabled,.rpt-pf.enabled {
+    position:static!important;max-width:none;margin:0;
+    background:#fff!important;border:none!important;border-radius:0!important;
+  }
+  .rpt-phw-head,.rpt-phw-foot { display:none!important; }
+  #rpt-ph-wrap.ph-active .rpt-phw-head { display:table-header-group!important; }
+  #rpt-ph-wrap.pf-active .rpt-phw-foot { display:table-footer-group!important; }
+  /* Remove top/bottom padding from body cell when header/footer are active */
+  #rpt-ph-wrap.ph-active > tbody > tr > td { padding-top:0!important; }
+  #rpt-ph-wrap.pf-active > tbody > tr > td { padding-bottom:0!important; }
+  .rpt-pf-pgnum-screen { display:none!important; }
+  .rpt-pf-pgnum-wrap::after { content:attr(data-pre) counter(page);font-family:monospace;font-size:10px;color:#666; }
+
   /* ── Reset layout — prevent clipping ────────────────── */
   html,body { display:block!important;background:#fff!important;margin:0!important;padding:0!important;height:auto!important;overflow:visible!important; }
   .app-main  { display:block!important;margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important; }
@@ -194,6 +241,9 @@
     word-break:break-all!important;overflow-wrap:break-word!important;
   }
 
+  /* ── Cover page ────────────────────────────────────────────────── */
+  .rpt-cover-page { page-break-after:always;break-after:page;min-height:0;margin-bottom:0; }
+
   /* ── Page-break rules ───────────────────────────────── */
   .rpt-vuln      { page-break-inside:avoid;break-inside:avoid; }
   .rpt-wstg-vuln { page-break-inside:avoid;break-inside:avoid; }
@@ -201,20 +251,30 @@
   .rpt-cover-grid{ page-break-inside:avoid;break-inside:avoid; }
   .rpt h2 { page-break-after:avoid;break-after:avoid; }
   .rpt h3 { page-break-after:avoid;break-after:avoid; }
-  .rpt-table { page-break-inside:auto; }
+  .rpt-table { page-break-inside:auto;border-collapse:separate!important;border-spacing:0!important; }
   .rpt-table tr { page-break-inside:avoid;break-inside:avoid; }
+  .rpt-table, .rpt-risk-class { border-collapse:separate!important;border-spacing:0!important; }
+  .rpt-table td, .rpt-table th,
+  .rpt-risk-class td, .rpt-risk-class th { display:table-cell!important;vertical-align:top!important;padding:10px 12px!important; }
 
   /* ── Base text ──────────────────────────────────────── */
   .rpt p, .rpt-field-val  { color:#333!important; }
   .rpt h2 { color:#444!important;border-color:#ccc!important; }
   .rpt h2::before { background:#666!important; }
   .rpt h3 { color:#222!important; }
-  .rpt-cover-cell { background:#f7f7f7!important;border-color:#ddd!important; }
-  .rpt-cover-cell-label { color:#888!important; }
-  .rpt-cover-cell-val   { color:#111!important; }
+  .rpt-cover-meta { border-color:#ddd!important; }
+  .rpt-cover-meta-row { border-color:#e0e0e0!important; }
+  .rpt-cover-meta-cell { border-color:#e0e0e0!important; }
+  .rpt-cover-meta-label { color:#888!important; }
+  .rpt-cover-meta-val   { color:#111!important; }
   .rpt-cover-type { color:#3b82f6!important;border-color:#3b82f644!important; }
   .rpt-cover-conf { color:#ef4444!important;border-color:#ef444444!important; }
-  .rpt-cover-bar  { background:linear-gradient(90deg,#3b82f6,#8b5cf6)!important; }
+  .rpt-cover-bar  { background:var(--accent)!important; }
+  .rpt-cover-page-bar  { background:var(--accent)!important; }
+  .rpt-cover-page-type { color:#3b82f6!important;border-color:#3b82f644!important; }
+  .rpt-cover-page-h1   { color:#111!important; }
+  .rpt-cover-page-client { color:#666!important; }
+  .rpt-cover-logo-ph   { color:#6d28d9!important;background:#ede9fe!important;border-color:#c4b5fd!important; }
 
   /* ── Severity colours (keep in print) ───────────────── */
   .sev-critical,.sev-badge.sev-critical { background:#fef2f2!important;color:#b91c1c!important;border-color:#fca5a5!important; }
@@ -249,7 +309,8 @@
   .rpt-code        { background:#f4f4f4!important;color:#333!important;border-color:#ddd!important; }
   .rpt-wstg-vuln   { background:#fafafa!important;border-color:#ddd!important;border-left-color:#ef4444!important; }
   .rpt-table th    { background:#f5f5f5!important;color:#666!important;border-color:#ddd!important; }
-  .rpt-table td    { color:#333!important;border-color:#eee!important; }
+  .rpt-table th    { padding:9px 12px!important; }
+  .rpt-table td    { color:#333!important;border-color:#eee!important;vertical-align:middle!important;padding:9px 12px!important; }
   .rpt-table tr:hover td { background:transparent!important; }
   .rpt-mini-fill   { background:#555!important; }
   .rpt-mini-bar    { background:#ddd!important; }
@@ -258,7 +319,190 @@
   .rpt-risk-legend-item { color:#555!important; }
   .rpt-status-done { background:#f0fdf4!important;color:#15803d!important;border-color:#86efac!important; }
   .rpt-status-fail { background:#fef2f2!important;color:#b91c1c!important;border-color:#fca5a5!important; }
+.rpt-toc { background:#f7f7f7!important;border-color:#ddd!important; }
+  .rpt-risk-class th { background:#f5f5f5!important;color:#666!important;border-color:#ddd!important; }
+  .rpt-risk-class th { padding:9px 12px!important; }
+  .rpt-risk-class td { color:#333!important;border-color:#eee!important;vertical-align:middle!important;padding:9px 12px!important; }
 }
+
+
+/* ── Report meta editor inputs ───────────────────────────────────── */
+.exp-input { width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;font-family:inherit;padding:5px 8px;box-sizing:border-box; }
+.exp-input:focus { outline:none;border-color:var(--accent); }
+.exp-meta-row { display:flex;flex-direction:column;gap:3px;margin-bottom:8px; }
+
+/* ── TOC ─────────────────────────────────────────────────────────── */
+.rpt-toc { background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin:0 0 28px; }
+.rpt-toc-title { font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);margin-bottom:10px; }
+.rpt-toc-item { font-size:13px;color:var(--text2);padding:3px 0;display:flex;gap:8px; }
+.rpt-toc-num { font-family:var(--mono);font-size:11px;color:var(--text3);min-width:22px; }
+
+/* ── Prose sections ──────────────────────────────────────────────── */
+.rpt-prose { font-size:var(--rpt-base-size,13px);color:var(--text2);line-height:1.7;margin:6px 0 20px; }
+.rpt-prose h2 { font-size:15px;font-weight:700;margin:16px 0 6px;color:var(--text);border:none;text-transform:none;letter-spacing:0;padding:0; }
+.rpt-prose h2::before { display:none; }
+.rpt-prose h3 { font-size:13px;font-weight:700;margin:12px 0 5px;color:var(--text); }
+.rpt-prose ul,.rpt-prose ol { padding-left:20px;margin:5px 0; }
+.rpt-prose li { margin:3px 0; }
+.rpt-prose a { color:var(--accent);text-decoration:underline; }
+.rpt-prose blockquote { border-left:3px solid var(--accent);margin:8px 0;padding:4px 12px;color:var(--text2);font-style:italic; }
+.rpt-prose pre { background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:10px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:8px 0; }
+
+/* ── Rich text editor ────────────────────────────────────────────── */
+.rich-tb { display:flex;align-items:center;gap:1px;padding:4px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:5px 5px 0 0;flex-wrap:wrap;gap:2px; }
+.rich-tb-btn { background:none;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--text2);font-size:11px;padding:2px 5px;line-height:1.5;min-width:22px;text-align:center;flex-shrink:0; }
+.rich-tb-btn:hover { background:var(--bg);border-color:var(--border); }
+.rich-tb-btn.active { background:var(--accent)18;border-color:var(--accent)55;color:var(--accent); }
+.rich-tb-sep { width:1px;height:13px;background:var(--border);margin:0 2px;flex-shrink:0; }
+.rich-editor { min-height:80px;max-height:280px;overflow-y:auto;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;color:var(--text);font-size:13px;line-height:1.7;outline:none;word-break:break-word; }
+.rich-editor:focus { border-color:var(--accent); }
+.rich-editor h2 { font-size:15px;font-weight:700;margin:10px 0 4px; }
+.rich-editor h3 { font-size:13px;font-weight:700;margin:8px 0 3px; }
+.rich-editor h4 { font-size:12px;font-weight:700;margin:6px 0 3px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3); }
+.rich-editor ul,.rich-editor ol { padding-left:20px;margin:4px 0; }
+.rich-editor li { margin:2px 0; }
+.rich-editor a { color:#7c3aed;text-decoration:underline; }
+.rich-editor blockquote { border-left:3px solid var(--accent);margin:6px 0;padding:3px 10px;color:var(--text3);font-style:italic; }
+.rich-editor pre { background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:7px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:5px 0; }
+.rich-editor table { border-collapse:collapse;width:100%;margin:6px 0; }
+.rich-editor th { background:var(--bg3);font-weight:600;font-size:11px;padding:5px 9px;border:1px solid var(--border2);text-align:left; }
+.rich-editor td { padding:5px 9px;border:1px solid var(--border2);font-size:12px;vertical-align:top; }
+.rich-editor hr { border:none;border-top:1px solid var(--border);margin:10px 0; }
+.rich-editor img { max-width:100%;border-radius:4px;margin:4px 0;display:block; }
+
+/* ── Table grid picker ───────────────────────────────────────────── */
+.rich-tg { display:grid;grid-template-columns:repeat(8,16px);gap:2px; }
+.rich-tc { width:16px;height:16px;border:1px solid var(--border2);border-radius:2px;cursor:pointer;transition:background .08s,border-color .08s; }
+.rich-tc.active { background:var(--accent)55;border-color:var(--accent); }
+.rich-tc:hover  { background:var(--accent)33;border-color:var(--accent); }
+.rich-tg-label  { font-family:var(--mono);font-size:10px;color:var(--accent);text-align:center;margin-top:6px;min-height:14px;letter-spacing:.04em; }
+.rich-tiny-input { width:44px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none;text-align:center; }
+.rich-tiny-input:focus { border-color:var(--accent); }
+/* ── Font-size input ─────────────────────────────────────────────── */
+.rich-fs-input { width:38px;height:22px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text2);font-family:var(--mono);font-size:10px;padding:1px 4px;outline:none;text-align:center;-moz-appearance:textfield; }
+.rich-fs-input:focus { border-color:var(--accent); }
+.rich-fs-input::-webkit-inner-spin-button,.rich-fs-input::-webkit-outer-spin-button { -webkit-appearance:none; }
+/* ── Context toolbars (table / image) ────────────────────────────── */
+.rich-ctx-tb { position:fixed;z-index:9500;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 4px;display:none;align-items:center;gap:2px;box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:all; }
+/* ── Active section edit button ──────────────────────────────────── */
+.sec-btn.active { color:var(--accent)!important;border-color:var(--accent)55!important;background:var(--accent)10!important; }
+.rich-color-wrap { position:relative;display:inline-flex; }
+.rich-color-palette { position:absolute;top:calc(100% + 3px);left:0;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px;display:none;flex-wrap:wrap;gap:3px;z-index:300;box-shadow:0 6px 20px rgba(0,0,0,.25);width:140px; }
+.rich-color-palette.open { display:flex; }
+.rich-sw { width:18px;height:18px;border-radius:3px;cursor:pointer;border:1px solid rgba(128,128,128,.2);flex-shrink:0;transition:transform .1s; }
+.rich-sw:hover { transform:scale(1.25);z-index:1;position:relative; }
+
+/* ── Risk classification table ───────────────────────────────────── */
+.rpt-risk-class { width:100%;border-collapse:separate;border-spacing:0;font-size:12px;margin:10px 0 24px; }
+.rpt-risk-class th { text-align:left;padding:9px 12px;background:var(--bg3);font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);border-bottom:1px solid var(--border); }
+.rpt-risk-class td { padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top; }
+.rpt-risk-class tr:last-child td { border-bottom:none; }
+
+
+/* ── Cover page (full dedicated first page) ──────────────────────── */
+.rpt-cover-page { display:flex;flex-direction:column;min-height:88vh;margin-bottom:60px; }
+.rpt-cover-page-bar { height:4px;background:var(--accent);flex-shrink:0; }
+.rpt-cover-page-body { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 40px 40px;gap:36px;text-align:center; }
+.rpt-cover-logo-wrap { display:flex;align-items:center;justify-content:center; }
+.rpt-cover-logo-ph { width:96px;height:96px;border-radius:16px;background:rgba(124,58,237,.09);border:2px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800;color:var(--accent); }
+.rpt-cover-title-block { display:flex;flex-direction:column;align-items:center;gap:14px; }
+.rpt-cover-page-type { font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:4px 14px; }
+.rpt-cover-page-h1 { font-size:36px;font-weight:800;letter-spacing:-.03em;color:var(--text);margin:0;line-height:1.1; }
+.rpt-cover-page-client { font-size:15px;color:var(--text3);font-style:italic; }
+.rpt-cover-page-footer { padding:0 40px 40px;flex-shrink:0; }
+.sec-pb-btn.sec-pb-on { color:var(--accent)!important;border-color:var(--accent)55!important;background:var(--accent)10!important; }
+
+/* ── Free Edit modal ─────────────────────────────────────────────── */
+.fe-modal { position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px); }
+.fe-modal-inner { background:var(--bg2);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;width:100%;max-width:900px;height:100%;max-height:calc(100vh - 48px);overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4);transition:max-width .2s ease; }
+.fe-modal-inner.split { max-width:1440px; }
+.fe-body { flex:1;display:flex;overflow:hidden;min-height:0; }
+#fe-preview { flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none; }
+#fe-preview.open { display:block; }
+
+/* ── Section builder ─────────────────────────────────────────────── */
+.sec-list { display:flex;flex-direction:column; }
+.sec-item { border-bottom:1px solid var(--border);background:var(--bg2);transition:background .1s; }
+.sec-item.drag-over { box-shadow:inset 0 2px 0 var(--accent);background:var(--bg3); }
+.sec-item.dragging { opacity:.35;background:var(--bg3); }
+.sec-row { display:flex;align-items:center;gap:5px;padding:5px 8px;min-height:32px; }
+.sec-drag { cursor:grab;color:var(--text3);font-size:13px;padding:0 3px;user-select:none;flex-shrink:0;line-height:1; }
+.sec-drag:active { cursor:grabbing; }
+.sec-eye { background:none;border:none;cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0;line-height:1;transition:opacity .15s; }
+.sec-eye.off { opacity:.2; }
+.sec-title-wrap { flex:1;min-width:0; }
+.sec-title { font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.sec-title.sec-dim { color:var(--text3);text-decoration:line-through;font-weight:400; }
+.sec-type-badge { font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.04em; }
+.sec-btn { background:none;border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 5px;line-height:1.5;flex-shrink:0; }
+.sec-btn:hover { color:var(--text);border-color:var(--text3);background:var(--bg3); }
+.sec-btn.del:hover { color:var(--red);border-color:var(--red)55;background:var(--red)08; }
+.sec-edit-body { display:none;padding:8px 10px 10px;border-top:1px solid var(--border)44;background:var(--bg); }
+.sec-edit-body.open { display:block; }
+.sec-meta-header { padding:7px 14px 6px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--text2);font-weight:600;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none; }
+.sec-meta-header:hover { filter:brightness(1.08); }
+.sec-meta-chevron { font-size:8px;transition:transform .18s;margin-left:auto;margin-right:2px; }
+.sec-meta-header.collapsed .sec-meta-chevron { transform:rotate(-90deg); }
+.cover-fields-grid { display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;margin:4px 0 6px; }
+
+/* ── Rich editor interaction cursors ─────────────────────────────── */
+.rich-editor td,.rich-editor th { cursor:cell; }
+.rich-editor td:hover,.rich-editor th:hover { background:var(--accent)0e!important; }
+.rich-editor img { cursor:pointer;transition:outline .1s; }
+.rich-editor img:hover { outline:2px solid var(--accent)88;border-radius:2px; }
+
+/* ── Watermark ───────────────────────────────────────────────────── */
+#rpt-watermark {
+  display:none;pointer-events:none;user-select:none;
+  font-weight:900;text-transform:uppercase;letter-spacing:.15em;
+  font-family:var(--mono);white-space:nowrap;
+  z-index:9999;
+}
+#rpt-watermark.wm-on { display:block; }
+/* screen: absolute inside exp-preview so it doesn't cover the editor panel */
+@media screen {
+  #rpt-watermark.wm-on {
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%) rotate(-45deg);
+    font-size:96px;color:var(--text);opacity:.045;
+  }
+}
+/* print: fixed so it repeats on every page */
+@media print {
+  #rpt-watermark.wm-on {
+    position:fixed!important;top:50%!important;left:50%!important;
+    transform:translate(-50%,-50%) rotate(-45deg)!important;
+    font-size:96px!important;color:#000!important;opacity:.07!important;
+  }
+}
+
+/* ── Screen-only: proper full-height independent scroll ──────────── */
+@media screen {
+  body { height:100vh!important;overflow:hidden; }
+  .app-main { flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0; }
+  /* Reset table wrapper to block so screen preview looks normal */
+  #rpt-ph-wrap { display:block;width:100%; }
+  #rpt-ph-wrap > thead, #rpt-ph-wrap > tfoot, #rpt-ph-wrap > tbody { display:block;border:none; }
+  #rpt-ph-wrap > thead > tr, #rpt-ph-wrap > tfoot > tr, #rpt-ph-wrap > tbody > tr { display:block;border:none; }
+  #rpt-ph-wrap > thead > tr > td, #rpt-ph-wrap > tfoot > tr > td, #rpt-ph-wrap > tbody > tr > td { display:block;border:none;padding:0 !important; }
+  .exp-preview { padding:40px 48px; }
+}
+
+/* ── Page header / footer ────────────────────────────────────────── */
+.rpt-ph, .rpt-pf {
+  display:none;max-width:720px;margin:0 auto;
+  padding:7px 12px;align-items:center;gap:10px;
+  background:var(--bg3);border-radius:5px;
+  font-size:11px;color:var(--text2);font-family:inherit;
+}
+.rpt-ph.enabled,.rpt-pf.enabled { display:flex; }
+.rpt-ph { margin-bottom:20px; }
+.rpt-pf { margin-top:20px; }
+.rpt-ph-logo { height:26px;max-width:90px;object-fit:contain;flex-shrink:0;border-radius:3px; }
+.rpt-ph-l,.rpt-ph-c,.rpt-ph-r { flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.rpt-ph-c { text-align:center; }
+.rpt-ph-r { text-align:right; }
+.rpt-pf-pgnum-screen { font-family:var(--mono);font-size:10px;color:var(--text3); }
 </style>
 </head>
 <body style="display:flex;flex-direction:column;min-height:100vh">
@@ -273,30 +517,37 @@
 
     <!-- Topbar controls -->
     <div class="export-controls no-print"
-      style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--bg2);flex-shrink:0;flex-wrap:wrap">
-      <div>
-        <div class="page-title" style="font-size:16px">Export Report</div>
-        <div class="page-subtitle">// <span id="export-project-name">—</span></div>
+      style="padding:8px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--bg2);flex-shrink:0;height:50px">
+
+      <!-- Project title -->
+      <div style="display:flex;flex-direction:column;gap:1px;padding-right:16px;border-right:1px solid var(--border);flex-shrink:0">
+        <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.2">Export Report</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3)" id="export-project-name">—</div>
       </div>
-      <select id="export-scope" class="form-input" style="width:165px;cursor:pointer" onchange="buildReport()">
-        <option value="all">Full Report</option>
-        <option value="vulns">Custom Vulns Only</option>
-        <option value="wstg">WSTG Only</option>
-      </select>
-      <select id="report-type" class="form-input" style="width:145px;cursor:pointer" onchange="buildReport()">
-        <option value="technical">Technical</option>
-        <option value="executive">Executive</option>
-      </select>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;padding:5px 10px;background:var(--bg3);border-radius:7px;border:1px solid var(--border)">
-        <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
-        <label class="exp-opt"><input type="checkbox" id="opt-rem"   checked onchange="buildReport()"> Remediation</label>
-        <label class="exp-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
-        <label class="exp-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
-        <label class="exp-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
+
+      <!-- Scope + Type -->
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.09em">SCOPE</span>
+          <select id="export-scope" class="form-input" style="width:130px;cursor:pointer;padding:4px 8px;font-size:12px" onchange="buildReport()">
+            <option value="all">Full Report</option>
+            <option value="vulns">Vulns Only</option>
+            <option value="wstg">WSTG Only</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.09em">TYPE</span>
+          <select id="report-type" class="form-input" style="width:118px;cursor:pointer;padding:4px 8px;font-size:12px" onchange="buildReport()">
+            <option value="technical">Technical</option>
+            <option value="executive">Executive</option>
+          </select>
+        </div>
       </div>
-      <div style="margin-left:auto;display:flex;gap:8px">
-        <button class="btn-secondary" onclick="copyMarkdown()" style="padding:7px 13px;font-size:12px">📋 Markdown</button>
-        <button class="btn-accent"    onclick="window.print()"  style="padding:7px 13px;font-size:12px">🖨 Export PDF</button>
+
+      <!-- Actions -->
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <button class="btn-secondary" onclick="copyMarkdown()" style="padding:6px 12px;font-size:12px">Copy MD</button>
+        <button class="btn-accent"    onclick="exportPdf()"  style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
       </div>
     </div>
 
@@ -305,21 +556,66 @@
 
       <!-- LEFT: editor panel -->
       <div class="exp-editor no-print">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em">
-          REPORT EDITOR
+        <div style="flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg2)">
+          <div style="padding:9px 14px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;font-weight:700;color:var(--text2)">Report Editor</span>
+            <button id="btn-free-edit" class="btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px" onclick="confirmFreeEdit()">⇄ Free Edit</button>
+          </div>
         </div>
         <div id="editor-panel"></div>
       </div>
 
       <!-- RIGHT: live preview -->
-      <div class="exp-preview">
-        <div id="report-preview" class="rpt" style="max-width:720px;margin:0 auto"></div>
+      <div class="exp-preview" style="position:relative">
+        <div id="rpt-watermark" class="rpt-watermark"></div>
+        <table id="rpt-ph-wrap" style="width:100%;border-collapse:collapse;border:none">
+          <thead class="rpt-phw-head">
+            <tr><td style="padding:0.5cm 2cm 0.2cm"><div id="rpt-ph" class="rpt-ph"></div></td></tr>
+          </thead>
+          <tfoot class="rpt-phw-foot">
+            <tr><td style="padding:0.2cm 2cm 0.4cm"><div id="rpt-pf" class="rpt-pf"></div></td></tr>
+          </tfoot>
+          <tbody>
+            <tr><td style="padding:1.8cm 2cm;vertical-align:top">
+              <div id="report-preview" class="rpt" style="max-width:720px;margin:0 auto"></div>
+            </td></tr>
+          </tbody>
+        </table>
       </div>
 
     </div>
   </div>
 </div>
 
+<!-- Table context toolbar -->
+<div id="rich-ctx-table" class="rich-ctx-tb no-print">
+  <button class="rich-tb-btn" onclick="richTableAddRow()" title="Add row below">+ row ↓</button>
+  <button class="rich-tb-btn" onclick="richTableAddCol()" title="Add column right">+ col →</button>
+  <span class="rich-tb-sep"></span>
+  <button class="rich-tb-btn" onclick="richTableDelRow()" title="Delete current row">− row</button>
+  <button class="rich-tb-btn" onclick="richTableDelCol()" title="Delete current column">− col</button>
+  <span class="rich-tb-sep"></span>
+  <button class="rich-tb-btn" style="color:var(--red)" onclick="richTableDelete()" title="Delete entire table">🗑 table</button>
+</div>
+<!-- Image context toolbar -->
+<div id="rich-ctx-img" class="rich-ctx-tb no-print">
+  <button class="rich-tb-btn" onclick="richImgWidth(25)" title="25% width">25%</button>
+  <button class="rich-tb-btn" onclick="richImgWidth(50)" title="50% width">50%</button>
+  <button class="rich-tb-btn" onclick="richImgWidth(75)" title="75% width">75%</button>
+  <button class="rich-tb-btn" onclick="richImgWidth(100)" title="Full width">100%</button>
+  <span class="rich-tb-sep"></span>
+  <input id="rich-img-w-input" class="rich-tiny-input" type="number" min="20" max="2000" placeholder="px"
+    title="Custom width in pixels"
+    onkeydown="if(event.key==='Enter')richImgWidthPx(this.value)"
+    onblur="richImgWidthPx(this.value)">
+  <span style="font-family:var(--mono);font-size:9px;color:var(--text3)">px</span>
+  <span class="rich-tb-sep"></span>
+  <button class="rich-tb-btn" onclick="richImgAlign('left')"   title="Float left">◧</button>
+  <button class="rich-tb-btn" onclick="richImgAlign('center')" title="Center">⊡</button>
+  <button class="rich-tb-btn" onclick="richImgAlign('right')"  title="Float right">◨</button>
+  <span class="rich-tb-sep"></span>
+  <button class="rich-tb-btn" style="color:var(--red)" onclick="richImgDelete()" title="Delete image">🗑</button>
+</div>
 <div class="toast-container" id="toast-container"></div>
 
 <script src="js/data.js"></script>
@@ -330,16 +626,1442 @@
 <script src="js/components/activity.js"></script>
 <script src="js/page.js"></script>
 <script>
+// ── Styled markdown renderer (uses .rpt CSS classes) ─────────────
+function renderMdStyled(raw) {
+  if (!raw) return '';
+  const _e = s => typeof s==='string' ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
+  function inline(text) {
+    const parts = []; const re = /`([^`]+)`/g; let last = 0, m;
+    function applyBoldItalic(t) {
+      return _e(t).replace(/\*\*([^*<>]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*<>]+)\*/g,'<em>$1</em>');
+    }
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(applyBoldItalic(text.slice(last, m.index)));
+      parts.push(`<code style="font-family:var(--mono);font-size:11px;background:var(--bg3);padding:1px 5px;border-radius:3px">${_e(m[1])}</code>`);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(applyBoldItalic(text.slice(last)));
+    return parts.join('');
+  }
+  function flushTable(rows, out) {
+    if (!rows.length) return;
+    const [head, , ...body] = rows;
+    const cols = head.split('|').slice(1,-1).map(c => c.trim());
+    out.push(`<table class="rpt-table" style="margin:10px 0"><thead><tr>${cols.map(c=>`<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>`);
+    body.forEach(row => {
+      const cells = row.split('|').slice(1,-1).map(c => c.trim());
+      out.push(`<tr>${cols.map((_,i)=>`<td>${inline(cells[i]||'')}</td>`).join('')}</tr>`);
+    });
+    out.push('</tbody></table>');
+  }
+  const lines = raw.split('\n'), out = [];
+  let inCode=false, codeLines=[], tableRows=[], inList=false;
+  function endList() { if (inList) { out.push('</ul>'); inList=false; } }
+  function endTable() { if (tableRows.length) { flushTable(tableRows, out); tableRows=[]; } }
+  for (const line of lines) {
+    if (!inCode && line.startsWith('```')) { endList(); endTable(); inCode=true; codeLines=[]; continue; }
+    if (inCode) {
+      if (line.startsWith('```')) { inCode=false; out.push(`<pre class="rpt-code" style="margin:8px 0"><code>${_e(codeLines.join('\n'))}</code></pre>`); codeLines=[]; }
+      else codeLines.push(line);
+      continue;
+    }
+    if (/^\|.+\|/.test(line)) { endList(); tableRows.push(line); continue; }
+    endTable();
+    if (line.startsWith('#### ')) { endList(); out.push(`<h3 style="font-size:12px;font-weight:700;margin:18px 0 8px;color:var(--text)">${inline(line.slice(5))}</h3>`); continue; }
+    if (line.startsWith('### '))  { endList(); out.push(`<h3>${inline(line.slice(4))}</h3>`); continue; }
+    if (line.startsWith('## '))   { endList(); out.push(`<h2>${inline(line.slice(3))}</h2>`); continue; }
+    if (line.startsWith('# '))    { endList(); out.push(`<h1 style="font-size:26px;font-weight:800;margin:0 0 8px;letter-spacing:-.02em">${inline(line.slice(2))}</h1>`); continue; }
+    if (/^[-*] /.test(line)) {
+      if (!inList) { out.push('<ul style="padding-left:18px;margin:6px 0">'); inList=true; }
+      out.push(`<li style="color:var(--text2);font-size:13px;line-height:1.7;margin:2px 0">${inline(line.slice(2))}</li>`);
+      continue;
+    }
+    endList();
+    if (line.trim() === '') { out.push('<div style="height:8px"></div>'); continue; }
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  endList(); endTable();
+  if (inCode) out.push(`<pre class="rpt-code"><code>${_e(codeLines.join('\n'))}</code></pre>`);
+  return out.join('');
+}
+
 const SEV_ORDER = ['critical','high','medium','low','info'];
 const SEV_LABEL = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
 const SEV_EMOJI = { critical:'🔴', high:'🟠', medium:'🟡', low:'🔵', info:'⚪' };
 
+
+// ── Free Edit (full markdown override) ───────────────────────────
+let _freeEditMd  = null;
+let _feSaveTimer = null;
+
+function _buildMdSnapshot() {
+  buildReport();
+  return _mdLines.join('\n');
+}
+
+function confirmFreeEdit() {
+  if (_freeEditMd !== null) { enterFreeEdit(); return; }
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)';
+  overlay.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:100%;max-width:420px;margin:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4)">
+      <div style="padding:20px 22px 0">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:34px;height:34px;border-radius:8px;background:var(--accent)18;border:1px solid var(--accent)33;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⇄</div>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--text)">Convertir a Markdown</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:1px">modo de edición libre</div>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0 0 10px">
+          El reporte pasará a <strong style="color:var(--text)">texto plano editable</strong>. El diseño con tarjetas de severity, colores y componentes visuales será reemplazado por un formato simplificado.
+        </p>
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-size:12px;color:var(--text3);line-height:1.5">
+          Podés <strong style="color:var(--text2)">Descartar</strong> en cualquier momento para volver al formato original con todo el diseño intacto.
+        </div>
+      </div>
+      <div style="padding:16px 22px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-secondary" style="padding:7px 16px;font-size:12px" id="fe-cancel">Cancelar</button>
+        <button class="btn-accent"    style="padding:7px 16px;font-size:12px" id="fe-confirm">Continuar →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#fe-cancel').onclick  = () => overlay.remove();
+  overlay.querySelector('#fe-confirm').onclick = () => { overlay.remove(); enterFreeEdit(); };
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function enterFreeEdit() {
+  const md = _freeEditMd ?? _buildMdSnapshot();
+  _freeEditMd = md;
+  _persistFreeEdit();
+
+  if (document.getElementById('fe-modal')) return;
+  const modal = document.createElement('div');
+  modal.className = 'fe-modal no-print';
+  modal.id = 'fe-modal';
+  modal.innerHTML = `
+    <div class="fe-modal-inner">
+      <div style="padding:9px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent)">⇄ Modo Markdown</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">— diseño visual reemplazado por texto plano</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button id="fe-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="toggleFeSplit()">◫ Split View</button>
+          <button class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="discardFreeEdit()">✕ Descartar</button>
+          <button class="btn-accent"    style="padding:4px 11px;font-size:11px" onclick="closeFreeEdit()">← Volver</button>
+        </div>
+      </div>
+      <div class="fe-body">
+        <textarea id="fe-ta" spellcheck="false"
+          style="flex:1;min-width:0;background:var(--bg);border:none;color:var(--text);font-family:var(--mono);font-size:12px;padding:16px 20px;resize:none;box-sizing:border-box;line-height:1.8;outline:none"
+          oninput="onFreeEditInput(this.value)">${esc(md)}</textarea>
+        <div id="fe-preview">
+          <div id="fe-preview-content" class="rpt" style="max-width:680px;margin:0 auto"></div>
+        </div>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) closeFreeEdit(); });
+  document.body.appendChild(modal);
+  document.getElementById('fe-ta').focus();
+}
+
+function onFreeEditInput(val) {
+  _freeEditMd = val;
+  _updateFePreview();
+  clearTimeout(_feSaveTimer);
+  _feSaveTimer = setTimeout(_persistFreeEdit, 800);
+}
+
+function _updateFePreview() {
+  const el = document.getElementById('fe-preview-content');
+  if (el) el.innerHTML = renderMdStyled(_freeEditMd || '');
+}
+
+function toggleFeSplit() {
+  const pane  = document.getElementById('fe-preview');
+  const inner = document.querySelector('.fe-modal-inner');
+  const btn   = document.getElementById('fe-split-btn');
+  if (!pane) return;
+  const open = pane.classList.toggle('open');
+  inner.classList.toggle('split', open);
+  btn.textContent = open ? '▣ Editor Only' : '◫ Split View';
+  if (open) _updateFePreview();
+}
+
+function _persistFreeEdit() {
+  const d = getReportData();
+  d.freeEditMd = _freeEditMd;
+  saveReportData(d, false);
+}
+
+function closeFreeEdit() {
+  // Keep _freeEditMd — report will render from it, banner shows in editor
+  document.getElementById('fe-modal')?.remove();
+  buildEditor();
+  buildReport();
+}
+
+function discardFreeEdit() {
+  _freeEditMd = null;
+  clearTimeout(_feSaveTimer);
+  const d = getReportData();
+  delete d.freeEditMd;
+  saveReportData(d, false);
+  document.getElementById('fe-modal')?.remove();
+  buildEditor();
+  buildReport();
+}
+
 // Local overrides for desc/rem/evidence (keyed by vuln id or test id)
-// These are pre-populated from state and saved back on blur
-const _localEdits = {}; // { [id]: { description, remediation, evidence: [] } }
+const _localEdits = {};
 
 // Target detail cache (ports + endpoints fetched for report)
 const _targetFull = {};
+
+// ── Default sections ──────────────────────────────────────────────
+const DEFAULT_SECTIONS = [
+  { id:'exec-summary',      type:'exec-summary',      title:'Executive Summary',   visible:true  },
+  { id:'findings-index',    type:'findings-index',    title:'Findings Index',      visible:true  },
+  { id:'wstg',              type:'wstg',              title:'OWASP WSTG Progress', visible:true  },
+  { id:'detailed-findings', type:'detailed-findings', title:'Detailed Findings',   visible:true  },
+  { id:'targets',           type:'targets',           title:'Scope — Targets',     visible:true  },
+  { id:'risk-table',        type:'risk-table',        title:'Risk Classification', visible:false },
+];
+
+// ── Report data (localStorage, keyed by project) ──────────────────
+function getReportData() {
+  const pid = state.currentProject?.id;
+  if (!pid) return { meta:{}, sections: DEFAULT_SECTIONS.map(s=>({...s})) };
+  try {
+    const raw = JSON.parse(localStorage.getItem(`fd_rpt_${pid}`) || '{}');
+    // Migrate from old flat format
+    if (!raw.sections) {
+      const sections = DEFAULT_SECTIONS.map(s => {
+        const sec = { ...s };
+        if (s.id === 'risk-table') sec.visible = !!raw.showRiskTable;
+        return sec;
+      });
+      const meta = {
+        preparedBy:     raw.preparedBy     || '',
+        organization:   raw.organization   || '',
+        version:        raw.version        || '',
+        classification: raw.classification || 'Confidential',
+        showToc:        !!raw.showToc,
+        coverFields: { date:true, target:true, preparedBy:true, organization:true, scope:true, version:true, totalFindings:true, wstgCoverage:true },
+      };
+      const migrated = { meta, sections };
+      localStorage.setItem(`fd_rpt_${pid}`, JSON.stringify(migrated));
+      return migrated;
+    }
+    if (!raw.meta) raw.meta = {};
+    if (!raw.meta.coverFields) raw.meta.coverFields = { date:true, target:true, preparedBy:true, organization:true, scope:true, version:true, totalFindings:true, wstgCoverage:true };
+    // Remove deprecated section types
+    const REMOVED_IDS = new Set(['intro','scope','methodology','disclaimer','contact']);
+    if (raw.sections) raw.sections = raw.sections.filter(s => !REMOVED_IDS.has(s.id) && !REMOVED_IDS.has(s.type));
+    return raw;
+  } catch { return { meta:{}, sections: DEFAULT_SECTIONS.map(s=>({...s})) }; }
+}
+
+const REPORT_FONTS = [
+  { key:'',         label:'Inter (default)',  css:"'Inter',system-ui,sans-serif" },
+  { key:'georgia',  label:'Georgia',          css:"Georgia,'Times New Roman',serif" },
+  { key:'times',    label:'Times New Roman',  css:"'Times New Roman',Times,serif" },
+  { key:'arial',    label:'Arial',            css:"Arial,Helvetica,sans-serif" },
+  { key:'mono',     label:'Typewriter',       css:"'Courier New',Courier,monospace" },
+];
+
+function applyReportFont(key) {
+  const f = REPORT_FONTS.find(f => f.key === (key||'')) || REPORT_FONTS[0];
+  document.documentElement.style.setProperty('--rpt-font', f.css);
+}
+
+function applyBaseFontSize(size) {
+  document.documentElement.style.setProperty('--rpt-base-size', `${size || 13}px`);
+}
+
+function setRptBaseFontSize(size) {
+  const d = getReportData();
+  d.meta.baseFontSize = +size;
+  saveReportData(d);
+}
+
+function setRptAccent(color) {
+  const d = getReportData();
+  d.meta.accentColor = color;
+  saveReportData(d);
+  buildEditor(); // refresh swatches outline
+}
+
+
+function applyWatermark(meta) {
+  const el = document.getElementById('rpt-watermark');
+  if (!el) return;
+  const wm = meta?.watermark || {};
+  el.textContent = wm.text || 'DRAFT';
+  el.classList.toggle('wm-on', !!wm.enabled);
+}
+
+function applyReportAccent(color) {
+  let tag = document.getElementById('rpt-accent-style');
+  if (!tag) {
+    tag = document.createElement('style');
+    tag.id = 'rpt-accent-style';
+    document.head.appendChild(tag);
+  }
+  if (!color) { tag.textContent = ''; return; }
+  // Build explicit rules — JS string concatenation avoids the CSS `var(--x)44` invalid-token bug
+  const c44 = color + '44'; // ~27% opacity hex suffix
+  const c33 = color + '33'; // ~20% opacity hex suffix
+  const c18 = color + '18'; //  ~9% opacity hex suffix
+  const c88 = color + '88'; // ~53% opacity hex suffix
+  tag.textContent = `
+    /* accent override — screen */
+    #report-preview .rpt h2::before { background:${color}!important; }
+    #report-preview .rpt-cover-bar,
+    #report-preview .rpt-cover-page-bar { background:linear-gradient(90deg,${color},${c88})!important; }
+    #report-preview .rpt-cover-type { color:${color}!important;border-color:${c44}!important; }
+    #report-preview .rpt-cover-page-type { color:${color}!important;border-color:${c44}!important; }
+    #report-preview .rpt-cover-logo-ph { color:${color}!important;background:${c18}!important;border-color:${c33}!important; }
+    #report-preview .rpt-toc-item a:hover { color:${color}!important;border-bottom-color:${c44}!important; }
+    #report-preview .rpt-prose a { color:${color}!important; }
+    #report-preview .rpt-prose blockquote { border-left-color:${color}!important; }
+    /* accent override — print (Puppeteer PDF) */
+    @media print {
+      :root { --accent:${color}!important; }
+      .rpt h2::before { background:${color}!important; }
+      .rpt-cover-bar,.rpt-cover-page-bar { background:linear-gradient(90deg,${color},${c88})!important; }
+      .rpt-cover-type,.rpt-cover-page-type { color:${color}!important;border-color:${c44}!important; }
+      .rpt-cover-logo-ph { color:${color}!important;background:${c18}!important;border-color:${c33}!important; }
+      .rpt-prose a { color:${color}!important; }
+      .rpt-prose blockquote { border-left-color:${color}!important; }
+    }
+  `;
+}
+
+function saveReportData(data, rebuild = true) {
+  const pid = state.currentProject?.id;
+  if (!pid) return;
+  localStorage.setItem(`fd_rpt_${pid}`, JSON.stringify(data));
+  applyReportFont(data.meta?.font);
+  applyBaseFontSize(data.meta?.baseFontSize);
+  applyReportAccent(data.meta?.accentColor);
+  applyWatermark(data.meta);
+  if (rebuild) buildReport();
+}
+
+// ── Page Layout (header / footer) ────────────────────────────────
+// Zone data structure:
+// { enabled, cols: { left, center, right } }
+// Each col: { mode: 'text'|'image', text: '', img: '' }
+// Footer cols may also have mode: 'pagenum'
+
+function _defaultCol() { return { mode:'text', text:'', img:'' }; }
+function _getZone(meta, zone) {
+  if (!meta[zone]) meta[zone] = { enabled:false, cols:{ left:_defaultCol(), center:_defaultCol(), right:_defaultCol() } };
+  const z = meta[zone];
+  if (!z.cols) z.cols = { left:_defaultCol(), center:_defaultCol(), right:_defaultCol() };
+  ['left','center','right'].forEach(k => { if (!z.cols[k]) z.cols[k] = _defaultCol(); });
+  return z;
+}
+
+function setPageLayoutEnabled(zone, val) {
+  const d = getReportData();
+  _getZone(d.meta, zone).enabled = val;
+  saveReportData(d, false);
+  buildPageLayout();
+  buildEditor();
+}
+
+function setPageLayoutColMode(zone, col, mode) {
+  const d = getReportData();
+  _getZone(d.meta, zone).cols[col].mode = mode;
+  saveReportData(d, false);
+  buildPageLayout();
+  buildEditor();
+}
+
+function setPageLayoutColText(zone, col, val) {
+  const d = getReportData();
+  _getZone(d.meta, zone).cols[col].text = val;
+  saveReportData(d, false);
+  buildPageLayout();
+}
+
+function setPageLayoutColImg(zone, col, val) {
+  const d = getReportData();
+  _getZone(d.meta, zone).cols[col].img = val;
+  saveReportData(d, false);
+  buildPageLayout();
+  buildEditor();
+}
+
+function uploadColLogo(zone, col, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => setPageLayoutColImg(zone, col, e.target.result);
+  reader.readAsDataURL(file);
+}
+
+function setPageLayoutColShadow(zone, col, val) {
+  const d = getReportData();
+  _getZone(d.meta, zone).cols[col].imgShadow = val;
+  saveReportData(d, false);
+  buildPageLayout();
+}
+
+function _renderZoneCol(col, align) {
+  const cls = `rpt-ph-${align[0]}`; // l/c/r
+  if (!col || col.mode === 'text') {
+    return `<span class="${cls}">${esc(col?.text||'')}</span>`;
+  }
+  if (col.mode === 'image') {
+    const shadow = col.imgShadow ? ' style="filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))"' : '';
+    return `<span class="${cls}">${col.img ? `<img src="${col.img}" class="rpt-ph-logo"${shadow}>` : ''}</span>`;
+  }
+  if (col.mode === 'pagenum') {
+    const pre = col.text ? col.text + ' ' : 'Page ';
+    return `<span class="${cls}"><span class="rpt-pf-pgnum-wrap" data-pre="${esc(pre)}"><span class="rpt-pf-pgnum-screen">${esc(pre)}1</span></span></span>`;
+  }
+  return `<span class="${cls}"></span>`;
+}
+
+function buildPageLayout() {
+  const m = getReportData().meta;
+  ['header','footer'].forEach(zone => {
+    const el = document.getElementById(`rpt-p${zone==='header'?'h':'f'}`);
+    if (!el) return;
+    const z = _getZone(m, zone);
+    el.classList.toggle('enabled', !!z.enabled);
+    if (z.enabled) {
+      el.innerHTML =
+        _renderZoneCol(z.cols.left,   'left') +
+        _renderZoneCol(z.cols.center, 'center') +
+        _renderZoneCol(z.cols.right,  'right');
+    }
+  });
+
+  // Toggle table-layout classes for repeating header/footer in print
+  const wrap = document.getElementById('rpt-ph-wrap');
+  if (wrap) {
+    wrap.classList.toggle('ph-active', !!_getZone(m,'header').enabled);
+    wrap.classList.toggle('pf-active', !!_getZone(m,'footer').enabled);
+  }
+}
+
+function setRptFont(key) {
+  const d = getReportData();
+  d.meta.font = key;
+  saveReportData(d);
+}
+
+// Compatibility shims for template selector and other callers
+function getRptMeta() { return getReportData().meta; }
+function setRptMeta(key, value) {
+  const d = getReportData();
+  d.meta[key] = value;
+  saveReportData(d);
+}
+
+// ── Cover field toggle ────────────────────────────────────────────
+function secSetCoverField(field, val) {
+  const d = getReportData();
+  if (!d.meta.coverFields) d.meta.coverFields = {};
+  d.meta.coverFields[field] = val;
+  saveReportData(d);
+}
+
+// ── Section visibility / edit toggles ────────────────────────────
+function secToggleVisible(id) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === id);
+  if (!sec) return;
+  sec.visible = !sec.visible;
+  saveReportData(d);
+  const eye   = document.getElementById(`sec-eye-${id}`);
+  const title = document.getElementById(`sec-title-${id}`);
+  if (eye)   { eye.classList.toggle('off', !sec.visible); eye.title = sec.visible ? 'Hide' : 'Show'; }
+  if (title) { title.classList.toggle('sec-dim', !sec.visible); }
+}
+
+function secTogglePageBreak(id) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === id);
+  if (!sec) return;
+  sec.pageBreak = !sec.pageBreak;
+  saveReportData(d);
+  const btn = document.getElementById(`sec-pb-${id}`);
+  if (btn) {
+    btn.classList.toggle('sec-pb-on', !!sec.pageBreak);
+    btn.title = sec.pageBreak ? 'Remove page break' : 'Start on new page';
+  }
+}
+
+function secToggleEdit(id) {
+  const body = document.getElementById(`sec-edit-${id}`);
+  body?.classList.toggle('open');
+  document.getElementById(`sec-edit-btn-${id}`)
+    ?.classList.toggle('active', body?.classList.contains('open') ?? false);
+}
+
+function secUpdateContent(id, val) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === id);
+  if (sec) sec.content = val;
+  saveReportData(d);
+}
+
+function secUpdateFontSize(id, val) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === id);
+  if (sec) sec.fontSize = val ? +val : null;
+  saveReportData(d);
+}
+
+function secUpdateTitle(id, val) {
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === id);
+  if (sec) sec.title = val;
+  saveReportData(d);
+  const el = document.getElementById(`sec-title-${id}`);
+  if (el) el.textContent = val;
+}
+
+function secDelete(id) {
+  if (!confirm('Delete this section?')) return;
+  const d = getReportData();
+  d.sections = d.sections.filter(s => s.id !== id);
+  saveReportData(d);
+  document.getElementById(`sec-item-${id}`)?.remove();
+  buildReport();
+}
+
+function secAddCustom() {
+  const d = getReportData();
+  const id = 'custom-' + Date.now();
+  d.sections.push({ id, type:'custom', title:'New Section', visible:true, content:'' });
+  saveReportData(d, false);
+  // Append new item to existing list without full rebuild
+  const list = document.getElementById('sec-list');
+  if (list) {
+    const div = document.createElement('div');
+    div.innerHTML = buildSecItem({ id, type:'custom', title:'New Section', visible:true, content:'' });
+    list.appendChild(div.firstElementChild);
+    setTimeout(() => {
+      document.getElementById(`sec-edit-${id}`)?.classList.add('open');
+      document.getElementById(`sec-title-input-${id}`)?.focus();
+    }, 30);
+  }
+  buildReport();
+}
+
+// ── Drag-and-drop ─────────────────────────────────────────────────
+let _dragId = null;
+let _dragHandleActive = false;
+
+function secDragHandleDown() { _dragHandleActive = true; }
+
+function secDragStart(e, id) {
+  if (!_dragHandleActive) { e.preventDefault(); return; }
+  _dragHandleActive = false;
+  _dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => document.getElementById(`sec-item-${id}`)?.classList.add('dragging'), 0);
+}
+
+function secDragEnd() {
+  _dragHandleActive = false;
+  _dragId = null;
+  document.querySelectorAll('.sec-item').forEach(el => el.classList.remove('dragging','drag-over'));
+}
+
+function secDragOver(e, id) {
+  if (!_dragId || _dragId === id) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.sec-item').forEach(el => el.classList.remove('drag-over'));
+  document.getElementById(`sec-item-${id}`)?.classList.add('drag-over');
+}
+
+function secDrop(e, id) {
+  e.preventDefault();
+  if (!_dragId || _dragId === id) return;
+  const d = getReportData();
+  const fi = d.sections.findIndex(s => s.id === _dragId);
+  const ti = d.sections.findIndex(s => s.id === id);
+  if (fi < 0 || ti < 0) return;
+  const [moved] = d.sections.splice(fi, 1);
+  d.sections.splice(ti, 0, moved);
+  saveReportData(d, false);
+  // Update sec-list DOM directly (buildSectionList() only returns HTML, doesn't update DOM)
+  const list = document.getElementById('sec-list');
+  if (list) list.innerHTML = d.sections.map(sec => buildSecItem(sec)).join('');
+  buildReport();
+}
+
+// ── Rich text editor helpers ──────────────────────────────────────
+const _RICH_FG = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#f9a8d4','#fde68a','#a7f3d0','#bfdbfe','#94a3b8','#475569','#1e293b','#ffffff'];
+const _RICH_HI = ['#fef08a','#bbf7d0','#bfdbfe','#fecaca','#fed7aa','#e9d5ff','#f0f9ff','transparent'];
+
+// palId = element id of the palette div
+function richTogglePalette(palId) {
+  const pal = document.getElementById(palId);
+  if (!pal) return;
+  document.querySelectorAll('.rich-color-palette').forEach(el => { if (el !== pal) el.classList.remove('open'); });
+  pal.classList.toggle('open');
+}
+
+// editorId = id of the contenteditable div
+function richApplyColor(editorId, color, type) {
+  document.querySelectorAll('.rich-color-palette').forEach(el => el.classList.remove('open'));
+  document.getElementById(editorId)?.focus();
+  document.execCommand(type === 'fg' ? 'foreColor' : 'hiliteColor', false, color);
+}
+
+function richInsertLink(editorId) {
+  const sel = window.getSelection();
+  const range = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+  const selectedText = sel.toString();
+  const url = prompt('URL:');
+  if (!url) return;
+  if (range) { sel.removeAllRanges(); sel.addRange(range); }
+  document.getElementById(editorId)?.focus();
+  document.execCommand('insertHTML', false,
+    `<a href="${esc(url)}" style="color:#7c3aed;text-decoration:underline">${esc(selectedText || url)}</a>`);
+}
+
+// editorId = id of the contenteditable, palPfx = prefix for palette ids
+function _richToolbar(editorId, palPfx) {
+  palPfx = palPfx || editorId; // ensure unique IDs per editor
+  const TG_ROWS = 8, TG_COLS = 8;
+  let gridCells = '';
+  for (let r = 1; r <= TG_ROWS; r++)
+    for (let c = 1; c <= TG_COLS; c++)
+      gridCells += `<div class="rich-tc" id="${palPfx}-tc-${r}-${c}"
+        onmouseover="richTableHover('${palPfx}',${r},${c})"
+        onmousedown="event.preventDefault()"
+        onclick="richTableInsert('${editorId}','${palPfx}',${r},${c})"></div>`;
+
+  const fgSwatches = _RICH_FG.map(c =>
+    `<div class="rich-sw" style="background:${c};${c==='#ffffff'?'border:1px solid #ccc':''}" onmousedown="event.preventDefault()" onclick="richApplyColor('${editorId}','${c}','fg')" title="${c}"></div>`
+  ).join('');
+  const hiSwatches = _RICH_HI.map(c =>
+    `<div class="rich-sw" style="background:${c==='transparent'?'repeating-linear-gradient(45deg,#ddd,#ddd 3px,#fff 3px,#fff 6px)':c}" onmousedown="event.preventDefault()" onclick="richApplyColor('${editorId}','${c}','hi')" title="${c==='transparent'?'None':c}"></div>`
+  ).join('');
+  const btn = (action, label, title) =>
+    `<button class="rich-tb-btn" title="${title}" onmousedown="event.preventDefault()" onclick="${action}">${label}</button>`;
+  const sep = `<span class="rich-tb-sep"></span>`;
+  return `<div class="rich-tb">
+    ${btn(`document.execCommand('undo')`,'↩','Undo')}
+    ${btn(`document.execCommand('redo')`,'↪','Redo')}
+    ${sep}
+    ${btn(`document.execCommand('bold')`,`<strong>B</strong>`,'Bold')}
+    ${btn(`document.execCommand('italic')`,`<em>I</em>`,'Italic')}
+    ${btn(`document.execCommand('underline')`,`<u>U</u>`,'Underline')}
+    ${btn(`document.execCommand('strikeThrough')`,`<s>S</s>`,'Strikethrough')}
+    ${btn(`document.execCommand('superscript')`,'x²','Superscript')}
+    ${btn(`document.execCommand('subscript')`,'x₂','Subscript')}
+    ${sep}
+    <input class="rich-fs-input" type="number" min="8" max="96" placeholder="sz"
+      title="Font size (8–96px) — apply to selection"
+      onmousedown="event.stopPropagation()"
+      onkeydown="if(event.key==='Enter'){richSetFontSize('${editorId}',this.value);this.blur()}"
+      onblur="richSetFontSize('${editorId}',this.value)">
+    ${sep}
+    ${btn(`document.execCommand('formatBlock',false,'h2')`,'H2','Heading 2')}
+    ${btn(`document.execCommand('formatBlock',false,'h3')`,'H3','Heading 3')}
+    ${btn(`document.execCommand('formatBlock',false,'h4')`,'H4','Heading 4')}
+    ${btn(`document.execCommand('formatBlock',false,'p')`,'P','Paragraph')}
+    ${btn(`document.execCommand('formatBlock',false,'blockquote')`,'&ldquo;','Blockquote')}
+    ${btn(`document.execCommand('formatBlock',false,'pre')`,'{ }','Code block')}
+    ${sep}
+    ${btn(`document.execCommand('insertUnorderedList')`,'•','Bullet list')}
+    ${btn(`document.execCommand('insertOrderedList')`,'1.','Numbered list')}
+    ${btn(`document.execCommand('indent')`,'⇥','Indent')}
+    ${btn(`document.execCommand('outdent')`,'⇤','Outdent')}
+    ${sep}
+    <div class="rich-color-wrap">
+      <button class="rich-tb-btn" title="Text color" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-fg')"><span style="border-bottom:2.5px solid #ef4444;padding-bottom:1px;font-weight:700">A</span> ▾</button>
+      <div class="rich-color-palette" id="${palPfx}-fg">${fgSwatches}</div>
+    </div>
+    <div class="rich-color-wrap">
+      <button class="rich-tb-btn" title="Highlight" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-hi')"><span style="background:#fef08a;padding:0 2px">A</span> ▾</button>
+      <div class="rich-color-palette" id="${palPfx}-hi">${hiSwatches}</div>
+    </div>
+    ${btn(`document.execCommand('removeFormat')`,'T✕','Clear formatting')}
+    ${sep}
+    ${btn(`richInsertLink('${editorId}')`,'lnk','Insert link')}
+    ${btn(`richInsertImage('${editorId}')`,'🖼','Insert image')}
+    ${sep}
+    ${btn(`document.execCommand('justifyLeft')`,'←','Left')}
+    ${btn(`document.execCommand('justifyCenter')`,'↔','Center')}
+    ${btn(`document.execCommand('justifyRight')`,'→','Right')}
+    ${btn(`document.execCommand('justifyFull')`,'⇔','Justify')}
+    ${sep}
+    <div class="rich-color-wrap">
+      <button class="rich-tb-btn" title="Insert table" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-tp')">⊞ ▾</button>
+      <div class="rich-color-palette" id="${palPfx}-tp" style="width:auto;padding:10px">
+        <div class="rich-tg" id="${palPfx}-tg" onmouseleave="richTableHoverReset('${palPfx}')">${gridCells}</div>
+        <div class="rich-tg-label" id="${palPfx}-tl">hover to select size</div>
+        <div style="display:flex;gap:5px;margin-top:7px;align-items:center;border-top:1px solid var(--border);padding-top:7px">
+          <input class="rich-tiny-input" id="${palPfx}-trows" type="number" min="1" max="30" value="3" title="Rows">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">×</span>
+          <input class="rich-tiny-input" id="${palPfx}-tcols" type="number" min="1" max="20" value="3" title="Columns">
+          <button class="rich-tb-btn" style="font-size:9px;padding:2px 8px" onmousedown="event.preventDefault()"
+            onclick="richTableCustom('${editorId}','${palPfx}')">Insert</button>
+        </div>
+      </div>
+    </div>
+    ${btn(`richInsertHR('${editorId}')`,'─','Horizontal rule')}
+  </div>`;
+}
+
+// ── Table picker helpers ───────────────────────────────────────────
+function richTableHover(palPfx, row, col) {
+  for (let r = 1; r <= 8; r++)
+    for (let c = 1; c <= 8; c++)
+      document.getElementById(`${palPfx}-tc-${r}-${c}`)?.classList.toggle('active', r <= row && c <= col);
+  const lbl = document.getElementById(`${palPfx}-tl`);
+  if (lbl) lbl.textContent = `${row} × ${col} table`;
+  const ri = document.getElementById(`${palPfx}-trows`);
+  const ci = document.getElementById(`${palPfx}-tcols`);
+  if (ri) ri.value = row;
+  if (ci) ci.value = col;
+}
+
+function richTableHoverReset(palPfx) {
+  for (let r = 1; r <= 8; r++)
+    for (let c = 1; c <= 8; c++)
+      document.getElementById(`${palPfx}-tc-${r}-${c}`)?.classList.remove('active');
+  const lbl = document.getElementById(`${palPfx}-tl`);
+  if (lbl) lbl.textContent = 'hover to select size';
+}
+
+function richTableInsert(editorId, palPfx, rows, cols) {
+  document.querySelectorAll('.rich-color-palette').forEach(el => el.classList.remove('open'));
+  _insertTable(editorId, rows, cols);
+}
+
+function richTableCustom(editorId, palPfx) {
+  const rows = Math.max(1, parseInt(document.getElementById(`${palPfx}-trows`)?.value) || 3);
+  const cols = Math.max(1, parseInt(document.getElementById(`${palPfx}-tcols`)?.value) || 3);
+  document.querySelectorAll('.rich-color-palette').forEach(el => el.classList.remove('open'));
+  _insertTable(editorId, rows, cols);
+}
+
+function _insertTable(editorId, rows, cols) {
+  document.getElementById(editorId)?.focus();
+  const th = n => `<th style="border:1px solid var(--border2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left">Header ${n}</th>`;
+  const td = ()  => `<td style="border:1px solid var(--border2,#555);padding:6px 10px;font-size:12px"> </td>`;
+  const headerRow = Array.from({length:cols},(_,i)=>th(i+1)).join('');
+  const bodyRows  = Array.from({length:rows},()=>`<tr>${Array.from({length:cols},td).join('')}</tr>`).join('');
+  const html = `<table class="rpt-table" style="border-collapse:collapse;width:100%;margin:8px 0">
+    <thead><tr>${headerRow}</tr></thead>
+    <tbody>${bodyRows}</tbody>
+  </table><p></p>`;
+  document.execCommand('insertHTML', false, html);
+}
+
+// ── Font size ─────────────────────────────────────────────────────
+function richSetFontSize(editorId, size) {
+  if (!size) return;
+  document.getElementById(editorId)?.focus();
+  document.execCommand('fontSize', false, '7');
+  document.getElementById(editorId)?.querySelectorAll('font[size="7"]').forEach(f => {
+    const span = document.createElement('span');
+    span.style.fontSize = size + 'px';
+    while (f.firstChild) span.appendChild(f.firstChild);
+    f.replaceWith(span);
+  });
+}
+
+// ── Image insertion ───────────────────────────────────────────────
+function richInsertImage(editorId) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById(editorId)?.focus();
+      document.execCommand('insertHTML', false,
+        `<img src="${e.target.result}" style="max-width:100%;border-radius:4px;margin:4px 0;display:block" alt="${esc(file.name)}">`);
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+function richInsertHR(editorId) {
+  document.getElementById(editorId)?.focus();
+  document.execCommand('insertHTML', false,
+    '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0"><p></p>');
+}
+
+// ── Context toolbar state ─────────────────────────────────────────
+let _rctxCell = null, _rctxImg = null, _rctxEditorId = null;
+
+function _positionCtxTb(tbId, anchor) {
+  const tb = document.getElementById(tbId);
+  if (!tb || !anchor) return;
+  const r   = anchor.getBoundingClientRect();
+  const tbH = 38;
+  const top = r.top > tbH + 8 ? r.top - tbH - 4 : r.bottom + 4;
+  tb.style.top  = Math.max(4, Math.min(top, window.innerHeight - tbH - 4)) + 'px';
+  tb.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 480)) + 'px';
+  tb.style.display = 'flex';
+}
+
+function _hideCtxTb(tbId) {
+  const tb = document.getElementById(tbId);
+  if (tb) tb.style.display = 'none';
+}
+
+function _hideAllCtxTb() {
+  _hideCtxTb('rich-ctx-table');
+  _hideCtxTb('rich-ctx-img');
+  _rctxCell = null; _rctxImg = null;
+}
+
+// Hide context toolbars when any scroll container moves (toolbars are fixed, content moves)
+document.addEventListener('scroll', e => {
+  if (e.target.closest?.('.rich-color-palette, .rich-ctx-tb')) return;
+  _hideAllCtxTb();
+}, true);
+
+// Global click handler — show/hide context toolbars
+document.addEventListener('click', e => {
+  if (e.target.closest('#rich-ctx-table, #rich-ctx-img')) return; // toolbar itself
+
+  const cell = e.target.closest('td, th');
+  const img  = e.target.tagName === 'IMG' ? e.target : null;
+
+  // Table cell inside a rich editor?
+  if (cell?.closest('.rich-editor')) {
+    _rctxCell     = cell;
+    _rctxEditorId = cell.closest('.rich-editor').id;
+    _positionCtxTb('rich-ctx-table', cell.closest('table'));
+    _hideCtxTb('rich-ctx-img');
+    // sync custom px input if image toolbar was open
+    return;
+  }
+
+  // Image inside a rich editor?
+  if (img?.closest('.rich-editor')) {
+    _rctxImg      = img;
+    _rctxEditorId = img.closest('.rich-editor').id;
+    const pxInput = document.getElementById('rich-img-w-input');
+    if (pxInput) pxInput.value = Math.round(img.getBoundingClientRect().width) || '';
+    _positionCtxTb('rich-ctx-img', img);
+    _hideCtxTb('rich-ctx-table');
+    return;
+  }
+
+  _hideCtxTb('rich-ctx-table');
+  _hideCtxTb('rich-ctx-img');
+  _rctxCell = null; _rctxImg = null;
+});
+
+// ── Table operations ──────────────────────────────────────────────
+function _richEditorInputEvent() {
+  const ed = document.getElementById(_rctxEditorId);
+  ed?.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function richTableAddRow() {
+  if (!_rctxCell) return;
+  const row   = _rctxCell.closest('tr');
+  const table = row?.closest('table');
+  if (!row || !table) return;
+  const cols = table.querySelector('tr')?.cells.length || 1;
+  const tr   = document.createElement('tr');
+  for (let i = 0; i < cols; i++) {
+    const td = document.createElement('td');
+    td.style.cssText = 'border:1px solid var(--border2,#555);padding:6px 10px;font-size:12px';
+    td.innerHTML = ' ';
+    tr.appendChild(td);
+  }
+  // If clicked from header row, insert as first body row; otherwise after current row
+  if (row.closest('thead')) {
+    const tbody = table.querySelector('tbody') || table.createTBody();
+    tbody.insertBefore(tr, tbody.firstChild);
+  } else {
+    row.parentNode.insertBefore(tr, row.nextSibling);
+  }
+  _positionCtxTb('rich-ctx-table', table);
+  _richEditorInputEvent();
+}
+
+function richTableAddCol() {
+  if (!_rctxCell) return;
+  const table   = _rctxCell.closest('table');
+  if (!table) return;
+  const colIdx  = _rctxCell.cellIndex;
+  table.querySelectorAll('tr').forEach(row => {
+    const isHead = !!row.closest('thead');
+    const cell   = document.createElement(isHead ? 'th' : 'td');
+    cell.style.cssText = isHead
+      ? 'border:1px solid var(--border2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left'
+      : 'border:1px solid var(--border2,#555);padding:6px 10px;font-size:12px';
+    cell.innerHTML = isHead ? 'Header' : ' ';
+    const ref = row.cells[colIdx + 1] || null;
+    row.insertBefore(cell, ref);
+  });
+  _positionCtxTb('rich-ctx-table', table);
+  _richEditorInputEvent();
+}
+
+function richTableDelRow() {
+  if (!_rctxCell) return;
+  const row   = _rctxCell.closest('tr');
+  const table = row?.closest('table');
+  if (!row || !table) return;
+  if (table.querySelectorAll('tbody tr').length <= 1) return; // keep at least 1 body row
+  row.remove();
+  _rctxCell = null;
+  _hideCtxTb('rich-ctx-table');
+  _richEditorInputEvent();
+}
+
+function richTableDelCol() {
+  if (!_rctxCell) return;
+  const table  = _rctxCell.closest('table');
+  if (!table) return;
+  const colIdx = _rctxCell.cellIndex;
+  if ((table.querySelector('tr')?.cells.length || 0) <= 1) return; // keep at least 1 col
+  table.querySelectorAll('tr').forEach(row => { row.cells[colIdx]?.remove(); });
+  _rctxCell = null;
+  _hideCtxTb('rich-ctx-table');
+  _richEditorInputEvent();
+}
+
+function richTableDelete() {
+  if (!_rctxCell) return;
+  _rctxCell.closest('table')?.remove();
+  _rctxCell = null;
+  _hideCtxTb('rich-ctx-table');
+  _richEditorInputEvent();
+}
+
+// ── Image operations ──────────────────────────────────────────────
+function richImgWidth(pct) {
+  if (!_rctxImg) return;
+  _rctxImg.style.width    = pct + '%';
+  _rctxImg.style.maxWidth = '100%';
+  _rctxImg.removeAttribute('width');
+  _positionCtxTb('rich-ctx-img', _rctxImg);
+  _richEditorInputEvent();
+}
+
+function richImgWidthPx(val) {
+  const px = parseInt(val);
+  if (!_rctxImg || !px || px < 20) return;
+  _rctxImg.style.width    = Math.min(px, 2000) + 'px';
+  _rctxImg.style.maxWidth = '100%';
+  _rctxImg.removeAttribute('width');
+  _positionCtxTb('rich-ctx-img', _rctxImg);
+  _richEditorInputEvent();
+}
+
+function richImgAlign(align) {
+  if (!_rctxImg) return;
+  if (align === 'left')   { _rctxImg.style.float = 'left';  _rctxImg.style.margin = '4px 12px 4px 0'; }
+  if (align === 'right')  { _rctxImg.style.float = 'right'; _rctxImg.style.margin = '4px 0 4px 12px'; }
+  if (align === 'center') { _rctxImg.style.float = 'none';  _rctxImg.style.margin = '8px auto'; _rctxImg.style.display = 'block'; }
+  _positionCtxTb('rich-ctx-img', _rctxImg);
+  _richEditorInputEvent();
+}
+
+function richImgDelete() {
+  if (!_rctxImg) return;
+  _rctxImg.remove();
+  _rctxImg = null;
+  _hideCtxTb('rich-ctx-img');
+  _richEditorInputEvent();
+}
+
+// Detect if content is already HTML or plain markdown
+function _secContentHtml(content) {
+  if (!content) return '';
+  return /<[a-zA-Z][\s\S]*?>/.test(content) ? content : renderMd(content);
+}
+
+// ── Rich editor expanded modal ────────────────────────────────────
+function openRichModal(secId, defaultSplit = false) {
+  if (document.getElementById('rich-modal')) return;
+  const d = getReportData();
+  const sec = d.sections.find(s => s.id === secId);
+  if (!sec) return;
+  const title = sec.title;
+  const content = _secContentHtml(sec.content);
+
+  const modal = document.createElement('div');
+  modal.id = 'rich-modal';
+  modal.className = 'fe-modal no-print';
+  modal.innerHTML = `
+    <div class="fe-modal-inner" id="rich-modal-inner">
+      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2)">${esc(title)}</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richModalToggleSplit('${secId}')">◫ Split</button>
+          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModal('${secId}')">← Close</button>
+        </div>
+      </div>
+      <div class="fe-body">
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden">
+          ${_richToolbar(`rich-modal-ed-${secId}`, `rpal-modal-${secId}`)}
+          <div class="rich-editor" contenteditable="true" id="rich-modal-ed-${secId}"
+            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--border)"
+            oninput="richModalInput('${secId}',this.innerHTML)">${content}</div>
+        </div>
+        <div id="rich-modal-preview-${secId}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none">
+          <div class="rpt" style="max-width:640px;margin:0 auto">
+            <div class="rpt-prose" id="rich-modal-pv-content-${secId}">${content}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById(`rich-modal-ed-${secId}`)?.focus();
+  if (defaultSplit) setTimeout(() => richModalToggleSplit(secId), 50);
+}
+
+function richModalInput(secId, html) {
+  secUpdateContent(secId, html);
+  // sync inline editor
+  const inline = document.getElementById(`rich-${secId}`);
+  if (inline) inline.innerHTML = html;
+  // sync split preview
+  const pv = document.getElementById(`rich-modal-pv-content-${secId}`);
+  if (pv && document.getElementById(`rich-modal-preview-${secId}`)?.style.display !== 'none') pv.innerHTML = html;
+}
+
+function richModalToggleSplit(secId) {
+  const pane  = document.getElementById(`rich-modal-preview-${secId}`);
+  const inner = document.getElementById('rich-modal-inner');
+  const btn   = document.getElementById('rich-modal-split-btn');
+  if (!pane) return;
+  const open = pane.style.display === 'none' || pane.style.display === '';
+  pane.style.display = open ? 'block' : 'none';
+  inner.classList.toggle('split', open);
+  btn.textContent = open ? '▣ Editor only' : '◫ Split';
+  if (open) {
+    const html = document.getElementById(`rich-modal-ed-${secId}`)?.innerHTML || '';
+    const pv = document.getElementById(`rich-modal-pv-content-${secId}`);
+    if (pv) pv.innerHTML = html;
+  }
+}
+
+function closeRichModal(secId) {
+  // Sync modal content back to inline editor
+  const modalHtml = document.getElementById(`rich-modal-ed-${secId}`)?.innerHTML;
+  if (modalHtml !== undefined) {
+    const inline = document.getElementById(`rich-${secId}`);
+    if (inline) inline.innerHTML = modalHtml;
+    secUpdateContent(secId, modalHtml);
+  }
+  document.getElementById('rich-modal')?.remove();
+}
+
+// Close color palettes when clicking outside
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('.rich-color-wrap'))
+    document.querySelectorAll('.rich-color-palette').forEach(el => el.classList.remove('open'));
+});
+
+// ── Build a single section item HTML ─────────────────────────────
+function buildSecItem(sec) {
+  const PROSE    = new Set(['custom']);
+  const isCustom = sec.type === 'custom';
+  const hasEditor = PROSE.has(sec.type);
+
+  let html = `<div class="sec-item" id="sec-item-${sec.id}"
+    draggable="true"
+    ondragstart="secDragStart(event,'${sec.id}')"
+    ondragend="secDragEnd()"
+    ondragover="secDragOver(event,'${sec.id}')"
+    ondrop="secDrop(event,'${sec.id}')">
+    <div class="sec-row">
+      <span class="sec-drag" title="Drag to reorder" onmousedown="secDragHandleDown()">⠿</span>
+      <button class="sec-eye ${sec.visible?'':'off'}" id="sec-eye-${sec.id}"
+        onclick="secToggleVisible('${sec.id}')" title="${sec.visible?'Hide':'Show'}">👁</button>
+      <div class="sec-title-wrap">
+        <div class="sec-title ${sec.visible?'':'sec-dim'}" id="sec-title-${sec.id}">${esc(sec.title)}</div>
+      </div>
+      <button class="sec-btn sec-pb-btn ${sec.pageBreak?'sec-pb-on':''}" id="sec-pb-${sec.id}"
+        title="${sec.pageBreak?'Remove page break':'Start on new page'}"
+        onclick="secTogglePageBreak('${sec.id}')">⏎</button>
+      ${hasEditor ? `<button class="sec-btn" onclick="openRichModal('${sec.id}',true)" title="Full editor">⤢</button>` : ''}
+      <button class="sec-btn" id="sec-edit-btn-${sec.id}" onclick="secToggleEdit('${sec.id}')" title="Inline edit">✎</button>
+      ${isCustom ? `<button class="sec-btn del" onclick="secDelete('${sec.id}')">✕</button>` : ''}
+    </div>`;
+
+  html += `<div class="sec-edit-body" id="sec-edit-${sec.id}">`;
+
+  if (isCustom) {
+    html += `<div class="exp-meta-row" style="margin-bottom:6px">
+      <div class="exp-field-label">Section Title</div>
+      <input class="exp-input" id="sec-title-input-${sec.id}" value="${esc(sec.title)}"
+        oninput="secUpdateTitle('${sec.id}',this.value)">
+    </div>`;
+  }
+
+  html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+    <div class="exp-field-label" style="margin:0;min-width:58px">Font Size</div>
+    <select class="exp-input" style="width:76px;font-size:10px" onchange="secUpdateFontSize('${sec.id}',this.value)">
+      ${['','11','12','13','14','15','16'].map(s=>`<option value="${s}" ${String(sec.fontSize||'')==s?'selected':''}>${s?s+'px':'auto'}</option>`).join('')}
+    </select>
+  </div>`;
+
+  if (hasEditor) {
+    html += _richToolbar(sec.id);
+    html += `<div class="rich-editor" contenteditable="true" id="rich-${sec.id}"
+      oninput="secUpdateContent('${sec.id}',this.innerHTML)">${_secContentHtml(sec.content)}</div>`;
+  }
+
+  html += `</div></div>`;
+  return html;
+}
+
+// ── Report Templates ──────────────────────────────────────────────
+const TPL_KEY = 'fd_report_templates';
+
+function getTemplates() {
+  try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch { return []; }
+}
+function _saveTemplates(list) { localStorage.setItem(TPL_KEY, JSON.stringify(list)); }
+
+function saveTemplate() {
+  const input = document.getElementById('tpl-name-input');
+  const name = input?.value.trim();
+  if (!name) { input?.focus(); return; }
+  const d = getReportData();
+  const tpl = { name, created: new Date().toISOString().slice(0,10), meta: d.meta, sections: d.sections };
+  const list = getTemplates();
+  list.unshift(tpl);
+  _saveTemplates(list);
+  if (input) input.value = '';
+  buildEditor();
+}
+
+function loadTemplate(idx) {
+  const tpl = getTemplates()[idx];
+  if (!tpl) return;
+  if (!confirm(`Load template "${tpl.name}"? This will overwrite the current report configuration.`)) return;
+  const d = getReportData();
+  d.meta = { ...tpl.meta };
+  d.sections = tpl.sections.map(s => ({ ...s }));
+  saveReportData(d);
+  buildEditor();
+}
+
+function deleteTemplate(idx) {
+  const list = getTemplates();
+  if (!list[idx]) return;
+  if (!confirm(`Delete template "${list[idx].name}"?`)) return;
+  list.splice(idx, 1);
+  _saveTemplates(list);
+  buildEditor();
+}
+
+function exportTemplate(idx) {
+  const tpl = getTemplates()[idx];
+  if (!tpl) return;
+  const blob = new Blob([JSON.stringify(tpl, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${tpl.name.replace(/\s+/g,'-').toLowerCase()}-template.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importTemplateFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const tpl = JSON.parse(e.target.result);
+      if (!tpl.meta || !tpl.sections) { alert('Invalid template file.'); return; }
+      if (!tpl.name) tpl.name = file.name.replace(/\.json$/i,'');
+      if (!tpl.created) tpl.created = new Date().toISOString().slice(0,10);
+      const list = getTemplates();
+      list.unshift(tpl);
+      _saveTemplates(list);
+      buildEditor();
+    } catch { alert('Could not parse template file.'); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function _renderTemplatesSection(_sh) {
+  const list = getTemplates();
+  let inner = `
+    <div style="display:flex;gap:5px;margin-bottom:8px">
+      <input id="tpl-name-input" class="exp-input" placeholder="Template name…" style="flex:1"
+        onkeydown="if(event.key==='Enter')saveTemplate()">
+      <button class="sec-btn" onclick="saveTemplate()" style="flex-shrink:0;white-space:nowrap">Save current</button>
+    </div>
+    <label class="sec-btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-bottom:${list.length?'8':'0'}px">
+      ↑ Import .json<input type="file" accept=".json,application/json" style="display:none" onchange="importTemplateFile(this)">
+    </label>`;
+
+  if (list.length) {
+    inner += `<div style="display:flex;flex-direction:column;gap:4px">`;
+    list.forEach((tpl, i) => {
+      inner += `<div style="display:flex;align-items:center;gap:4px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:5px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(tpl.name)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">${tpl.created||''} · ${tpl.sections?.length||0} sections</div>
+        </div>
+        <button class="sec-btn" onclick="loadTemplate(${i})" title="Load">↓ Load</button>
+        <button class="sec-btn" onclick="exportTemplate(${i})" title="Export JSON">↓ .json</button>
+        <button class="sec-btn del" onclick="deleteTemplate(${i})" title="Delete">✕</button>
+      </div>`;
+    });
+    inner += `</div>`;
+  } else {
+    inner += `<div style="font-family:var(--mono);font-size:10px;color:var(--text3);padding:4px 0">No saved templates.</div>`;
+  }
+  return inner;
+}
+
+// ── Build section list panel ──────────────────────────────────────
+function buildSectionList() {
+  const d  = getReportData();
+  const m  = d.meta;
+  const cf = m.coverFields || {};
+
+  const COVER_FIELDS = [
+    ['date','Date'], ['target','Target'], ['preparedBy','Prepared By'],
+    ['organization','Organization'], ['scope','Scope'], ['version','Version'],
+    ['totalFindings','Total Findings'], ['wstgCoverage','WSTG Coverage'],
+  ];
+
+  let html = '';
+
+  if (_freeEditMd !== null) {
+    html += `<div style="padding:7px 14px;background:var(--accent)0f;border-bottom:1px solid var(--accent)33;display:flex;align-items:center;gap:8px">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:600">⇄ Modo markdown activo</span>
+      <div style="margin-left:auto;display:flex;gap:5px">
+        <button class="sec-btn" onclick="enterFreeEdit()">Editar</button>
+        <button class="sec-btn del" onclick="discardFreeEdit()">Descartar</button>
+      </div>
+    </div>`;
+  }
+
+  const _sh = (key, label, extra='') =>
+    `<div class="sec-meta-header ${_secOpen[key]?'':'collapsed'}" data-sec="${key}" onclick="toggleEditorSection(this)">
+      <span>${label}</span>${extra}<span class="sec-meta-chevron">▾</span>
+    </div>`;
+
+  // ── Templates section ─────────────────────────────────────────
+  html += _sh('templates','Templates');
+  html += `<div id="esec-templates" style="padding:10px 14px 14px;border-bottom:1px solid var(--border);display:${_secOpen.templates?'':'none'}">
+    ${_renderTemplatesSection(_sh)}
+  </div>`;
+
+  // ── Cover section ──────────────────────────────────────────────
+  html += _sh('cover','Cover');
+  html += `<div id="esec-cover" style="padding:10px 14px 14px;border-bottom:1px solid var(--border);display:${_secOpen.cover?'':'none'}">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px">
+      <div class="exp-meta-row" style="margin-bottom:0">
+        <div class="exp-field-label">Title</div>
+        <input class="exp-input" value="${esc(m.coverTitle||'')}" placeholder="${esc(state.currentProject?.name||'Project Name')}"
+          oninput="setRptMeta('coverTitle',this.value)">
+      </div>
+      <div class="exp-meta-row" style="margin-bottom:0">
+        <div class="exp-field-label">Subtitle</div>
+        <input class="exp-input" value="${esc(m.coverSubtitle||'')}" placeholder="e.g. Web App Pentest"
+          oninput="setRptMeta('coverSubtitle',this.value)">
+      </div>
+      <div class="exp-meta-row" style="margin-bottom:0">
+        <div class="exp-field-label">Type Label</div>
+        <input class="exp-input" value="${esc(m.coverTypeLabel||'')}" placeholder="Security Assessment Report"
+          oninput="setRptMeta('coverTypeLabel',this.value)">
+      </div>
+      <div class="exp-meta-row" style="margin-bottom:0">
+        <div class="exp-field-label">Client Name</div>
+        <input class="exp-input" value="${esc(m.clientName||'')}" placeholder="Client Organization"
+          oninput="setRptMeta('clientName',this.value)">
+      </div>
+    </div>
+
+    <div class="exp-sub-label">Logo</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      ${(m.coverLogoBase64||m.clientLogoUrl) ? `<img src="${m.coverLogoBase64||m.clientLogoUrl}" style="height:28px;max-width:80px;object-fit:contain;border-radius:4px;border:1px solid var(--border);flex-shrink:0">` : ''}
+      <label class="sec-btn" style="cursor:pointer;flex-shrink:0">Upload<input type="file" accept="image/*" style="display:none" onchange="uploadCoverLogo(this)"></label>
+      ${m.coverLogoBase64 ? `<button class="sec-btn del" onclick="setRptMeta('coverLogoBase64','');buildEditor()">✕</button>` : ''}
+    </div>
+    <input class="exp-input" value="${esc(m.clientLogoUrl||'')}" placeholder="or paste logo URL…"
+      oninput="setRptMeta('clientLogoUrl',this.value)" style="margin-bottom:5px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="exp-field-label" style="margin:0;flex-shrink:0">Logo bg</span>
+      ${['light','dark','transparent'].map(v=>`<label class="exp-opt"><input type="radio" name="logobg" value="${v}" ${(m.coverLogoBg||'light')===v?'checked':''} onchange="setRptMeta('coverLogoBg',this.value)"> ${v.charAt(0).toUpperCase()+v.slice(1)}</label>`).join('')}
+    </div>
+
+
+    <div class="exp-sub-label">Show on cover</div>
+    <div class="cover-fields-grid">
+      ${COVER_FIELDS.map(([k,label]) => `<label class="exp-opt"><input type="checkbox" ${cf[k]!==false?'checked':''} onchange="secSetCoverField('${k}',this.checked)"> ${label}</label>`).join('')}
+    </div>
+
+    <div class="exp-sub-label">PDF Password <span style="font-weight:400;letter-spacing:0;text-transform:none;font-size:9px;opacity:.6">(optional)</span></div>
+    <div style="position:relative">
+      <input class="exp-input" id="pdf-password-input" type="password" value="${esc(m.pdfPassword||'')}"
+        placeholder="Leave empty for no protection"
+        oninput="setRptMeta('pdfPassword',this.value)" style="padding-right:32px">
+      <button onclick="this.previousElementSibling.type=this.previousElementSibling.type==='password'?'text':'password'"
+        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);font-size:12px;padding:2px">👁</button>
+    </div>
+    ${m.pdfPassword ? `<div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--accent)">⚠ Export PDF uses backend rendering</div>` : ''}
+  </div>`;
+
+  // ── Report Info section ────────────────────────────────────────
+  html += _sh('info','Report Info');
+  html += `<div id="esec-info" style="padding:10px 14px 14px;border-bottom:1px solid var(--border);display:${_secOpen.info?'':'none'}">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px">
+        <div class="exp-meta-row" style="margin-bottom:0">
+          <div class="exp-field-label">Prepared By</div>
+          <input class="exp-input" value="${esc(m.preparedBy||'')}" placeholder="Security Team"
+            oninput="setRptMeta('preparedBy',this.value)">
+        </div>
+        <div class="exp-meta-row" style="margin-bottom:0">
+          <div class="exp-field-label">Organization</div>
+          <input class="exp-input" value="${esc(m.organization||'')}" placeholder="ACME Ltd"
+            oninput="setRptMeta('organization',this.value)">
+        </div>
+        <div class="exp-meta-row" style="margin-bottom:0">
+          <div class="exp-field-label">Version</div>
+          <input class="exp-input" value="${esc(m.version||'')}" placeholder="v1.0"
+            oninput="setRptMeta('version',this.value)">
+        </div>
+        <div class="exp-meta-row" style="margin-bottom:0">
+          <div class="exp-field-label">Classification</div>
+          <select class="exp-input" style="font-size:11px" onchange="setRptMeta('classification',this.value)">
+            ${['Confidential','Internal Use Only','TLP:RED','TLP:AMBER','Public'].map(c=>`<option ${(m.classification||'Confidential')===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="exp-sub-label">Typography</div>
+      <div style="display:grid;grid-template-columns:1fr 80px;gap:4px 8px;align-items:end;margin-bottom:6px">
+        <div class="exp-meta-row" style="margin-bottom:0">
+          <div class="exp-field-label">Font</div>
+          <select class="exp-input" style="font-size:11px" onchange="setRptFont(this.value)">
+            ${REPORT_FONTS.map(f=>`<option value="${f.key}" ${(m.font||'')===f.key?'selected':''}>${f.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="exp-meta-row" style="margin-bottom:0">
+          <div class="exp-field-label">Size</div>
+          <select class="exp-input" style="font-size:11px" onchange="setRptBaseFontSize(this.value)">
+            ${[11,12,13,14,15,16].map(s=>`<option value="${s}" ${(m.baseFontSize||13)==s?'selected':''}>${s}px</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <label class="exp-opt"><input type="checkbox" ${m.showToc?'checked':''} onchange="setRptMeta('showToc',this.checked)"> Table of Contents</label>
+
+      <div class="exp-sub-label">Accent Color</div>
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        ${['#7c3aed','#2563eb','#0891b2','#059669','#dc2626','#d97706','#db2777','#374151'].map(c =>
+          `<div onclick="setRptAccent('${c}')" style="width:20px;height:20px;border-radius:4px;background:${c};cursor:pointer;flex-shrink:0;outline:${(m.accentColor||'#7c3aed')===c?'2px solid var(--text)':'none'};outline-offset:2px;transition:transform .1s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"></div>`
+        ).join('')}
+        <input type="color" value="${m.accentColor||'#7c3aed'}"
+          oninput="setRptAccent(this.value)"
+          style="width:22px;height:22px;padding:1px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);cursor:pointer;flex-shrink:0">
+      </div>
+
+      <div class="exp-sub-label" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Watermark</span>
+        <label class="exp-opt" style="margin:0;font-size:9px"><input type="checkbox" ${m.watermark?.enabled?'checked':''} onchange="(()=>{const d=getReportData();d.meta.watermark=d.meta.watermark||{};d.meta.watermark.enabled=this.checked;saveReportData(d);buildEditor()})()"> Enabled</label>
+      </div>
+      ${m.watermark?.enabled ? `
+      <input class="exp-input" value="${esc(m.watermark?.text||'DRAFT')}" placeholder="Watermark text"
+        oninput="(()=>{const d=getReportData();d.meta.watermark=d.meta.watermark||{};d.meta.watermark.text=this.value;saveReportData(d)})()"
+        style="margin-bottom:5px">
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${['DRAFT','CONFIDENTIAL','FOR REVIEW','INTERNAL'].map(t => {
+          const active = (m.watermark?.text || 'DRAFT') === t;
+          return `<button class="sec-btn${active?' active':''}" onclick="(()=>{const d=getReportData();d.meta.watermark=d.meta.watermark||{};d.meta.watermark.text='${t}';saveReportData(d);buildEditor()})()">${t}</button>`;
+        }).join('')}
+      </div>` : `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Off</div>`}
+    </div>
+    ${_sh('layout','Page Layout')}
+    <div id="esec-layout" style="padding:10px 14px 12px;border-bottom:1px solid var(--border);display:${_secOpen.layout?'':'none'}">
+      ${(()=>{
+        const dm = getReportData().meta;
+        const hz = _getZone(dm,'header'), fz = _getZone(dm,'footer');
+        function colEditor(zone, key, col, isFooter) {
+          const modeText  = col.mode === 'text'    || !col.mode;
+          const modeImg   = col.mode === 'image';
+          const modeNum   = col.mode === 'pagenum';
+          const colLabel  = key.charAt(0).toUpperCase() + key.slice(1);
+          const modeBtn   = (mode, label, active) =>
+            `<button class="rich-tb-btn${active?' active':''}" style="padding:1px 5px;font-size:10px"
+              onmousedown="event.preventDefault()" onclick="setPageLayoutColMode('${zone}','${key}','${mode}')">${label}</button>`;
+          return `<div>
+            <div style="display:flex;align-items:center;gap:3px;margin-bottom:4px">
+              <span class="exp-field-label" style="flex:1;margin:0">${colLabel}</span>
+              ${modeBtn('text','T', modeText)}
+              ${modeBtn('image','🖼', modeImg)}
+              ${isFooter ? modeBtn('pagenum','#', modeNum) : ''}
+            </div>
+            ${modeText ? `<input class="exp-input" value="${esc(col.text||'')}" placeholder="${modeNum?'prefix':'text'}"
+                oninput="setPageLayoutColText('${zone}','${key}',this.value)">` : ''}
+            ${modeImg ? `<div style="display:flex;align-items:center;gap:4px">
+                ${col.img ? `<img src="${col.img}" style="height:22px;max-width:64px;object-fit:contain;border-radius:3px;border:1px solid var(--border);flex-shrink:0;${col.imgShadow?'filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))':''}">` : ''}
+                <label class="sec-btn" style="cursor:pointer;flex-shrink:0">📎<input type="file" accept="image/*" style="display:none" onchange="uploadColLogo('${zone}','${key}',this)"></label>
+                ${col.img ? `<button class="sec-btn del" onclick="setPageLayoutColImg('${zone}','${key}','')">✕</button>` : ''}
+              </div>
+              ${col.img ? `<label class="exp-opt" style="margin-top:3px"><input type="checkbox" ${col.imgShadow?'checked':''} onchange="setPageLayoutColShadow('${zone}','${key}',this.checked)"> Drop shadow</label>` : ''}` : ''}
+            ${modeNum ? `<input class="exp-input" value="${esc(col.text||'')}" placeholder="prefix (e.g. Page)"
+                oninput="setPageLayoutColText('${zone}','${key}',this.value)">` : ''}
+          </div>`;
+        }
+        return `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)">Header</span>
+          <label class="exp-opt"><input type="checkbox" ${hz.enabled?'checked':''} onchange="setPageLayoutEnabled('header',this.checked)"> Enabled</label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
+          ${colEditor('header','left',  hz.cols.left,   false)}
+          ${colEditor('header','center',hz.cols.center, false)}
+          ${colEditor('header','right', hz.cols.right,  false)}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">
+          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)">Footer</span>
+          <label class="exp-opt"><input type="checkbox" ${fz.enabled?'checked':''} onchange="setPageLayoutEnabled('footer',this.checked)"> Enabled</label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+          ${colEditor('footer','left',  fz.cols.left,   true)}
+          ${colEditor('footer','center',fz.cols.center, true)}
+          ${colEditor('footer','right', fz.cols.right,  true)}
+        </div>`;
+      })()}
+    </div>
+    ${_sh('sections','Report Sections',`<button class="sec-btn" onclick="event.stopPropagation();secAddCustom()" style="font-size:9px;margin-left:6px">+ Custom</button>`)}
+    <div id="esec-sections" style="display:${_secOpen.sections?'':'none'}">
+      <div style="padding:8px 14px 6px;border-bottom:1px solid var(--border)">
+        <div class="exp-field-label" style="margin-bottom:5px">Findings include</div>
+        <div style="display:flex;flex-wrap:wrap;gap:2px 10px">
+          <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
+          <label class="exp-opt"><input type="checkbox" id="opt-rem"   checked onchange="buildReport()"> Remediation</label>
+          <label class="exp-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
+          <label class="exp-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
+          <label class="exp-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
+        </div>
+      </div>
+      <div class="sec-list" id="sec-list">
+        ${d.sections.map(sec => buildSecItem(sec)).join('')}
+      </div>
+    </div>`;
+
+  return html;
+}
 
 async function loadAllTargetDetails() {
   const pid = state.currentProject?.id;
@@ -448,6 +2170,26 @@ function renderEvidenceList(id, isWSTG) {
   buildReport();
 }
 
+// ── Editor section collapse state ────────────────────────────────
+const _secOpen = { 'templates': false, 'cover': true, 'info': false, 'layout': false, 'sections': true };
+
+function toggleEditorSection(hdr) {
+  const key  = hdr.dataset.sec;
+  const body = document.getElementById(`esec-${key}`);
+  if (!body) return;
+  _secOpen[key] = !_secOpen[key];
+  hdr.classList.toggle('collapsed', !_secOpen[key]);
+  body.style.display = _secOpen[key] ? '' : 'none';
+}
+
+function uploadCoverLogo(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { setRptMeta('coverLogoBase64', e.target.result); buildEditor(); };
+  reader.readAsDataURL(file);
+}
+
 // ── Build editor panel ────────────────────────────────────────────
 function buildEditor() {
   const scope  = document.getElementById('export-scope')?.value || 'all';
@@ -455,7 +2197,6 @@ function buildEditor() {
   const bySev  = {};
   SEV_ORDER.forEach(s => bySev[s] = vulns.filter(v => (v.severity||'medium') === s));
 
-  // Gather WSTG tests that have fail status
   const failedTests = [];
   if (scope !== 'vulns') {
     WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
@@ -464,7 +2205,7 @@ function buildEditor() {
     }));
   }
 
-  let html = '';
+  let html = buildSectionList();
 
   // ── Custom vulns section ──────────────────────────────────────
   if (scope !== 'wstg' && vulns.length) {
@@ -516,7 +2257,7 @@ function buildEditor() {
 
 function editorSection(id, title, startOpen, contentFn) {
   return `<div class="exp-section">
-    <div class="exp-section-header ${startOpen?'open':''}" onclick="toggleEditorSection('${id}',this)">
+    <div class="exp-section-header ${startOpen?'open':''}" onclick="toggleSectionPanel('${id}',this)">
       <span>${title}</span>
       <span class="chevron">▶</span>
     </div>
@@ -556,7 +2297,7 @@ function findingEditor(id, name, sev, isWSTG) {
   </div>`;
 }
 
-function toggleEditorSection(id, header) {
+function toggleSectionPanel(id, header) {
   header.classList.toggle('open');
   document.getElementById(`esec-${id}`)?.classList.toggle('open');
 }
@@ -575,12 +2316,23 @@ function buildReport() {
   const reportType = document.getElementById('report-type')?.value || 'technical';
   if (!p) return;
 
+  if (_freeEditMd !== null) {
+    document.getElementById('report-preview').innerHTML = renderMdStyled(_freeEditMd);
+    document.getElementById('export-project-name').textContent = p.name;
+    return;
+  }
+
   _mdLines = [];
   const showDesc  = opt('opt-desc');
   const showRem   = opt('opt-rem');
   const showPay   = opt('opt-pay');
   const showNotes = opt('opt-notes');
   const showEvid  = opt('opt-evid');
+
+  const data     = getReportData();
+  const m        = data.meta;
+  const cf       = m.coverFields || {};
+  const sections = data.sections || DEFAULT_SECTIONS.map(s=>({...s}));
 
   const date  = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' });
   const vulns = state.customVulns || [];
@@ -600,275 +2352,390 @@ function buildReport() {
   const md = (...a) => _mdLines.push(a.join(' '));
   let html = '';
 
-  // ── Cover / Header ────────────────────────────────────────────────
+  // ── Cover (always rendered) ───────────────────────────────────────
   md(`# ${p.name} — Security Assessment Report`);
-  md(`**Date:** ${date}  **Target:** ${p.target||'—'}`); md('');
+  md(`**Date:** ${date}${p.target ? `  ·  **Target:** ${p.target}` : ''}`);
+  if (m.preparedBy)   md(`**Prepared by:** ${m.preparedBy}`);
+  if (m.organization) md(`**Organization:** ${m.organization}`);
+  if (m.version)      md(`**Version:** ${m.version}`);
+  md(`**Classification:** ${m.classification||'Confidential'}`);
+  md('');
 
-  html += `<div class="rpt-cover">
-    <div class="rpt-cover-bar"></div>
-    <div style="display:flex;align-items:flex-start;gap:24px;margin-bottom:18px">
-      ${p.logo_url ? `<div style="background:${p.logo_bg==='dark'?'#1e1e1e':'#fff'};border:1px solid ${p.logo_bg==='dark'?'rgba(255,255,255,.08)':'rgba(0,0,0,.09)'};border-radius:8px;padding:8px 14px;display:flex;align-items:center;flex-shrink:0;margin-top:2px"><img src="${p.logo_url}" style="height:48px;max-width:160px;object-fit:contain" alt="Project logo"></div>` : ''}
-      <div style="flex:1">
-        <div class="rpt-cover-labels">
-          <span class="rpt-cover-type">Security Assessment Report</span>
-          <span class="rpt-cover-conf">Confidential</span>
-        </div>
-        <h1 style="margin:0">${esc(p.name)}</h1>
+  const _coverMeta = [];
+  if (cf.date          !== false)                      _coverMeta.push({ label:'Date',           val:date });
+  if (cf.target        !== false && p.target)          _coverMeta.push({ label:'Target',          val:p.target });
+  if (cf.preparedBy    !== false && m.preparedBy)      _coverMeta.push({ label:'Prepared By',     val:m.preparedBy });
+  if (cf.organization  !== false && m.organization)    _coverMeta.push({ label:'Organization',    val:m.organization });
+  if (cf.scope         !== false && p.description)     _coverMeta.push({ label:'Scope',           val:p.description });
+  if (cf.version       !== false && m.version)         _coverMeta.push({ label:'Version',         val:m.version });
+  if (cf.totalFindings !== false && scope!=='wstg')    _coverMeta.push({ label:'Total Findings',  val:String(vulns.length) });
+  if (cf.wstgCoverage  !== false && scope!=='vulns')   _coverMeta.push({ label:'WSTG Coverage',   val:`${wPct}% (${wTested}/${wTotal})` });
+
+  let _metaHtml = '<div class="rpt-cover-meta">';
+  for (let i = 0; i < _coverMeta.length; i += 2) {
+    _metaHtml += '<div class="rpt-cover-meta-row">';
+    [_coverMeta[i], _coverMeta[i+1]].forEach(item => {
+      if (!item) { _metaHtml += '<div class="rpt-cover-meta-cell"></div>'; return; }
+      _metaHtml += `<div class="rpt-cover-meta-cell"><span class="rpt-cover-meta-label">${item.label}</span><span class="rpt-cover-meta-val">${esc(item.val)}</span></div>`;
+    });
+    _metaHtml += '</div>';
+  }
+  _metaHtml += '</div>';
+
+  const _logoUrl = m.coverLogoBase64 || m.clientLogoUrl || p.logo_url || null;
+  const _logoBg  = m.coverLogoBg || p.logo_bg || 'light';
+  const _coverTitle    = m.coverTitle    || p.name || '';
+  const _coverSubtitle = m.coverSubtitle || '';
+  const _coverType     = m.coverTypeLabel || 'Security Assessment Report';
+  html += `<div class="rpt-cover-page">
+    <div class="rpt-cover-page-bar"></div>
+    <div class="rpt-cover-page-body">
+      <div class="rpt-cover-logo-wrap">
+        ${_logoUrl
+          ? (() => {
+              const lbg   = _logoBg === 'dark' ? '#1e1e1e' : _logoBg === 'transparent' ? 'transparent' : '#fff';
+              const lbord = _logoBg === 'transparent' ? 'none' : `1px solid ${_logoBg === 'dark' ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.09)'}`;
+              const lpad  = _logoBg === 'transparent' ? '0' : '24px 40px';
+              return `<div style="background:${lbg};border:${lbord};border-radius:${_logoBg==='transparent'?'0':'14px'};padding:${lpad};display:flex;align-items:center;justify-content:center"><img src="${esc(_logoUrl)}" style="height:100px;max-width:300px;object-fit:contain" alt="Logo"></div>`;
+            })()
+          : `<div class="rpt-cover-logo-ph">${esc((_coverTitle||'?')[0].toUpperCase())}</div>`}
+      </div>
+      <div class="rpt-cover-title-block">
+        <span class="rpt-cover-page-type">${esc(_coverType)}</span>
+        <h1 class="rpt-cover-page-h1">${esc(_coverTitle)}</h1>
+        ${_coverSubtitle ? `<div class="rpt-cover-page-client" style="font-style:normal;font-size:16px;color:var(--text2)">${esc(_coverSubtitle)}</div>` : ''}
+        ${m.clientName ? `<div class="rpt-cover-page-client">${esc(m.clientName)}</div>` : ''}
+        <span class="rpt-cover-conf">${esc(m.classification||'Confidential')}</span>
       </div>
     </div>
-    <div class="rpt-cover-grid">
-      <div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Date</div><div class="rpt-cover-cell-val">${date}</div></div>
-      ${p.target?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Target</div><div class="rpt-cover-cell-val">${esc(p.target)}</div></div>`:''}
-      ${p.description?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Scope</div><div class="rpt-cover-cell-val">${esc(p.description)}</div></div>`:''}
-      ${scope!=='wstg'?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">Total Findings</div><div class="rpt-cover-cell-val">${vulns.length}</div></div>`:''}
-      ${scope!=='vulns'?`<div class="rpt-cover-cell"><div class="rpt-cover-cell-label">WSTG Coverage</div><div class="rpt-cover-cell-val">${wPct}% (${wTested}/${wTotal})</div></div>`:''}
-    </div>
+    <div class="rpt-cover-page-footer">${_metaHtml}</div>
   </div>`;
 
-  // ── Executive Summary ─────────────────────────────────────────────
-  if (scope!=='wstg' && vulns.length) {
-    md('## Executive Summary'); md('|Severity|Count|'); md('|--------|-----|');
-    SEV_ORDER.forEach(s => { if(bySev[s].length) md(`|${SEV_EMOJI[s]} ${SEV_LABEL[s]}|${bySev[s].length}|`); });
+  // ── TOC (derived from visible sections) ───────────────────────────
+  const visibleSections = sections.filter(s => s.visible);
+  const _tocItems = [];
+  const PROSE_TYPES = new Set(['custom']);
+  visibleSections.forEach(sec => {
+    const sid = `rpt-sec-${sec.id}`;
+    if (PROSE_TYPES.has(sec.type)) {
+      if (sec.content) _tocItems.push({ title:sec.title, id:sid });
+    } else if (sec.type === 'exec-summary' && scope !== 'wstg') {
+      _tocItems.push({ title:sec.title, id:sid });
+    } else if (sec.type === 'findings-index' && scope !== 'wstg' && vulns.length) {
+      _tocItems.push({ title:sec.title, id:sid });
+    } else if (sec.type === 'wstg' && scope !== 'vulns') {
+      _tocItems.push({ title:sec.title, id:sid });
+    } else if (sec.type === 'detailed-findings' && scope !== 'wstg' && vulns.length && reportType === 'technical') {
+      _tocItems.push({ title:sec.title, id:sid });
+    } else if (sec.type === 'targets' && state.targets?.length) {
+      _tocItems.push({ title:sec.title, id:sid });
+    } else if (sec.type === 'risk-table') {
+      _tocItems.push({ title:sec.title, id:sid });
+    }
+  });
+
+  if (m.showToc && _tocItems.length) {
+    md('## Table of Contents');
+    _tocItems.forEach((t, i) => md(`${i+1}. ${t.title}`));
     md('');
+    html += `<div class="rpt-toc">
+      <div class="rpt-toc-title">Table of Contents</div>
+      ${_tocItems.map((t, i) => `<div class="rpt-toc-item"><span class="rpt-toc-num">${i+1}.</span><a href="#${t.id}">${esc(t.title)}</a></div>`).join('')}
+    </div>`;
+  }
 
-    html += `<h2>Executive Summary</h2><div class="rpt-summary">`;
-    SEV_ORDER.forEach(s => {
-      if (!bySev[s].length) return;
-      html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_LABEL[s]}</div></div>`;
-    });
-    if (scope==='all') html += `
-      <div class="rpt-summary-card card-wstg"><div class="rpt-count">${wPct}%</div><div class="rpt-label">WSTG</div></div>`;
-    html += '</div>';
+  // ── Sections in user-defined order ────────────────────────────────
+  for (const sec of visibleSections) {
+    const secId = `rpt-sec-${sec.id}`;
+    const _pb   = sec.pageBreak ? 'page-break-before:always;break-before:page;' : '';
+    const _fs   = sec.fontSize  ? `font-size:${sec.fontSize}px;` : '';
 
-    // Risk distribution bar
-    if (vulns.length) {
-      html += `<div class="rpt-risk-wrap"><div class="rpt-risk-bar">`;
-      SEV_ORDER.forEach(s => {
-        if (!bySev[s].length) return;
-        const pct = Math.round(bySev[s].length / vulns.length * 100);
-        html += `<div class="rpt-risk-seg rpt-risk-${s}" style="width:${pct}%" title="${SEV_LABEL[s]}: ${bySev[s].length}"></div>`;
-      });
-      html += `</div><div class="rpt-risk-legend">`;
-      SEV_ORDER.forEach(s => {
-        if (!bySev[s].length) return;
-        const colors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#059669',info:'#6b7280'};
-        html += `<div class="rpt-risk-legend-item"><div class="rpt-risk-legend-dot" style="background:${colors[s]}"></div>${SEV_LABEL[s]} (${bySev[s].length})</div>`;
-      });
-      html += `</div></div>`;
+    // ── Prose / custom ────────────────────────────────────────────
+    if (PROSE_TYPES.has(sec.type)) {
+      if (!sec.content) continue;
+      md(`## ${sec.title}`); md(sec.content); md('');
+      html += `<h2 id="${secId}" style="${_pb}">${esc(sec.title)}</h2><div class="rpt-prose" style="${_fs}">${_secContentHtml(sec.content)}</div>`;
+      continue;
     }
 
-    // Findings index table
-    html += `<h2>Findings Index</h2>
-      <table class="rpt-table"><thead><tr>
-        <th class="rpt-idx-num">#</th>
-        <th class="rpt-idx-sev">Severity</th>
-        <th>Vulnerability</th>
-        <th>Category</th>
-        <th class="rpt-idx-status">Status</th>
-      </tr></thead><tbody>`;
-    let idx = 1;
-    SEV_ORDER.forEach(sev => {
-      bySev[sev].forEach(v => {
-        const statusLabel = v.status==='done'?'Confirmed':v.status==='fail'?'Reproduced':'Pending';
-        html += `<tr>
-          <td class="num" style="color:var(--text3)">${idx++}</td>
-          <td><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></td>
-          <td style="font-weight:600;color:var(--text)">${esc(v.name)}</td>
-          <td style="font-family:var(--mono);font-size:11px">${esc(v.category||'Custom')}</td>
-          <td><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${statusLabel}</span></td>
-        </tr>`;
-      });
-    });
-    html += '</tbody></table>';
-  } else if (scope!=='wstg') {
-    html += `<h2>Executive Summary</h2><p style="color:var(--text3);font-style:italic">No custom findings recorded for this project.</p>`;
-  }
-
-  // WSTG
-  if (scope!=='vulns') {
-    md('## OWASP WSTG Progress');
-    md(`**Overall:** ${wTested}/${wTotal} (${wPct}%) · **Passed:** ${wDone} · **Vuln Found:** ${wFail}`); md('');
-    html += `<h2>OWASP WSTG Progress</h2>
-      <p><strong>${wTested}/${wTotal}</strong> tests completed &nbsp;·&nbsp;
-        <strong style="color:var(--green)">${wDone} passed</strong> &nbsp;·&nbsp;
-        <strong style="color:var(--red)">${wFail} vuln found</strong></p>
-      <table class="rpt-table"><thead><tr>
-        <th>Category</th><th style="text-align:center">Tested</th>
-        <th style="text-align:center">Total</th><th style="text-align:center">Vulns</th>
-        <th style="min-width:100px">Progress</th>
-      </tr></thead><tbody>`;
-    WSTG_DATA.forEach(cat => {
-      const t = cat.tests.length;
-      const d = cat.tests.filter(x=>state.wstgProgress[x.id]?.status==='done').length;
-      const f = cat.tests.filter(x=>state.wstgProgress[x.id]?.status==='fail').length;
-      if (!d&&!f) return;
-      const pct = t?Math.round((d+f)/t*100):0;
-      html += `<tr><td>${esc(cat.name)}</td><td class="num">${d+f}</td><td class="num">${t}</td>
-        <td class="num ${f?'vuln-found':''}">${f||'—'}</td>
-        <td><div class="rpt-progress-cell"><div class="rpt-mini-bar"><div class="rpt-mini-fill" style="width:${pct}%"></div></div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:30px">${pct}%</span></div></td></tr>`;
-    });
-    html += '</tbody></table>';
-
-    const failedTests = [];
-    WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
-      if (state.wstgProgress[t.id]?.status==='fail')
-        failedTests.push({ cat:cat.name, test:t, prog:state.wstgProgress[t.id] });
-    }));
-    if (failedTests.length && reportType === 'technical') {
-      html += `<h3 style="margin-top:24px">Vulnerabilities Found <span style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--red);margin-left:6px">${failedTests.length} issue${failedTests.length>1?'s':''}</span></h3>`;
-      failedTests.forEach(({ cat, test, prog }) => {
-        const edit = _localEdits[test.id] || {};
-        const desc = edit.description || prog?.description || '';
-        const rem  = edit.remediation || prog?.remediation || '';
-        const targetHost = prog?.target_id ? (state.targets||[]).find(t=>t.id===prog.target_id)?.host : null;
-        html += `<div class="rpt-wstg-vuln">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:var(--red)18;border:1px solid var(--red)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
-            <span style="font-weight:600;font-size:13px;color:var(--text)">${esc(test.name)}</span>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${desc||rem?'8px':'0'}">
-            <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">📁 ${esc(cat)}</span>
-            ${targetHost ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">🎯 ${esc(targetHost)}</span>` : ''}
-          </div>
-          ${showDesc&&desc?`<div class="rpt-field-label" style="margin-top:4px">Description</div><div style="font-size:12px;color:var(--text2);margin-bottom:6px;white-space:pre-wrap;line-height:1.6">${esc(desc)}</div>`:''}
-          ${showRem&&rem?`<div class="rpt-field-label">Remediation</div><div style="font-size:12px;color:var(--green);white-space:pre-wrap;line-height:1.6">${esc(rem)}</div>`:''}
-          ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic">${esc(prog.note)}</div>`:''}
-        </div>`;
-      });
+    // ── Executive Summary ─────────────────────────────────────────
+    if (sec.type === 'exec-summary' && scope !== 'wstg') {
+      if (vulns.length) {
+        md('## Executive Summary'); md('|Severity|Count|'); md('|--------|-----|');
+        SEV_ORDER.forEach(s => { if(bySev[s].length) md(`|${SEV_EMOJI[s]} ${SEV_LABEL[s]}|${bySev[s].length}|`); });
+        md('');
+        html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2><div class="rpt-summary">`;
+        SEV_ORDER.forEach(s => {
+          if (!bySev[s].length) return;
+          html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_LABEL[s]}</div></div>`;
+        });
+        if (scope==='all') html += `<div class="rpt-summary-card card-wstg"><div class="rpt-count">${wPct}%</div><div class="rpt-label">WSTG</div></div>`;
+        html += '</div>';
+        html += `<div class="rpt-risk-wrap"><div class="rpt-risk-bar">`;
+        SEV_ORDER.forEach(s => {
+          if (!bySev[s].length) return;
+          html += `<div class="rpt-risk-seg rpt-risk-${s}" style="width:${Math.round(bySev[s].length/vulns.length*100)}%" title="${SEV_LABEL[s]}: ${bySev[s].length}"></div>`;
+        });
+        html += `</div><div class="rpt-risk-legend">`;
+        SEV_ORDER.forEach(s => {
+          if (!bySev[s].length) return;
+          const colors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#059669',info:'#6b7280'};
+          html += `<div class="rpt-risk-legend-item"><div class="rpt-risk-legend-dot" style="background:${colors[s]}"></div>${SEV_LABEL[s]} (${bySev[s].length})</div>`;
+        });
+        html += `</div></div>`;
+      } else {
+        html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2><p style="color:var(--text3);font-style:italic">No custom findings recorded for this project.</p>`;
+      }
+      continue;
     }
-    html += '<hr class="rpt-divider">';
-  }
 
-  // Custom vulns — technical only
-  if (scope!=='wstg' && vulns.length && reportType === 'technical') {
-    html += `<h2>Detailed Findings</h2>`;
-    SEV_ORDER.forEach(sev => {
-      if (!bySev[sev].length) return;
-      html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px">
-        <span class="sev-badge sev-${sev}" style="font-size:11px;padding:3px 10px">${SEV_LABEL[sev]}</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${bySev[sev].length} finding${bySev[sev].length>1?'s':''}</span>
-        <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
-      </div>`;
-      bySev[sev].forEach(v => {
-        const edit = _localEdits[v.id] || {};
-        const desc = edit.description || v.description || '';
-        const rem  = edit.remediation || v.remediation || '';
-        const evid = edit.evidence    || v.evidence    || [];
-        const statusLabel = v.status==='done'?'Confirmed':v.status==='fail'?'Reproduced':'Pending';
-
-        html += `<div class="rpt-vuln rpt-vuln-${sev}">
-          <div class="rpt-vuln-header">
-            <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
-            ${v.cvss_score != null ? (()=>{ const sc={critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b'; return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${sc};background:${sc}18;border:1px solid ${sc}33;border-radius:4px;padding:2px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>`; })() : ''}
-            <div class="rpt-vuln-name">${esc(v.name)}</div>
-            ${v.category ? `<span class="rpt-vuln-cat">${esc(v.category)}</span>` : ''}
-            ${v.target_host ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">🎯 ${esc(v.target_host)}</span>` : ''}
-            <span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${statusLabel}</span>
-          </div>
-          <div>`;
-
-        if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Description</div><div class="rpt-field-val">${esc(desc)}</div></div>`;
-        if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div><div class="rpt-code">${v.payloads.map(p=>esc(p)).join('\n')}</div></div>`;
-        if ((v.items||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Checklist</div><div>${v.items.map((item,i)=>`<div style="font-size:12px;color:var(--text2);padding:2px 0">${v.checked_items?.[i]?'✅':'☐'} ${esc(item)}</div>`).join('')}</div></div>`;
-        if (showNotes && v.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notes</div><div class="rpt-field-val">${esc(v.notes)}</div></div>`;
-        if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediation</div><div class="rpt-field-rem">${esc(rem)}</div></div>`;
-        if (showEvid && evid.length) {
-          html += `<div class="rpt-field"><div class="rpt-field-label">Evidence</div><div class="rpt-evidence-grid">`;
-          evid.forEach(img => { html += `<div><img src="${img.data}" class="rpt-evidence-img"><div class="rpt-evidence-cap">${esc(img.name||'')}</div></div>`; });
-          html += '</div></div>';
-        }
-        html += '</div></div>';
+    // ── Findings Index ────────────────────────────────────────────
+    if (sec.type === 'findings-index' && scope !== 'wstg' && vulns.length) {
+      md('## Findings Index'); md('| # | Severity | Vulnerability | Category | Status |'); md('|---|----------|---------------|----------|--------|');
+      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>
+        <table class="rpt-table" style="${_fs}"><thead><tr>
+          <th class="rpt-idx-num">#</th><th class="rpt-idx-sev">Severity</th>
+          <th>Vulnerability</th><th>Category</th><th class="rpt-idx-status">Status</th>
+        </tr></thead><tbody>`;
+      let idx = 1;
+      SEV_ORDER.forEach(sev => {
+        bySev[sev].forEach(v => {
+          const sl = v.status==='done'?'Confirmed':v.status==='fail'?'Reproduced':'Pending';
+          md(`| ${idx} | ${SEV_LABEL[sev]} | ${v.name} | ${v.category||'Custom'} | ${sl} |`);
+          html += `<tr>
+            <td class="num" style="color:var(--text3)"><div class="rpt-cell">${idx++}</div></td>
+            <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
+            <td style="font-weight:600;color:var(--text)"><div class="rpt-cell">${esc(v.name)}</div></td>
+            <td style="font-family:var(--mono);font-size:11px"><div class="rpt-cell">${esc(v.category||'Custom')}</div></td>
+            <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span></div></td>
+          </tr>`;
+        });
       });
-    });
-  }
+      md('');
+      html += '</tbody></table>';
+      continue;
+    }
 
-  // ── Targets / Scope section ────────────────────────────────────────
-  if (scope !== 'wstg' && state.targets?.length) {
-    html += `<h2>Scope — Targets</h2>`;
-
-    if (reportType === 'executive') {
-      // Executive: simple table
-      html += `<table class="rpt-table"><thead><tr>
-        <th>Host</th><th>Type</th><th>Status</th><th>Notes</th>
-      </tr></thead><tbody>`;
-      state.targets.forEach(t => {
-        html += `<tr>
-          <td style="font-family:var(--mono);font-weight:600">${esc(t.host)}</td>
-          <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${esc(t.type||'—')}</td>
-          <td><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></td>
-          <td style="font-size:12px;color:var(--text3)">${esc(t.notes||'')}</td>
-        </tr>`;
+    // ── OWASP WSTG ───────────────────────────────────────────────
+    if (sec.type === 'wstg' && scope !== 'vulns') {
+      md('## OWASP WSTG Progress');
+      md(`**Overall:** ${wTested}/${wTotal} (${wPct}%) · **Passed:** ${wDone} · **Vuln Found:** ${wFail}`); md('');
+      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>
+        <p style="${_fs}"><strong>${wTested}/${wTotal}</strong> tests completed &nbsp;·&nbsp;
+          <strong style="color:var(--green)">${wDone} passed</strong> &nbsp;·&nbsp;
+          <strong style="color:var(--red)">${wFail} vuln found</strong></p>
+        <table class="rpt-table"><thead><tr>
+          <th>Category</th><th style="text-align:center">Tested</th>
+          <th style="text-align:center">Total</th><th style="text-align:center">Vulns</th>
+          <th style="min-width:100px">Progress</th>
+        </tr></thead><tbody>`;
+      WSTG_DATA.forEach(cat => {
+        const t = cat.tests.length;
+        const d = cat.tests.filter(x=>state.wstgProgress[x.id]?.status==='done').length;
+        const f = cat.tests.filter(x=>state.wstgProgress[x.id]?.status==='fail').length;
+        if (!d&&!f) return;
+        const pct = t?Math.round((d+f)/t*100):0;
+        html += `<tr><td>${esc(cat.name)}</td><td class="num">${d+f}</td><td class="num">${t}</td>
+          <td class="num ${f?'vuln-found':''}">${f||'—'}</td>
+          <td><div class="rpt-progress-cell"><div class="rpt-mini-bar"><div class="rpt-mini-fill" style="width:${pct}%"></div></div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:30px">${pct}%</span></div></td></tr>`;
       });
       html += '</tbody></table>';
-    } else {
-      // Technical: cards with ports + endpoints
-      state.targets.forEach(t => {
-        const td = _targetFull[t.id] || {};
-        const ports     = td.ports     || [];
-        const endpoints = td.endpoints || [];
-        html += `<div class="rpt-vuln" style="margin-bottom:12px">
-          <div class="rpt-vuln-header">
-            <span style="font-family:var(--mono);font-size:12px;font-weight:700">${esc(t.host)}</span>
-            ${t.type ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(t.type)}</span>` : ''}
-            <span style="margin-left:auto"><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></span>
+      const failedWSTG = [];
+      WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
+        if (state.wstgProgress[t.id]?.status==='fail') failedWSTG.push({ cat:cat.name, test:t, prog:state.wstgProgress[t.id] });
+      }));
+      if (failedWSTG.length && reportType === 'technical') {
+        md(`### Vulnerabilities Found (${failedWSTG.length})`);
+        html += `<h3 style="margin-top:24px">Vulnerabilities Found <span style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--red);margin-left:6px">${failedWSTG.length} issue${failedWSTG.length>1?'s':''}</span></h3>`;
+        failedWSTG.forEach(({ cat, test, prog }) => {
+          const edit = _localEdits[test.id] || {};
+          const desc = edit.description || prog?.description || '';
+          const rem  = edit.remediation || prog?.remediation || '';
+          const targetHost = prog?.target_id ? (state.targets||[]).find(t=>t.id===prog.target_id)?.host : null;
+          md(`#### ${test.id} — ${test.name}`);
+          md(`**Category:** ${cat}${targetHost ? `  ·  **Target:** ${targetHost}` : ''}`);
+          if (showDesc && desc) { md('**Description**'); md(desc); }
+          if (showRem  && rem)  { md('**Remediation**'); md(rem); }
+          if (showNotes && prog?.note) { md('**Notes**'); md(prog.note); }
+          md('');
+          html += `<div class="rpt-wstg-vuln">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:var(--red)18;border:1px solid var(--red)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
+              <span style="font-weight:600;font-size:13px;color:var(--text)">${esc(test.name)}</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${desc||rem?'8px':'0'}">
+              <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">📁 ${esc(cat)}</span>
+              ${targetHost ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">🎯 ${esc(targetHost)}</span>` : ''}
+            </div>
+            ${showDesc&&desc?`<div class="rpt-field-label" style="margin-top:4px">Description</div><div class="rpt-field-val">${renderMd(desc)}</div>`:''}
+            ${showRem&&rem?`<div class="rpt-field-label">Remediation</div><div class="rpt-field-rem">${renderMd(rem)}</div>`:''}
+            ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic">${esc(prog.note)}</div>`:''}
           </div>`;
-        if (t.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notes</div><div class="rpt-field-val">${esc(t.notes)}</div></div>`;
-        if (ports.length) {
-          html += `<div class="rpt-field"><div class="rpt-field-label">Open Ports (${ports.length})</div>
-            <table class="rpt-table" style="margin:6px 0">
-              <thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version</th></tr></thead>
-              <tbody>`;
-          ports.forEach(port => {
-            html += `<tr>
-              <td class="num" style="font-weight:700">${port.port}</td>
-              <td style="font-family:var(--mono);font-size:11px">${esc(port.protocol||'tcp')}</td>
-              <td style="font-family:var(--mono);font-size:11px">${esc(port.state||'open')}</td>
-              <td>${esc(port.service||'—')}</td>
-              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(port.version||'')}</td>
-            </tr>`;
-          });
-          html += '</tbody></table></div>';
-        }
-        if (endpoints.length) {
-          html += `<div class="rpt-field"><div class="rpt-field-label">Endpoints (${endpoints.length})</div>
-            <table class="rpt-table" style="margin:6px 0">
-              <thead><tr><th>Method</th><th>Path</th><th>Status</th><th>Notes</th></tr></thead>
-              <tbody>`;
-          endpoints.forEach(ep => {
-            html += `<tr>
-              <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent)">${esc(ep.method||'GET')}</td>
-              <td style="font-family:var(--mono);font-size:11px">${esc(ep.path||'')}</td>
-              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(ep.status_code||'')}</td>
-              <td style="font-size:11px;color:var(--text3)">${esc(ep.notes||'')}</td>
-            </tr>`;
-          });
-          html += '</tbody></table></div>';
-        }
-        html += '</div>';
+        });
+      }
+      html += '<hr class="rpt-divider">';
+      continue;
+    }
+
+    // ── Detailed Findings ─────────────────────────────────────────
+    if (sec.type === 'detailed-findings' && scope !== 'wstg' && vulns.length && reportType === 'technical') {
+      md('## Detailed Findings');
+      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>`;
+      SEV_ORDER.forEach(sev => {
+        if (!bySev[sev].length) return;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px">
+          <span class="sev-badge sev-${sev}" style="font-size:11px;padding:3px 10px;width:auto;white-space:nowrap">${SEV_LABEL[sev]}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${bySev[sev].length} finding${bySev[sev].length>1?'s':''}</span>
+          <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+        </div>`;
+        bySev[sev].forEach(v => {
+          const edit = _localEdits[v.id] || {};
+          const desc = edit.description || v.description || '';
+          const rem  = edit.remediation || v.remediation || '';
+          const evid = edit.evidence    || v.evidence    || [];
+          const sl   = v.status==='done'?'Confirmed':v.status==='fail'?'Reproduced':'Pending';
+          md(`### [${SEV_LABEL[sev]}] ${v.name}`);
+          if (v.category)    md(`**Category:** ${v.category}`);
+          if (v.target_host) md(`**Target:** ${v.target_host}`);
+          if (v.cvss_score != null) md(`**CVSS:** ${(+v.cvss_score).toFixed(1)}`);
+          md(`**Status:** ${sl}`);
+          if (showDesc && desc) { md(''); md('**Description**'); md(desc); }
+          if (showPay  && (v.payloads||[]).length) { md(''); md('**Payloads**'); v.payloads.forEach(p => md('```\n' + p + '\n```')); }
+          if (showNotes && v.notes) { md(''); md('**Notes**'); md(v.notes); }
+          if (showRem  && rem)  { md(''); md('**Remediation**'); md(rem); }
+          md('');
+          html += `<div class="rpt-vuln rpt-vuln-${sev}">
+            <div class="rpt-vuln-header" style="${v.target_host?'flex-direction:column;align-items:stretch;gap:5px':''}">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
+                ${v.cvss_score != null ? (()=>{ const sc={critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b'; return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${sc};background:${sc}18;border:1px solid ${sc}33;border-radius:4px;padding:2px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>`; })() : ''}
+                <div class="rpt-vuln-name">${esc(v.name)}</div>
+                ${v.category ? `<span class="rpt-vuln-cat">${esc(v.category)}</span>` : ''}
+                <span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span>
+              </div>
+              ${v.target_host ? `<div style="font-family:var(--mono);font-size:10px;color:var(--accent);word-break:break-all;padding-left:2px">🎯 ${esc(v.target_host)}</div>` : ''}
+            </div><div>`;
+          if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Description</div><div class="rpt-field-val">${renderMd(desc)}</div></div>`;
+          if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div>${v.payloads.map(p=>`<div class="rpt-code" style="margin-bottom:4px">${esc(p)}</div>`).join('')}</div>`;
+          if ((v.items||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Checklist</div><div>${v.items.map((item,i)=>`<div style="font-size:12px;color:var(--text2);padding:2px 0">${v.checked_items?.[i]?'✅':'☐'} ${esc(item)}</div>`).join('')}</div></div>`;
+          if (showNotes && v.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notes</div><div class="rpt-field-val">${esc(v.notes)}</div></div>`;
+          if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediation</div><div class="rpt-field-rem">${renderMd(rem)}</div></div>`;
+          if (showEvid && evid.length) {
+            html += `<div class="rpt-field"><div class="rpt-field-label">Evidence</div><div class="rpt-evidence-grid">`;
+            evid.forEach(img => { html += `<div><img src="${img.data}" class="rpt-evidence-img"><div class="rpt-evidence-cap">${esc(img.name||'')}</div></div>`; });
+            html += '</div></div>';
+          }
+          html += '</div></div>';
+        });
       });
+      continue;
+    }
+
+    // ── Targets ───────────────────────────────────────────────────
+    if (sec.type === 'targets' && state.targets?.length) {
+      md('## Scope — Targets'); md('| Host | Type | Status | Notes |'); md('|------|------|--------|-------|');
+      state.targets.forEach(t => {
+        md(`| ${t.host} | ${t.type||'—'} | ${t.status||'pending'} | ${t.notes||''} |`);
+        const td = _targetFull[t.id] || {};
+        if (td.ports?.length) md(`**Open ports:** ${td.ports.map(p => `${p.port}/${p.protocol||'tcp'} (${p.service||'?'})`).join(', ')}`);
+      });
+      md('');
+      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>`;
+      if (reportType === 'executive') {
+        html += `<table class="rpt-table"><thead><tr><th>Host</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead><tbody>`;
+        state.targets.forEach(t => {
+          html += `<tr>
+            <td style="font-family:var(--mono);font-weight:600"><div class="rpt-cell">${esc(t.host)}</div></td>
+            <td style="font-family:var(--mono);font-size:11px;color:var(--text3)"><div class="rpt-cell">${esc(t.type||'—')}</div></td>
+            <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></div></td>
+            <td style="font-size:12px;color:var(--text3);white-space:pre-wrap"><div class="rpt-cell">${esc(t.notes||'')}</div></td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+      } else {
+        state.targets.forEach(t => {
+          const td = _targetFull[t.id] || {};
+          const ports = td.ports || [], endpoints = td.endpoints || [];
+          html += `<div class="rpt-vuln" style="margin-bottom:12px">
+            <div class="rpt-vuln-header">
+              <span style="font-family:var(--mono);font-size:12px;font-weight:700">${esc(t.host)}</span>
+              ${t.type ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(t.type)}</span>` : ''}
+              <span style="margin-left:auto"><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></span>
+            </div>`;
+          if (t.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notes</div><div class="rpt-field-val" style="white-space:pre-wrap">${esc(t.notes)}</div></div>`;
+          if (ports.length) {
+            html += `<div class="rpt-field"><div class="rpt-field-label">Open Ports (${ports.length})</div>
+              <table class="rpt-table" style="margin:6px 0"><thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Version</th></tr></thead><tbody>`;
+            ports.forEach(port => {
+              html += `<tr>
+                <td class="num" style="font-weight:700">${port.port}</td>
+                <td style="font-family:var(--mono);font-size:11px">${esc(port.protocol||'tcp')}</td>
+                <td style="font-family:var(--mono);font-size:11px">${esc(port.state||'open')}</td>
+                <td>${esc(port.service||'—')}</td>
+                <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(port.version||'')}</td>
+              </tr>`;
+            });
+            html += '</tbody></table></div>';
+          }
+          if (endpoints.length) {
+            html += `<div class="rpt-field"><div class="rpt-field-label">Endpoints (${endpoints.length})</div>
+              <table class="rpt-table" style="margin:6px 0"><thead><tr><th>Method</th><th>Path</th><th>Status</th><th>Notes</th></tr></thead><tbody>`;
+            endpoints.forEach(ep => {
+              html += `<tr>
+                <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent)">${esc(ep.method||'GET')}</td>
+                <td style="font-family:var(--mono);font-size:11px">${esc(ep.path||'')}</td>
+                <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(ep.status_code||'')}</td>
+                <td style="font-size:11px;color:var(--text3);white-space:pre-wrap">${esc(ep.notes||'')}</td>
+              </tr>`;
+            });
+            html += '</tbody></table></div>';
+          }
+          html += '</div>';
+        });
+      }
+      continue;
+    }
+
+    // ── Risk Classification ───────────────────────────────────────
+    if (sec.type === 'risk-table') {
+      md('## Risk Classification'); md('| Rating | CVSS Score | Description |'); md('|--------|------------|-------------|');
+      md('| Critical | 9.0 – 10.0 | Immediate risk... |'); md('| High | 7.0 – 8.9 | Significant vulnerability... |');
+      md('| Medium | 4.0 – 6.9 | Moderate risk... |'); md('| Low | 0.1 – 3.9 | Minor issues... |');
+      md('| Info | N/A | Informational finding... |'); md('');
+      html += `<h2 id="${secId}" style="${_pb}${_fs}">${esc(sec.title)}</h2>
+        <table class="rpt-risk-class" style="${_fs}">
+          <thead><tr><th>Rating</th><th>CVSS Score</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><div class="rpt-cell"><span class="sev-badge sev-critical">Critical</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">9.0 – 10.0</div></td><td><div class="rpt-cell">Immediate risk of exploitation with potential for complete system compromise or significant data breach. Requires urgent remediation.</div></td></tr>
+            <tr><td><div class="rpt-cell"><span class="sev-badge sev-high">High</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">7.0 – 8.9</div></td><td><div class="rpt-cell">Significant vulnerability that could allow unauthorized access or major service disruption. Should be addressed as a priority.</div></td></tr>
+            <tr><td><div class="rpt-cell"><span class="sev-badge sev-medium">Medium</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">4.0 – 6.9</div></td><td><div class="rpt-cell">Moderate risk that may be exploited under certain conditions. Remediation recommended in the short term.</div></td></tr>
+            <tr><td><div class="rpt-cell"><span class="sev-badge sev-low">Low</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">0.1 – 3.9</div></td><td><div class="rpt-cell">Minor issues with limited impact. Should be addressed as part of routine security maintenance.</div></td></tr>
+            <tr><td><div class="rpt-cell"><span class="sev-badge sev-info">Info</span></div></td><td style="font-family:var(--mono)"><div class="rpt-cell">N/A</div></td><td><div class="rpt-cell">Informational findings with no direct security impact. Useful for hardening and best practice alignment.</div></td></tr>
+          </tbody>
+        </table>`;
+      continue;
     }
   }
 
-  // ── Active Methodologies (technical only) ──────────────────────────
+  // ── Methodology Progress (technical, always appended) ─────────────
   if (reportType === 'technical' && scope !== 'wstg') {
     const activeMethods = Object.entries(state.activeMethodProgress || {});
     if (activeMethods.length) {
       html += `<h2>Methodology Progress</h2>`;
-      activeMethods.forEach(([methodId, m]) => {
-        const pct = m.total ? Math.round((m.done + m.fail) / m.total * 100) : 0;
-        const tests = m.tests || [];
+      activeMethods.forEach(([, meth]) => {
+        const tests = meth.tests || [];
         html += `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden">
           <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg2)">
-            <div style="font-weight:600;font-size:13px;flex:1">${esc(m.name)}</div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--green)">${m.done} done</div>
-            ${m.fail ? `<div style="font-family:var(--mono);font-size:11px;color:var(--red)">${m.fail} fail</div>` : ''}
-            <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${m.total} total</div>
+            <div style="font-weight:600;font-size:13px;flex:1">${esc(meth.name)}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--green)">${meth.done} done</div>
+            ${meth.fail ? `<div style="font-family:var(--mono);font-size:11px;color:var(--red)">${meth.fail} fail</div>` : ''}
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${meth.total} total</div>
           </div>
           <div style="padding:10px 14px">
             <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--border);gap:2px;margin-bottom:8px">
-              ${m.done ? `<div style="width:${Math.round(m.done/m.total*100)}%;background:var(--green);border-radius:2px"></div>` : ''}
-              ${m.fail ? `<div style="width:${Math.round(m.fail/m.total*100)}%;background:var(--red);border-radius:2px"></div>` : ''}
+              ${meth.done ? `<div style="width:${Math.round(meth.done/meth.total*100)}%;background:var(--green);border-radius:2px"></div>` : ''}
+              ${meth.fail ? `<div style="width:${Math.round(meth.fail/meth.total*100)}%;background:var(--red);border-radius:2px"></div>` : ''}
             </div>
             ${tests.filter(t => t.status === 'fail').length ? `
               <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Failed checks (${tests.filter(t=>t.status==='fail').length})</div>
@@ -883,17 +2750,75 @@ function buildReport() {
 
   document.getElementById('report-preview').innerHTML = html;
   document.getElementById('export-project-name').textContent = p.name;
+  buildPageLayout();
+}
+
+async function exportPdf() {
+  const m = getReportData().meta;
+  const password = m.pdfPassword?.trim();
+
+  if (!password) {
+    window.print();
+    return;
+  }
+
+  const btn = document.querySelector('[onclick="exportPdf()"]');
+  const origText = btn.textContent;
+  btn.textContent = 'Generating…';
+  btn.disabled = true;
+
+  try {
+    const token   = localStorage.getItem('fd_access');
+    const pageUrl = window.location.href;
+    const pid     = state.currentProject?.id;
+    const rptKey  = `fd_rpt_${pid}`;
+    const rptData = localStorage.getItem(rptKey);
+
+    const res = await fetch(`${window.FLOWDIT_API || 'http://localhost:4000/api'}/export/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ pageUrl, token, password, rptKey, rptData }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'PDF generation failed', 'error');
+      return;
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `${m.coverTitle || state.currentProject?.name || 'report'}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('PDF downloaded', 'success');
+  } catch (e) {
+    showToast('PDF generation failed: ' + e.message, 'error');
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
 }
 
 function copyMarkdown() {
-  if (!_mdLines.length) return;
-  navigator.clipboard.writeText(_mdLines.join('\n')).then(() => showToast('📋 Markdown copied!', 'success'));
+  const text = _freeEditMd ?? (_mdLines.join('\n') || (buildReport(), _mdLines.join('\n')));
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => showToast('📋 Markdown copied!', 'success'));
 }
 
 async function pageInit() {
   await loadAllTargetDetails();
+  const d = getReportData();
+  applyReportFont(d.meta?.font);
+  applyBaseFontSize(d.meta?.baseFontSize);
+  applyReportAccent(d.meta?.accentColor);
+  applyWatermark(d.meta);
+  if (d.freeEditMd) _freeEditMd = d.freeEditMd; // restore persisted free edit
   buildEditor();
   buildReport();
+  buildPageLayout();
 }
 
 bootPage('export');

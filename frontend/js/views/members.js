@@ -78,6 +78,16 @@ async function renderMembers() {
       ${buildClientSettings(state.currentProject)}
     </div>
 
+    <div class="members-card" style="border-color:#7c3aed22">
+      <div class="members-card-title" style="color:var(--text3);font-size:12px">
+        // extras
+        <span style="font-family:var(--mono);font-size:9px;color:var(--text3);opacity:.5;font-weight:400;margin-left:6px">completely optional nonsense</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        ${buildFunSettings()}
+      </div>
+    </div>
+
     <div class="members-card">
       <div class="members-card-title">Danger Zone</div>
       <button class="btn-danger" onclick="deleteProject()">🗑 Delete Project</button>
@@ -304,6 +314,34 @@ async function setLogoBg(bg) {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+function buildFunSettings() {
+  if (!state.currentProject) return '';
+  const s = getFunSettings(state.currentProject.id);
+  const ft = (key, emoji, label, desc) => {
+    const on = !!s[key];
+    return `<div class="client-setting-row">
+      <div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${emoji} ${label}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${desc}</div>
+      </div>
+      <button class="setting-toggle ${on?'on':''}" onclick="toggleFunSetting('${key}',${!on})">
+        <span class="setting-toggle-knob"></span>
+      </button>
+    </div>`;
+  };
+  return `
+    ${ft('confetti', '🎉', 'Confetti at 100%',  'Shoot confetti from both sides when WSTG coverage hits 100%')}
+    ${ft('neon',     '🌈', 'Neon mode',          'Add neon glow to severity badges and progress bars')}
+    ${ft('hacker',   '💀', 'Hacker vibes',        'Scanline overlay — for maximum credibility in client calls')}
+  `;
+}
+
+function toggleFunSetting(key, val) {
+  if (!state.currentProject) return;
+  setFunSetting(state.currentProject.id, key, val);
+  renderMembers();
+}
+
 async function toggleProjectFlag(flag, value) {
   try {
     const updated = await api.projects.update(state.currentProject.id, { [flag]: value });
@@ -316,6 +354,8 @@ async function toggleProjectFlag(flag, value) {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+window.buildFunSettings     = buildFunSettings;
+window.toggleFunSetting     = toggleFunSetting;
 window.renderMembers        = renderMembers;
 window.createInvite         = createInvite;
 window.selectInviteRole     = selectInviteRole;

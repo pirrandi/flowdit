@@ -105,7 +105,7 @@ function buildTestItem(test) {
   // Last editor badge
   const editorBadge = editor ? `
     <div class="last-editor" title="${esc(editor.username)} · ${relativeDate(td.updated_at)}">
-      <div class="last-editor-avatar" style="background:${esc(editor.avatar_color)}">${editor.username[0].toUpperCase()}</div>
+      ${avatarHtml(editor.username, memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
       <span class="last-editor-name">${esc(editor.username)}</span>
       <span class="last-editor-time">${timeAgo(td.updated_at)}</span>
     </div>` : '';
@@ -211,7 +211,7 @@ async function _applyWSTGStatus(id, status, testName) {
       const editor = res.editor;
       if (editor) {
         const html = `<div class="last-editor" title="${esc(editor.username)} · just now">
-          <div class="last-editor-avatar" style="background:${esc(editor.avatar_color)}">${editor.username[0].toUpperCase()}</div>
+          ${avatarHtml(editor.username, memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
           <span class="last-editor-name">${esc(editor.username)}</span>
           <span class="last-editor-time">just now</span>
         </div>`;
@@ -222,7 +222,7 @@ async function _applyWSTGStatus(id, status, testName) {
     }
 
     updateCatBar(id);
-    updateDashboard();
+    if (typeof updateDashboard === 'function') updateDashboard();
 
     const label = status==='done'?'✓ Marked complete':status==='fail'?'⚠ Vuln logged — assign a target below':'↺ Cleared';
     showToast(label, status==='fail'?'error':'success');
@@ -320,7 +320,7 @@ function patchWSTGTestDOM(testId, progress) {
 
   if (editor) {
     const badgeHTML = `<div class="last-editor" title="${esc(editor.username)} · just now">
-      <div class="last-editor-avatar" style="background:${esc(editor.avatar_color)}">${editor.username[0].toUpperCase()}</div>
+      ${avatarHtml(editor.username, memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
       <span class="last-editor-name">${esc(editor.username)}</span>
       <span class="last-editor-time">just now</span>
     </div>`;

@@ -62,6 +62,7 @@ targetRouter.use('/endpoints', require('./routes/endpoints'));
 projectRouter.use('/targets/:targetId', targetRouter);
 
 app.use('/api/methodologies', require('./routes/methodologies'));
+app.use('/api/export',       require('./routes/export'));
 app.use('/api/projects/:projectId', projectRouter);
 
 // 404
