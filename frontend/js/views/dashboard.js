@@ -2,6 +2,115 @@
 
 let _confettiFired = false;
 
+// ── AI Chat ──────────────────────────────────────────────────────────
+let _chatHistory = [];
+
+function _buildProjectContext() {
+  const p      = state.currentProject || {};
+  const vulns  = state.customVulns || [];
+  const targets = state.targets || [];
+
+  let wDone=0, wFail=0, wTotal=0;
+  WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
+    wTotal++;
+    const s = state.wstgProgress[t.id]?.status;
+    if (s === 'done') wDone++;
+    if (s === 'fail') wFail++;
+  }));
+
+  const activeProg = state.activeMethodProgress || {};
+  const methodologies = Object.values(activeProg).map(m => ({
+    name: m.name,
+    pct: m.total ? Math.round((m.done + m.fail) / m.total * 100) : 0,
+  }));
+
+  // Activity: all of today's entries + enough to reach at least 20
+  const feed = state.activityFeed || [];
+  const todayStr = new Date().toDateString();
+  const todayEntries = feed.filter(e => new Date(e.created_at).toDateString() === todayStr);
+  const minEntries = Math.max(todayEntries.length, 20);
+  const activity = feed.slice(0, minEntries).map(e => ({
+    who:    e.username,
+    action: e.action,
+    entity: e.entity_name || e.entity_type || '',
+    when:   e.created_at,
+  }));
+
+  return {
+    project: { name: p.name, target: p.target, description: p.description, status: p.status },
+    vulns: vulns.map(v => ({ name: v.name, severity: v.severity, status: v.status, target_host: v.target_host || null })),
+    wstg: { done: wDone, fail: wFail, pending: wTotal - wDone - wFail, pct: wTotal ? Math.round((wDone+wFail)/wTotal*100) : 0 },
+    targets: targets.map(t => ({ host: t.host, type: t.type, scope: t.scope })),
+    team: (state.members || []).map(m => ({ username: m.username, role: m.role })),
+    tickets: (state.tickets || []).map(t => ({ status: t.status })),
+    methodologies,
+    activity,
+  };
+}
+
+function _chatRenderMessages() {
+  const box = document.getElementById('ai-chat-messages');
+  if (!box) return;
+  if (!_chatHistory.length) {
+    box.innerHTML = `<div class="ai-chat-empty">Pregúntame sobre el estado del proyecto, hallazgos, cobertura, próximos pasos...</div>`;
+    return;
+  }
+  box.innerHTML = _chatHistory.map(msg => {
+    const isUser = msg.role === 'user';
+    const content = isUser ? esc(msg.content) : renderMd(msg.content);
+    return `<div class="ai-chat-msg ${isUser ? 'user' : 'ai'}">
+      <div class="ai-chat-bubble">${content}</div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function _chatSetLoading(on) {
+  const box  = document.getElementById('ai-chat-messages');
+  const btn  = document.getElementById('ai-chat-send');
+  const inp  = document.getElementById('ai-chat-input');
+  if (btn) btn.disabled = on;
+  if (inp) inp.disabled = on;
+  const typing = document.getElementById('ai-chat-typing');
+  if (typing) typing.style.display = on ? 'flex' : 'none';
+  if (on && box) box.scrollTop = box.scrollHeight;
+}
+
+async function aiChatSend() {
+  const inp = document.getElementById('ai-chat-input');
+  const question = inp?.value.trim();
+  if (!question) return;
+  inp.value = '';
+
+  _chatHistory.push({ role: 'user', content: question });
+  _chatRenderMessages();
+  _chatSetLoading(true);
+
+  try {
+    const result = await request('POST', '/ai/chat', {
+      question,
+      history: _chatHistory.slice(-7, -1), // last 3 exchanges before current question
+      context: _buildProjectContext(),
+    });
+    _chatHistory.push({ role: 'assistant', content: result.answer });
+    if (_chatHistory.length > 20) _chatHistory = _chatHistory.slice(-20);
+  } catch(e) {
+    _chatHistory.push({ role: 'assistant', content: `_Error: ${e.message}_` });
+  } finally {
+    _chatSetLoading(false);
+    _chatRenderMessages();
+  }
+}
+
+function aiChatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiChatSend(); }
+}
+
+function aiChatClear() {
+  _chatHistory = [];
+  _chatRenderMessages();
+}
+
 function updateDashboard() {
   if (!state.currentProject) return;
 
@@ -246,6 +355,27 @@ function updateDashboard() {
       </div>`;
     })()}
 
+    <!-- AI Chat panel -->
+    <div class="dash-row" style="margin-bottom:16px">
+      <div class="dash-panel" style="flex:1">
+        <div class="dash-panel-title">
+          ✦ AI Assistant
+          <button onclick="aiChatClear()" style="margin-left:auto;background:none;border:none;font-family:var(--mono);font-size:10px;color:var(--text3);cursor:pointer;padding:0" title="Limpiar conversación">clear</button>
+        </div>
+        <div class="ai-chat-messages" id="ai-chat-messages">
+          <div class="ai-chat-empty">Pregúntame sobre el estado del proyecto, hallazgos, cobertura, próximos pasos...</div>
+        </div>
+        <div class="ai-chat-typing" id="ai-chat-typing" style="display:none">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="ai-chat-input-row">
+          <textarea class="ai-chat-input" id="ai-chat-input" placeholder="Ej: ¿qué vulnerabilidades críticas hay? ¿qué falta por testear?" rows="1"
+            onkeydown="aiChatKeydown(event)"></textarea>
+          <button class="ai-chat-send" id="ai-chat-send" onclick="aiChatSend()">↑</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Recent findings + Team row -->
     <div class="dash-row">
       <!-- Recent custom vulns -->
@@ -283,6 +413,7 @@ function updateDashboard() {
     </div>`;
 
   if (typeof refreshTopbarProgress === 'function') refreshTopbarProgress();
+  _chatRenderMessages();
 }
 
 window.updateDashboard = updateDashboard;
