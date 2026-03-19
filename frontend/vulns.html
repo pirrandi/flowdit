@@ -93,12 +93,18 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Description <span style="color:var(--text3);font-weight:400">supports markdown</span></label>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <label class="form-label" style="margin:0">Description <span style="color:var(--text3);font-weight:400">supports markdown</span></label>
+        <button type="button" class="ai-btn" id="ai-draft-btn" onclick="aiDraft()" title="Generate full draft from name + category">✦ Draft</button>
+      </div>
       <textarea class="form-input note-textarea" id="modal-vuln-desc" style="min-height:80px" placeholder="What is this vulnerability and why does it matter..."></textarea>
     </div>
 
     <div class="form-group">
-      <label class="form-label">Remediation <span style="color:var(--text3);font-weight:400">supports markdown</span></label>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <label class="form-label" style="margin:0">Remediation <span style="color:var(--text3);font-weight:400">supports markdown</span></label>
+        <button type="button" class="ai-btn" id="ai-rem-btn" onclick="aiRemediation()" title="Generate remediation from description">✦ Suggest</button>
+      </div>
       <textarea class="form-input note-textarea" id="modal-vuln-rem" style="min-height:80px" placeholder="How to fix or mitigate this vulnerability..."></textarea>
     </div>
 

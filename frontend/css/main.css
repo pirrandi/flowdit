@@ -101,6 +101,10 @@ a { color:inherit; text-decoration:none; }
 .btn-accent { background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);border-radius:8px;padding:8px 16px;color:var(--accent3);font-size:13px;font-weight:700;transition:all .2s;display:inline-flex;align-items:center;gap:6px; }
 .btn-accent:hover { background:rgba(124,58,237,.25);border-color:var(--accent); }
 .btn-icon { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 8px;font-size:11px;color:var(--text3);transition:all .15s; }
+.ai-btn { background:rgba(109,40,217,.12);border:1px solid rgba(109,40,217,.25);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:#a78bfa;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px; }
+.ai-btn:hover { background:rgba(109,40,217,.22);border-color:#7c3aed;color:#c4b5fd; }
+.ai-btn:disabled { opacity:.5;cursor:not-allowed; }
+.ai-btn.loading { opacity:.7; }
 .btn-icon:hover { border-color:var(--border2);color:var(--text2); }
 .btn-icon.edit:hover { border-color:var(--blue);color:var(--blue); }
 .btn-icon.delete:hover { border-color:var(--red);color:var(--red); }

@@ -375,6 +375,45 @@ async function saveVuln() {
   finally { btn.disabled = false; }
 }
 
+// ── AI helpers ───────────────────────────────────────────────────────
+async function _aiGenerate(type, context, btnId, btnLabel) {
+  const btn = document.getElementById(btnId);
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); btn.textContent = '…'; }
+  try {
+    return await request('POST', '/ai/generate', { type, context });
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = btnLabel; }
+  }
+}
+
+async function aiDraft() {
+  const name     = document.getElementById('modal-vuln-name').value.trim();
+  const category = document.getElementById('modal-vuln-cat').value.trim();
+  const notes    = document.getElementById('modal-vuln-notes').value.trim();
+  if (!name) { showToast('Enter a name first', 'error'); return; }
+  try {
+    const result = await _aiGenerate('vuln-draft', { name, category, notes }, 'ai-draft-btn', '✦ Draft');
+    if (result.name)        document.getElementById('modal-vuln-name').value = result.name;
+    if (result.category)    document.getElementById('modal-vuln-cat').value  = result.category;
+    if (result.severity)    document.getElementById('modal-vuln-sev').value  = result.severity;
+    if (result.description) document.getElementById('modal-vuln-desc').value = result.description;
+    if (result.remediation) document.getElementById('modal-vuln-rem').value  = result.remediation;
+    showToast('✦ Draft generated', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function aiRemediation() {
+  const name        = document.getElementById('modal-vuln-name').value.trim();
+  const category    = document.getElementById('modal-vuln-cat').value.trim();
+  const description = document.getElementById('modal-vuln-desc').value.trim();
+  if (!name && !description) { showToast('Add a name or description first', 'error'); return; }
+  try {
+    const result = await _aiGenerate('remediation', { name, category, description }, 'ai-rem-btn', '✦ Suggest');
+    if (result.remediation) document.getElementById('modal-vuln-rem').value = result.remediation;
+    showToast('✦ Remediation generated', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function deleteVuln(id, e) {
   e.stopPropagation();
   if (!confirm('Delete this vulnerability?')) return;
