@@ -18,11 +18,16 @@ function renderWSTG() {
     if (f === 'pending')   tests = tests.filter(t => !state.wstgProgress[t.id]?.status);
     if (f === 'completed') tests = tests.filter(t => state.wstgProgress[t.id]?.status === 'done');
     if (f === 'failed')    tests = tests.filter(t => state.wstgProgress[t.id]?.status === 'fail');
+    if (f === 'na')        tests = tests.filter(t => state.wstgProgress[t.id]?.status === 'na');
     if (!tests.length && f !== 'all') return;
 
-    const total = cat.tests.length;
-    const done  = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'done').length;
-    const pct   = total ? Math.round(done/total*100) : 0;
+    const total    = cat.tests.length;
+    const done     = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'done').length;
+    const fail     = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'fail').length;
+    const na       = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'na').length;
+    const reviewed = done + fail + na;
+    const donePct  = total ? Math.round(done/total*100) : 0;
+    const failPct  = total ? Math.round(fail/total*100) : 0;
 
     const block = document.createElement('div');
     block.className = 'category-block';
@@ -35,8 +40,8 @@ function renderWSTG() {
       <span class="category-badge">${esc(cat.id)}</span>
       <span class="category-name">${esc(cat.name)}</span>
       <div class="cat-meta">
-        <span class="cat-count">${done}/${total}</span>
-        <div class="cat-mini-bar"><div class="cat-mini-fill" id="catbar-${cat.id}" style="width:${pct}%"></div></div>
+        <span class="cat-count">${reviewed}/${total}</span>
+        <div class="cat-mini-bar"><div class="cat-mini-fill" id="catbar-done-${cat.id}" style="width:${donePct}%"></div><div class="cat-mini-fail" id="catbar-fail-${cat.id}" style="width:${failPct}%"></div></div>
       </div>`;
     hdr.onclick = () => { hdr.classList.toggle('open'); list.classList.toggle('open'); };
 
@@ -110,32 +115,40 @@ function buildTestItem(test) {
       <span class="last-editor-time">${timeAgo(td.updated_at)}</span>
     </div>` : '';
 
-  // Target selector — only shown when status is fail
+  // Target selector + link selector — only shown when status is fail
   const targetSel = status === 'fail' ? buildTargetSelector(test.id, td.target_id) : '';
+  const linkSel   = status === 'fail' ? buildVulnLinkSelector(test.id, td.linked_vuln_id) : '';
 
-  // Target badge in header if assigned
+  // Badges in header (only when fail + assigned)
   const targetBadge = (status === 'fail' && td.target_id)
     ? `<span class="wstg-target-badge">🎯 ${esc(_getTargetHost(td.target_id))}</span>`
     : '';
+  const linkBadge = (status === 'fail' && td.linked_vuln_id)
+    ? `<span class="wstg-link-badge">🔗 ${esc(_getVulnName(td.linked_vuln_id))}</span>`
+    : '';
 
+  const statusClass = status==='done'?'completed':status==='fail'?'failed':status==='na'?'na':'';
   const el = document.createElement('div');
-  el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`;
+  el.className = `test-item${statusClass?' '+statusClass:''}`;
   el.id = `test-${test.id}`;
 
   el.innerHTML = `
     <div class="test-header" onclick="toggleTestBody('${test.id}',event)">
-      <div class="test-check" onclick="cycleWSTGStatus('${test.id}',event)">${status==='done'?'✓':status==='fail'?'✕':''}</div>
+      <div class="test-check" onclick="cycleWSTGStatus('${test.id}',event)">${status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':''}</div>
       <span class="test-id">${esc(test.id)}</span>
       <span class="test-name">${esc(test.name)}</span>
       ${targetBadge}
+      ${linkBadge}
       ${editorBadge}
       <div class="test-actions">
         <button class="test-action-btn pass" onclick="setWSTGStatus('${test.id}','done','${esc(test.name)}',event)">✓</button>
         <button class="test-action-btn vuln" onclick="setWSTGStatus('${test.id}','fail','${esc(test.name)}',event)">✕ vuln</button>
+        <button class="test-action-btn" onclick="setWSTGStatus('${test.id}','na','${esc(test.name)}',event)">N/A</button>
         <button class="test-action-btn" onclick="setWSTGStatus('${test.id}',null,'${esc(test.name)}',event)">↺</button>
       </div>
     </div>
     ${targetSel}
+    ${linkSel}
     <div class="test-body" id="body-${test.id}">
       ${itemsHTML}${payloadsHTML}
       <textarea class="note-textarea" placeholder="// Notes, findings, POC..."
@@ -146,6 +159,27 @@ function buildTestItem(test) {
 
 function _getTargetHost(targetId) {
   return (state.targets||[]).find(t => t.id === targetId)?.host || targetId;
+}
+
+function _getVulnName(vulnId) {
+  return (state.customVulns||[]).find(v => v.id === vulnId)?.name || vulnId;
+}
+
+const SEV_ICONS = { critical:'🔴', high:'🟠', medium:'🟡', low:'🔵', info:'⚪' };
+
+function buildVulnLinkSelector(testId, currentLinkedId) {
+  const vulns = (state.customVulns || []);
+  if (!vulns.length) return '';
+  const options = vulns.map(v =>
+    `<option value="${esc(v.id)}" ${v.id === currentLinkedId ? 'selected' : ''}>${SEV_ICONS[v.severity]||'⚪'} ${esc(v.name)}</option>`
+  ).join('');
+  return `<div class="wstg-link-row" id="link-row-${testId}">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--accent3);flex-shrink:0">🔗 Link to finding</span>
+    <select class="wstg-link-select" onchange="saveWSTGLink('${testId}',this.value)">
+      <option value="">— Not linked —</option>
+      ${options}
+    </select>
+  </div>`;
 }
 
 function toggleTestBody(id, e) {
@@ -164,7 +198,7 @@ function switchPayloadTab(testId, tab, btn) {
 async function cycleWSTGStatus(id, e) {
   e.stopPropagation();
   const cur  = state.wstgProgress[id]?.status;
-  const next = cur === 'done' ? 'fail' : cur === 'fail' ? null : 'done';
+  const next = cur === 'done' ? 'fail' : cur === 'fail' ? 'na' : cur === 'na' ? null : 'done';
   const test = WSTG_DATA.flatMap(c => c.tests).find(t => t.id === id);
   await _applyWSTGStatus(id, next, test?.name || id);
 }
@@ -182,30 +216,42 @@ async function _applyWSTGStatus(id, status, testName) {
     state.wstgProgress[id].updated_at = res.updated_at;
     state.wstgProgress[id].last_editor = res.editor;
 
-    // If clearing vuln status, also clear target
-    if (!status) state.wstgProgress[id].target_id = null;
+    // If leaving fail status, also clear target and link
+    if (status !== 'fail') {
+      state.wstgProgress[id].target_id      = null;
+      state.wstgProgress[id].linked_vuln_id = null;
+    }
 
     const el = document.getElementById(`test-${id}`);
     if (el) {
-      el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`;
+      const sc = status==='done'?'completed':status==='fail'?'failed':status==='na'?'na':'';
+      el.className = `test-item${sc?' '+sc:''}`;
       const chk = el.querySelector('.test-check');
-      chk.textContent       = status==='done'?'✓':status==='fail'?'✕':'';
-      chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
-      chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
-      chk.style.color       = status ? 'var(--bg)' : '';
+      chk.textContent       = status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':'';
+      chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
+      chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
+      chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--text3)' : '';
 
-      // Toggle target selector row
-      const existingRow = el.querySelector('.wstg-target-row');
-      if (status === 'fail' && !existingRow) {
+      // Toggle target selector row + link row
+      const existingTargetRow = el.querySelector('.wstg-target-row');
+      const existingLinkRow   = el.querySelector('.wstg-link-row');
+      if (status === 'fail') {
         const header = el.querySelector('.test-header');
-        header.insertAdjacentHTML('afterend', buildTargetSelector(id, state.wstgProgress[id].target_id));
-      } else if (status !== 'fail' && existingRow) {
-        existingRow.remove();
+        if (!existingTargetRow) {
+          header.insertAdjacentHTML('afterend', buildTargetSelector(id, state.wstgProgress[id].target_id));
+        }
+        if (!existingLinkRow) {
+          const targetRow = el.querySelector('.wstg-target-row');
+          targetRow.insertAdjacentHTML('afterend', buildVulnLinkSelector(id, state.wstgProgress[id].linked_vuln_id));
+        }
+      } else {
+        existingTargetRow?.remove();
+        existingLinkRow?.remove();
       }
 
-      // Update target badge in header
-      const existingBadge = el.querySelector('.wstg-target-badge');
-      if (existingBadge) existingBadge.remove();
+      // Update target + link badges in header
+      el.querySelector('.wstg-target-badge')?.remove();
+      el.querySelector('.wstg-link-badge')?.remove();
 
       // Update editor badge
       const editor = res.editor;
@@ -224,8 +270,8 @@ async function _applyWSTGStatus(id, status, testName) {
     updateCatBar(id);
     if (typeof updateDashboard === 'function') updateDashboard();
 
-    const label = status==='done'?'✓ Marked complete':status==='fail'?'⚠ Vuln logged — assign a target below':'↺ Cleared';
-    showToast(label, status==='fail'?'error':'success');
+    const label = status==='done'?'✓ Marked complete':status==='fail'?'⚠ Vuln logged — assign a target below':status==='na'?'— Marked as N/A':'↺ Cleared';
+    showToast(label, status==='fail'?'error':status==='na'?'info':'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -278,12 +324,19 @@ function saveWSTGNote(testId, testName, val) {
 function updateCatBar(testId) {
   const cat = WSTG_DATA.find(c => c.tests.some(t => t.id === testId));
   if (!cat) return;
-  const tested = cat.tests.filter(t => !!state.wstgProgress[t.id]?.status).length;
-  const pct    = cat.tests.length ? Math.round(tested/cat.tests.length*100) : 0;
-  const bar    = document.getElementById(`catbar-${cat.id}`);
-  if (bar) bar.style.width = `${pct}%`;
-  const cnt    = document.querySelector(`#cat-${cat.id} .cat-count`);
-  if (cnt) cnt.textContent = `${tested}/${cat.tests.length}`;
+  const total    = cat.tests.length;
+  const done     = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'done').length;
+  const fail     = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'fail').length;
+  const na       = cat.tests.filter(t => state.wstgProgress[t.id]?.status === 'na').length;
+  const reviewed = done + fail + na;
+  const donePct  = total ? Math.round(done/total*100) : 0;
+  const failPct  = total ? Math.round(fail/total*100) : 0;
+  const doneBar  = document.getElementById(`catbar-done-${cat.id}`);
+  const failBar  = document.getElementById(`catbar-fail-${cat.id}`);
+  if (doneBar) doneBar.style.width = `${donePct}%`;
+  if (failBar) failBar.style.width = `${failPct}%`;
+  const cnt = document.querySelector(`#cat-${cat.id} .cat-count`);
+  if (cnt) cnt.textContent = `${reviewed}/${total}`;
 }
 
 function scrollToCat(catId) {
@@ -297,25 +350,34 @@ function patchWSTGTestDOM(testId, progress) {
   const status = progress.status || null;
   const editor = progress.last_editor;
 
-  el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`.trim();
+  const sc = status==='done'?'completed':status==='fail'?'failed':status==='na'?'na':'';
+  el.className = `test-item${sc?' '+sc:''}`;
 
   const chk = el.querySelector('.test-check');
   if (chk) {
-    chk.textContent      = status==='done'?'✓':status==='fail'?'✕':'';
-    chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
-    chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
-    chk.style.color       = status ? 'var(--bg)' : '';
+    chk.textContent       = status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':'';
+    chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
+    chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
+    chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--text3)' : '';
   }
 
   const name = el.querySelector('.test-name');
   if (name) name.style.textDecoration = status==='done' ? 'line-through' : '';
 
-  // Toggle target selector
-  const existingRow = el.querySelector('.wstg-target-row');
-  if (status === 'fail' && !existingRow) {
-    el.querySelector('.test-header')?.insertAdjacentHTML('afterend', buildTargetSelector(testId, progress.target_id));
-  } else if (status !== 'fail' && existingRow) {
-    existingRow.remove();
+  // Toggle target selector + link row
+  const existingTargetRow = el.querySelector('.wstg-target-row');
+  const existingLinkRow   = el.querySelector('.wstg-link-row');
+  if (status === 'fail') {
+    if (!existingTargetRow) {
+      el.querySelector('.test-header')?.insertAdjacentHTML('afterend', buildTargetSelector(testId, progress.target_id));
+    }
+    if (!existingLinkRow) {
+      const targetRow = el.querySelector('.wstg-target-row');
+      targetRow?.insertAdjacentHTML('afterend', buildVulnLinkSelector(testId, progress.linked_vuln_id));
+    }
+  } else {
+    existingTargetRow?.remove();
+    existingLinkRow?.remove();
   }
 
   if (editor) {
@@ -332,6 +394,28 @@ function patchWSTGTestDOM(testId, progress) {
   updateCatBar(testId);
 }
 
+async function saveWSTGLink(testId, vulnId) {
+  try {
+    await api.wstg.setLink(state.currentProject.id, testId, vulnId || null);
+    if (!state.wstgProgress[testId]) state.wstgProgress[testId] = {};
+    state.wstgProgress[testId].linked_vuln_id = vulnId || null;
+
+    const el = document.getElementById(`test-${testId}`);
+    if (!el) return;
+    const existing = el.querySelector('.wstg-link-badge');
+    if (vulnId) {
+      const vulnName = _getVulnName(vulnId);
+      const badge = `<span class="wstg-link-badge">🔗 ${esc(vulnName)}</span>`;
+      if (existing) existing.outerHTML = badge;
+      else el.querySelector('.wstg-target-badge')?.insertAdjacentHTML('afterend', badge)
+        || el.querySelector('.test-id')?.insertAdjacentHTML('afterend', badge);
+    } else {
+      existing?.remove();
+    }
+    showToast(vulnId ? '✓ Linked to finding' : '↺ Link removed', 'success');
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
 window.filterWSTG        = filterWSTG;
 window.renderWSTG        = renderWSTG;
 window.buildTestItem     = buildTestItem;
@@ -344,3 +428,4 @@ window.toggleWSTGItem    = toggleWSTGItem;
 window.saveWSTGNote      = saveWSTGNote;
 window.scrollToCat       = scrollToCat;
 window.patchWSTGTestDOM  = patchWSTGTestDOM;
+window.saveWSTGLink      = saveWSTGLink;

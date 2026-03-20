@@ -292,6 +292,14 @@ const migrations = [
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cvss_score  NUMERIC(3,1)`,
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS logo_bg  VARCHAR(5) NOT NULL DEFAULT 'light' CHECK (logo_bg IN ('light','dark'))`,
 
+  // ── CWE on findings ──────────────────────────────────────────────
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cwe VARCHAR(20)`,
+
+  // ── WSTG N/A status + link to custom vuln ────────────────────────
+  `ALTER TABLE wstg_progress DROP CONSTRAINT IF EXISTS wstg_progress_status_check`,
+  `ALTER TABLE wstg_progress ADD CONSTRAINT wstg_progress_status_check CHECK (status IN ('done','fail','na') OR status IS NULL)`,
+  `ALTER TABLE wstg_progress ADD COLUMN IF NOT EXISTS linked_vuln_id UUID REFERENCES custom_vulns(id) ON DELETE SET NULL`,
+
   // Trigger updated_at para tickets
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_tickets_updated_at') THEN

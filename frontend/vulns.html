@@ -62,10 +62,17 @@
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
       <div class="form-group" style="margin:0">
         <label class="form-label">Category</label>
         <input type="text" class="form-input" id="modal-vuln-cat" placeholder="e.g. GraphQL, Auth, API...">
+      </div>
+      <div class="form-group" style="margin:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <label class="form-label" style="margin:0">CWE <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+          <button type="button" class="ai-btn" id="ai-cwe-btn" onclick="aiCWE()" title="Suggest CWE from name & description" style="font-size:9px;padding:2px 6px">✦</button>
+        </div>
+        <input type="text" class="form-input" id="modal-vuln-cwe" placeholder="e.g. CWE-79">
       </div>
       <div class="form-group" style="margin:0">
         <label class="form-label">Target <span style="color:var(--text3);font-weight:400">(optional)</span></label>
@@ -114,6 +121,7 @@
         <label class="form-label" style="margin:0">CVSS v3.1 <span style="font-size:10px;color:var(--text3);font-weight:400">(optional)</span></label>
         <div style="display:flex;align-items:center;gap:8px">
           <span id="cvss-header-pill" style="font-family:var(--mono);font-size:11px;color:var(--text3)">not scored</span>
+          <button type="button" id="cvss-clear-btn" onclick="clearCVSS()" style="font-family:var(--mono);font-size:10px;color:var(--red);background:none;border:none;cursor:pointer;padding:0;display:none">✕ clear</button>
           <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">▸ open</button>
         </div>
       </div>

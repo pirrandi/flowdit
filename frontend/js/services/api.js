@@ -92,6 +92,8 @@ const api = {
                                       request('PATCH', `/projects/${pid}/wstg/${tid}/target`, { target_id: targetId }),
     saveReport:(pid, tid, description, remediation) =>
                                       request('PATCH', `/projects/${pid}/wstg/${tid}/report`, { description, remediation }),
+    setLink:   (pid, tid, vulnId)   =>
+                                      request('PATCH', `/projects/${pid}/wstg/${tid}/link`,   { linked_vuln_id: vulnId }),
   },
   ps: {
     getAll:   (pid)                          => request('GET',   `/projects/${pid}/ps`),

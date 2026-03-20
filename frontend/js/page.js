@@ -76,7 +76,7 @@ function calcOverallProgress() {
     WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
       total++;
       const s = state.wstgProgress[t.id]?.status;
-      if (s === 'done' || s === 'fail') done++;
+      if (s === 'done' || s === 'fail' || s === 'na') done++;
     }));
   }
   return { done, total };

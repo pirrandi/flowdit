@@ -32,12 +32,12 @@ router.post('/', requireEditor, [
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null } = req.body;
+  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null, cwe=null } = req.body;
   try {
     const { rows } = await db.query(
-      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING *`,
-      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), target_id||null, cvss_vector||null, cvss_score||null, req.user.id]
+      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, cwe, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`,
+      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), target_id||null, cvss_vector||null, cvss_score||null, cwe||null, req.user.id]
     );
     await activity.log({
       projectId:  req.params.projectId,
@@ -53,7 +53,7 @@ router.post('/', requireEditor, [
 });
 
 router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','status','checked_items','target_id','cvss_vector','cvss_score'];
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','status','checked_items','target_id','cvss_vector','cvss_score','cwe'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {

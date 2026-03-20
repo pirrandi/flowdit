@@ -12,6 +12,7 @@ const _CVSS_W = {
 };
 let _cvss = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U', C:'N', I:'N', A:'N' };
 let _cvssModified = false;
+let _cvssCleared  = false;
 
 function _cvssRoundUp(x) {
   const i = Math.ceil(x * 100000);
@@ -66,6 +67,9 @@ function _cvssSevClass(s) {
 function setCVSSMetric(metric, value) {
   _cvss[metric] = value;
   _cvssModified = true;
+  _cvssCleared  = false;
+  const clrBtn  = document.getElementById('cvss-clear-btn');
+  if (clrBtn) clrBtn.style.display = 'inline';
   _renderCVSSCalc();
 }
 
@@ -111,12 +115,15 @@ function _initCVSS(vector) {
         I:parsed.I||'N',   A:parsed.A||'N' }
     : { AV:'N', AC:'L', PR:'N', UI:'N', S:'U', C:'N', I:'N', A:'N' };
   _cvssModified = !!vector;
+  _cvssCleared  = false;
 
-  const body = document.getElementById('cvss-calc');
-  const btn  = document.getElementById('cvss-toggle-btn');
-  const hp   = document.getElementById('cvss-header-pill');
+  const body  = document.getElementById('cvss-calc');
+  const btn   = document.getElementById('cvss-toggle-btn');
+  const clrBtn= document.getElementById('cvss-clear-btn');
+  const hp    = document.getElementById('cvss-header-pill');
   if (body) body.style.display = vector ? 'block' : 'none';
   if (btn)  btn.textContent    = vector ? '▾ close' : '▸ open';
+  if (clrBtn) clrBtn.style.display = vector ? 'inline' : 'none';
   if (hp) {
     if (vector) {
       const s = calcCVSSScore(_cvss);
@@ -127,6 +134,20 @@ function _initCVSS(vector) {
     }
   }
   if (vector) _renderCVSSCalc();
+}
+
+function clearCVSS() {
+  _cvssModified = true;
+  _cvssCleared  = true;
+  _cvss = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U', C:'N', I:'N', A:'N' };
+  const body   = document.getElementById('cvss-calc');
+  const btn    = document.getElementById('cvss-toggle-btn');
+  const clrBtn = document.getElementById('cvss-clear-btn');
+  const hp     = document.getElementById('cvss-header-pill');
+  if (body)   body.style.display   = 'none';
+  if (btn)    btn.textContent       = '▸ open';
+  if (clrBtn) clrBtn.style.display  = 'none';
+  if (hp)     { hp.style.color = ''; hp.textContent = 'not scored'; }
 }
 
 async function copyCVSSVector() {
@@ -217,6 +238,7 @@ function buildVulnCard(v) {
       <span class="vuln-tag">${esc(v.category||'Custom')}</span>
       ${severityBadge(v.severity)}
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
+      ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--accent);border-color:var(--accent)33">🎯 ${esc(v.target_host)}</span>` : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
@@ -285,6 +307,7 @@ function openAddVulnModal() {
   document.getElementById('modal-title').textContent       = 'Add Vulnerability';
   document.getElementById('modal-vuln-name').value         = '';
   document.getElementById('modal-vuln-cat').value          = '';
+  document.getElementById('modal-vuln-cwe').value          = '';
   document.getElementById('modal-vuln-sev').value          = 'medium';
   document.getElementById('modal-vuln-notes').value        = '';
   document.getElementById('modal-vuln-desc').value         = '';
@@ -307,6 +330,7 @@ function openEditVuln(id, e) {
   document.getElementById('modal-title').textContent      = 'Edit Vulnerability';
   document.getElementById('modal-vuln-name').value        = v.name;
   document.getElementById('modal-vuln-cat').value         = v.category || '';
+  document.getElementById('modal-vuln-cwe').value         = v.cwe || '';
   document.getElementById('modal-vuln-sev').value         = v.severity || 'medium';
   document.getElementById('modal-vuln-notes').value       = v.notes || '';
   document.getElementById('modal-vuln-desc').value        = v.description || '';
@@ -342,6 +366,7 @@ function closeVulnModal() {
 async function saveVuln() {
   const name     = document.getElementById('modal-vuln-name').value.trim();
   const category = document.getElementById('modal-vuln-cat').value.trim();
+  const cwe      = document.getElementById('modal-vuln-cwe').value.trim();
   const severity = document.getElementById('modal-vuln-sev').value;
   const notes    = document.getElementById('modal-vuln-notes').value;
   const err      = document.getElementById('vuln-error');
@@ -354,10 +379,15 @@ async function saveVuln() {
   btn.disabled = true;
   try {
     const target_id = document.getElementById('modal-vuln-target')?.value || null;
-    const payload = { name, category: category||'Custom', severity, items, payloads, notes, description, remediation, target_id: target_id||null };
+    const payload = { name, category: category||'Custom', severity, items, payloads, notes, description, remediation, target_id: target_id||null, cwe: cwe||null };
     if (_cvssModified) {
-      payload.cvss_vector = buildCVSSVector(_cvss);
-      payload.cvss_score  = calcCVSSScore(_cvss);
+      if (_cvssCleared) {
+        payload.cvss_vector = null;
+        payload.cvss_score  = null;
+      } else {
+        payload.cvss_vector = buildCVSSVector(_cvss);
+        payload.cvss_score  = calcCVSSScore(_cvss);
+      }
     }
     if (_editingVulnId) {
       const updated = await api.vulns.update(state.currentProject.id, _editingVulnId, payload);
@@ -425,6 +455,18 @@ async function aiRemediation() {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+async function aiCWE() {
+  const ctx = _collectVulnContext();
+  if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
+  try {
+    const result = await _aiGenerate('cwe', ctx, 'ai-cwe-btn', '✦');
+    if (result.cwe) {
+      document.getElementById('modal-vuln-cwe').value = result.cwe;
+      showToast(`✦ ${result.cwe}${result.cwe_name ? ' — ' + result.cwe_name : ''}`, 'success');
+    }
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function deleteVuln(id, e) {
   e.stopPropagation();
   if (!confirm('Delete this vulnerability?')) return;
@@ -448,6 +490,7 @@ function populateTargetSelect(selectedId) {
 window.setCVSSMetric      = setCVSSMetric;
 window.toggleCVSSSection  = toggleCVSSSection;
 window.copyCVSSVector     = copyCVSSVector;
+window.clearCVSS          = clearCVSS;
 window.renderCustomVulns  = renderCustomVulns;
 window.buildVulnCard      = buildVulnCard;
 window.openEvidenceViewer = openEvidenceViewer;
@@ -463,3 +506,6 @@ window.deleteVuln         = deleteVuln;
 window.severityBadge      = severityBadge;
 window.SEVERITY_ORDER     = SEVERITY_ORDER;
 window.SEVERITY_LABELS    = SEVERITY_LABELS;
+window.aiDraft            = aiDraft;
+window.aiRemediation      = aiRemediation;
+window.aiCWE              = aiCWE;

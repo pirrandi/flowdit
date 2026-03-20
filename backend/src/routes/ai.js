@@ -74,6 +74,26 @@ Respond with this exact JSON schema:
   "remediation": "..."
 }`;
 
+  } else if (type === 'cwe') {
+    userPrompt = `Identify the most appropriate CWE identifier for the following penetration test finding.
+
+Finding name: ${c.name || 'Unknown'}
+${c.category    ? `Category: ${c.category}` : ''}
+${c.description ? `Description: ${c.description}` : ''}
+${c.notes       ? `Tester notes: ${c.notes}` : ''}
+${payloadBlock}
+
+Instrucciones:
+- Elige el CWE más específico y preciso para este hallazgo (no uses CWEs genéricos si hay uno más específico)
+- "cwe": el identificador exacto, formato "CWE-XXX" (ej. "CWE-89", "CWE-79", "CWE-287")
+- "cwe_name": nombre oficial del CWE en inglés (ej. "SQL Injection", "Cross-site Scripting")
+
+Respond with this exact JSON schema:
+{
+  "cwe": "CWE-XXX",
+  "cwe_name": "..."
+}`;
+
   } else {
     return res.status(400).json({ error: 'Unknown type' });
   }

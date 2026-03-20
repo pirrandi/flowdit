@@ -32,6 +32,7 @@
       <button class="filter-chip" onclick="filterWSTG('pending',this)">Pending</button>
       <button class="filter-chip" onclick="filterWSTG('completed',this)">Completed</button>
       <button class="filter-chip" onclick="filterWSTG('failed',this)">Vuln Found</button>
+      <button class="filter-chip" onclick="filterWSTG('na',this)">N/A</button>
     </div>
     <div id="wstg-content"></div>
   </div>
@@ -64,24 +65,24 @@
     let html = '<div class="sidebar-section-label">Categories</div>';
     WSTG_DATA.forEach(cat => {
       const t = cat.tests.length;
-      const d = cat.tests.filter(test => state.wstgProgress[test.id]?.status === 'done').length;
-      const p = t ? Math.round(d/t*100) : 0;
+      const reviewed = cat.tests.filter(test => !!state.wstgProgress[test.id]?.status).length;
+      const p = t ? Math.round(reviewed/t*100) : 0;
       html += `<div class="sidebar-item" onclick="scrollToCat('${cat.id}')">
         <div class="sidebar-mini-bar"><div class="sidebar-mini-fill" style="width:${p}%"></div></div>
         <span class="sidebar-item-text">${esc(cat.name)}</span>
-        <span class="sidebar-item-badge">${d}/${t}</span>
+        <span class="sidebar-item-badge">${reviewed}/${t}</span>
       </div>`;
     });
     document.getElementById('sidebar').innerHTML = html;
     renderWSTG();
 
     // Update topbar progress
-    let done=0, total=0;
+    let reviewed=0, total=0;
     WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
       total++;
-      if (state.wstgProgress[t.id]?.status === 'done') done++;
+      if (state.wstgProgress[t.id]?.status) reviewed++;
     }));
-    updateTopbarProgress(done, total);
+    updateTopbarProgress(reviewed, total);
   }
 
   bootPage('wstg');
