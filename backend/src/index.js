@@ -14,6 +14,8 @@ const server = http.createServer(app);
 const PORT   = process.env.PORT || 4000;
 const isDev  = process.env.NODE_ENV !== 'production';
 
+app.set('trust proxy', 1);
+
 // WebSocket must be attached before listen
 wsService.setup(server);
 
