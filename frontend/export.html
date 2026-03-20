@@ -2972,9 +2972,9 @@ function buildReport() {
       const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## Índice de Hallazgos'); md('| ID | Severidad | Vulnerabilidad | Categoría | Estado |'); md('|----|-----------|----------------|-----------|--------|');
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
-        <table class="rpt-table"><thead><tr>
-          <th class="rpt-idx-num">ID</th><th class="rpt-idx-sev">Severidad</th>
-          <th>Vulnerabilidad</th><th>Categoría</th><th class="rpt-idx-status">Estado</th>
+        <table class="rpt-table" style="table-layout:fixed;width:100%"><thead><tr>
+          <th style="width:52px">ID</th><th style="width:90px">Severidad</th>
+          <th>Vulnerabilidad</th><th style="width:22%">Categoría</th><th style="width:100px">Estado</th>
         </tr></thead><tbody>`;
       SEV_ORDER.forEach(sev => {
         bySev[sev].forEach(v => {
@@ -2984,7 +2984,7 @@ function buildReport() {
           html += `<tr>
             <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--text2);white-space:nowrap">${num}</div></td>
             <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
-            <td style="font-weight:600;color:var(--text)"><div class="rpt-cell">${esc(v.name)}</div></td>
+            <td style="font-weight:600;color:var(--text);word-break:break-word"><div class="rpt-cell">${esc(v.name)}</div></td>
             <td style="font-family:var(--mono);font-size:11px"><div class="rpt-cell">${esc(v.category||'Custom')}</div></td>
             <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span></div></td>
           </tr>`;
