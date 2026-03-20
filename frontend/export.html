@@ -3142,10 +3142,11 @@ function buildReport() {
       const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       md('## Matriz de Riesgo');
 
-      // Build cell map: [impact][prob] = [numId, ...]
+      // Build cell map: [impact][prob] = [numId, ...] — exclude info severity
+      const matrixVulns = vulns.filter(v => (v.severity||'medium') !== 'info');
       const cellVulns  = {};
       const riskCounts = { bajo:0, medio:0, alto:0, critico:0 };
-      vulns.forEach(v => {
+      matrixVulns.forEach(v => {
         const impact = IMPACT_MAP[v.severity||'medium'];
         const prob   = getEdit(v.id).probability ?? 3;
         const risk   = RISK_CELL[impact-1][prob-1];
@@ -3155,7 +3156,7 @@ function buildReport() {
         riskCounts[risk]++;
       });
 
-      const totalV = vulns.length;
+      const totalV = matrixVulns.length;
       md(`Se identificaron ${totalV} hallazgo${totalV!==1?'s':''} representados en la matriz según probabilidad e impacto.`);
       md('');
 
@@ -3174,7 +3175,7 @@ function buildReport() {
       // Rows: Crítico(4), Alto(3), Medio(2), Bajo(1)
       [4,3,2,1].forEach(impact => {
         const impactName = IMPACT_NAMES[impact];
-        const rowVulns   = vulns.filter(v => IMPACT_MAP[v.severity||'medium'] === impact);
+        const rowVulns   = matrixVulns.filter(v => IMPACT_MAP[v.severity||'medium'] === impact);
         html += `<tr style="height:52px">`;
         // Impact label cell
         html += `<td style="border:${LB};padding:4px 10px;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;width:64px;text-align:center;background:var(--bg2);vertical-align:middle">${impactName}</td>`;
