@@ -3105,21 +3105,22 @@ function buildReport() {
           if (showNotes && notesVal) { md(''); md('**Notas**'); md(notesVal); }
           if (showRem  && rem)  { md(''); md('**Remediación**'); md(isRich && edit.remediation ? edit.remediation.replace(/<[^>]+>/g,' ') : rem); }
           md('');
+          const _cvssColor = {critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b';
+          const _meta = [
+            v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor}">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : '',
+            v.cwe        ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(v.cwe)}</span>` : '',
+            v.category   ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(v.category)}</span>` : '',
+            v.target_host? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">${esc(v.target_host)}</span>` : '',
+            wstgLinks.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent3)">WSTG: ${wstgLinks.join(', ')}</span>` : '',
+          ].filter(Boolean).join(`<span style="color:var(--border2);margin:0 4px">·</span>`);
           html += `<div class="rpt-vuln rpt-vuln-${sev}">
-            <div class="rpt-vuln-header" style="flex-direction:column;align-items:stretch;gap:6px">
-              <div style="display:flex;align-items:baseline;gap:10px">
-                <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--text2);background:var(--bg2);border:1px solid var(--border2);border-radius:4px;padding:2px 8px;flex-shrink:0;letter-spacing:.04em">${num}</span>
+            <div class="rpt-vuln-header" style="flex-direction:column;align-items:stretch;gap:5px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="sev-badge sev-${sev}" style="flex-shrink:0">${SEV_LABEL[sev]}</span>
+                <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--text3);flex-shrink:0">${num}</span>
                 <div class="rpt-vuln-name">${esc(v.name)}</div>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
-                ${v.cvss_score != null ? (()=>{ const sc={critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b'; return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${sc};background:${sc}18;border:1px solid ${sc}33;border-radius:4px;padding:2px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>`; })() : ''}
-                ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
-                ${v.category ? `<span class="rpt-vuln-cat">${esc(v.category)}</span>` : ''}
-                ${wstgLinks.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent3);background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:4px;padding:2px 7px;flex-shrink:0">WSTG: ${wstgLinks.join(', ')}</span>` : ''}
-                ${v.target_host ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);word-break:break-all">${esc(v.target_host)}</span>` : ''}
-                <span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span>
-              </div>
+              ${_meta ? `<div style="padding-left:2px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">${_meta}</div>` : ''}
             </div><div>`;
           if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Descripción</div><div class="rpt-field-val">${isRich && edit.description ? edit.description : renderMd(desc)}</div></div>`;
           if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div>${v.payloads.map(p=>`<div class="rpt-code" style="margin-bottom:4px">${esc(p)}</div>`).join('')}</div>`;
