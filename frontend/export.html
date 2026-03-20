@@ -2367,6 +2367,7 @@ async function loadAllTargetDetails() {
 
 function getEdit(id) {
   if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', notes:'', evidence:[], _richHtml:false };
+  if (!Array.isArray(_localEdits[id].evidence)) _localEdits[id].evidence = [];
   return _localEdits[id];
 }
 
