@@ -3077,7 +3077,7 @@ function buildReport() {
       }));
       SEV_ORDER.forEach(sev => {
         if (!bySev[sev].length) return;
-        html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px">
+        html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px;page-break-after:avoid;break-after:avoid">
           <span class="sev-badge sev-${sev}" style="font-size:11px;padding:3px 10px;width:auto;white-space:nowrap">${SEV_LABEL[sev]}</span>
           <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${bySev[sev].length} hallazgo${bySev[sev].length>1?'s':''}</span>
           <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
