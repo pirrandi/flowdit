@@ -2974,20 +2974,19 @@ function buildReport() {
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
         <table class="rpt-table" style="table-layout:fixed;width:100%"><thead><tr>
           <th style="width:52px">ID</th><th style="width:90px">Severidad</th>
-          <th>Vulnerabilidad</th>
+          <th>Vulnerabilidad</th><th style="width:22%">Categoría</th><th style="width:100px">Estado</th>
         </tr></thead><tbody>`;
       SEV_ORDER.forEach(sev => {
         bySev[sev].forEach(v => {
+          const sl  = v.status==='done'?'Confirmado':v.status==='fail'?'Reproducido':'Pendiente';
           const num = vulnNumMap[v.id];
-          const cat = v.category || 'Custom';
-          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} |`);
+          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${v.category||'Custom'} | ${sl} |`);
           html += `<tr>
-            <td style="width:52px;vertical-align:top;padding-top:10px"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--text2);white-space:nowrap">${num}</div></td>
-            <td style="width:90px;vertical-align:top;padding-top:10px"><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
-            <td style="word-break:break-word">
-              <div class="rpt-cell" style="font-weight:600;color:var(--text);margin-bottom:3px">${esc(v.name)}</div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(cat)}</div>
-            </td>
+            <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--text2);white-space:nowrap">${num}</div></td>
+            <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
+            <td style="font-weight:600;color:var(--text);word-break:break-word"><div class="rpt-cell">${esc(v.name)}</div></td>
+            <td style="font-family:var(--mono);font-size:11px"><div class="rpt-cell">${esc(v.category||'Custom')}</div></td>
+            <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span></div></td>
           </tr>`;
         });
       });
@@ -3107,18 +3106,20 @@ function buildReport() {
           if (showRem  && rem)  { md(''); md('**Remediación**'); md(isRich && edit.remediation ? edit.remediation.replace(/<[^>]+>/g,' ') : rem); }
           md('');
           html += `<div class="rpt-vuln rpt-vuln-${sev}">
-            <div class="rpt-vuln-header" style="${v.target_host?'flex-direction:column;align-items:stretch;gap:5px':''}">
-              <div style="display:flex;align-items:center;gap:10px">
+            <div class="rpt-vuln-header" style="flex-direction:column;align-items:stretch;gap:6px">
+              <div style="display:flex;align-items:baseline;gap:10px">
                 <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--text2);background:var(--bg2);border:1px solid var(--border2);border-radius:4px;padding:2px 8px;flex-shrink:0;letter-spacing:.04em">${num}</span>
+                <div class="rpt-vuln-name">${esc(v.name)}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 <span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span>
                 ${v.cvss_score != null ? (()=>{ const sc={critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b'; return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${sc};background:${sc}18;border:1px solid ${sc}33;border-radius:4px;padding:2px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>`; })() : ''}
                 ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
-                <div class="rpt-vuln-name">${esc(v.name)}</div>
                 ${v.category ? `<span class="rpt-vuln-cat">${esc(v.category)}</span>` : ''}
                 ${wstgLinks.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent3);background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:4px;padding:2px 7px;flex-shrink:0">WSTG: ${wstgLinks.join(', ')}</span>` : ''}
+                ${v.target_host ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);word-break:break-all">${esc(v.target_host)}</span>` : ''}
                 <span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span>
               </div>
-              ${v.target_host ? `<div style="font-family:var(--mono);font-size:10px;color:var(--accent);word-break:break-all;padding-left:2px">${esc(v.target_host)}</div>` : ''}
             </div><div>`;
           if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Descripción</div><div class="rpt-field-val">${isRich && edit.description ? edit.description : renderMd(desc)}</div></div>`;
           if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div>${v.payloads.map(p=>`<div class="rpt-code" style="margin-bottom:4px">${esc(p)}</div>`).join('')}</div>`;
