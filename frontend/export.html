@@ -2974,19 +2974,20 @@ function buildReport() {
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
         <table class="rpt-table" style="table-layout:fixed;width:100%"><thead><tr>
           <th style="width:52px">ID</th><th style="width:90px">Severidad</th>
-          <th>Vulnerabilidad</th><th style="width:22%">Categoría</th><th style="width:100px">Estado</th>
+          <th>Vulnerabilidad</th>
         </tr></thead><tbody>`;
       SEV_ORDER.forEach(sev => {
         bySev[sev].forEach(v => {
-          const sl  = v.status==='done'?'Confirmado':v.status==='fail'?'Reproducido':'Pendiente';
           const num = vulnNumMap[v.id];
-          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${v.category||'Custom'} | ${sl} |`);
+          const cat = v.category || 'Custom';
+          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} |`);
           html += `<tr>
-            <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--text2);white-space:nowrap">${num}</div></td>
-            <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
-            <td style="font-weight:600;color:var(--text);word-break:break-word"><div class="rpt-cell">${esc(v.name)}</div></td>
-            <td style="font-family:var(--mono);font-size:11px"><div class="rpt-cell">${esc(v.category||'Custom')}</div></td>
-            <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span></div></td>
+            <td style="width:52px;vertical-align:top;padding-top:10px"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--text2);white-space:nowrap">${num}</div></td>
+            <td style="width:90px;vertical-align:top;padding-top:10px"><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
+            <td style="word-break:break-word">
+              <div class="rpt-cell" style="font-weight:600;color:var(--text);margin-bottom:3px">${esc(v.name)}</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(cat)}</div>
+            </td>
           </tr>`;
         });
       });
