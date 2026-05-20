@@ -49,12 +49,14 @@ router.post('/pdf', auth, async (req, res) => {
     browser = await puppeteer.launch(launchOpts);
 
     const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
 
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      preferCSSPageSize: true,
     });
 
     await browser.close();
