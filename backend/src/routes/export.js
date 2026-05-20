@@ -1,5 +1,5 @@
 const express  = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const { execFile } = require('child_process');
 const fs   = require('fs');
 const os   = require('os');
@@ -7,6 +7,21 @@ const path = require('path');
 const { requireAuth: auth } = require('../middleware/auth');
 
 const router = express.Router();
+
+const CHROME_CANDIDATES = [
+  '/opt/brave-bin/brave',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
+];
+
+function findChrome() {
+  return CHROME_CANDIDATES.find(p => {
+    try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
+  });
+}
 
 function encryptWithGs(pdfBytes, password) {
   return new Promise((resolve, reject) => {
@@ -32,31 +47,33 @@ function encryptWithGs(pdfBytes, password) {
 }
 
 // POST /api/export/pdf
-// Body: { pageUrl, token, rptKey, rptData, filename?, password? }
+// Body: { pageUrl, token, password? }
 router.post('/pdf', auth, async (req, res) => {
-  const { pageUrl, token, rptKey, rptData, password, filename } = req.body;
+  const { pageUrl, token, password, rptKey, rptData } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
+
+  const executablePath = findChrome();
+  if (!executablePath) return res.status(500).json({ error: 'No Chromium/Chrome found on server' });
 
   let browser;
   try {
-    const launchOpts = {
+    browser = await puppeteer.launch({
+      executablePath,
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process', '--no-zygote'],
-    };
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-    browser = await puppeteer.launch(launchOpts);
+    });
 
     const page = await browser.newPage();
 
+    // Inject auth token + report data into localStorage before page loads
     await page.evaluateOnNewDocument((t, key, data) => {
-      if (t)         localStorage.setItem('fd_access', t);
+      if (t)    localStorage.setItem('fd_access', t);
       if (key && data) localStorage.setItem(key, data);
     }, token || '', rptKey || '', rptData || '');
 
     await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
 
+    // Wait for report content to be rendered
     await page.waitForFunction(
       () => document.getElementById('report-preview')?.children.length > 0,
       { timeout: 15000 }
@@ -76,10 +93,9 @@ router.post('/pdf', auth, async (req, res) => {
       finalBytes = await encryptWithGs(pdfBytes, password.trim());
     }
 
-    const safeName = (filename || 'report').replace(/[^a-z0-9_\-\s]/gi, '_');
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${safeName}.pdf"`,
+      'Content-Disposition': `attachment; filename="report.pdf"`,
       'Content-Length': finalBytes.length,
     });
     res.end(Buffer.from(finalBytes));
