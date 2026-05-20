@@ -1,5 +1,5 @@
 const express  = require('express');
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer');
 const { execFile } = require('child_process');
 const fs   = require('fs');
 const os   = require('os');
@@ -7,21 +7,6 @@ const path = require('path');
 const { requireAuth: auth } = require('../middleware/auth');
 
 const router = express.Router();
-
-const CHROME_CANDIDATES = [
-  '/opt/brave-bin/brave',
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-  '/snap/bin/chromium',
-];
-
-function findChrome() {
-  return CHROME_CANDIDATES.find(p => {
-    try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
-  });
-}
 
 function encryptWithGs(pdfBytes, password) {
   return new Promise((resolve, reject) => {
@@ -52,13 +37,9 @@ router.post('/pdf', auth, async (req, res) => {
   const { pageUrl, token, password, rptKey, rptData } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
-  const executablePath = findChrome();
-  if (!executablePath) return res.status(500).json({ error: 'No Chromium/Chrome found on server' });
-
   let browser;
   try {
     browser = await puppeteer.launch({
-      executablePath,
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process', '--no-zygote'],
     });
