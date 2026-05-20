@@ -41,7 +41,7 @@ router.post('/pdf', auth, async (req, res) => {
   try {
     const launchOpts = {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process', '--no-zygote'],
     };
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
       launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -49,7 +49,6 @@ router.post('/pdf', auth, async (req, res) => {
     browser = await puppeteer.launch(launchOpts);
 
     const page = await browser.newPage();
-    await page.emulateMediaType('print');
 
     await page.evaluateOnNewDocument((t, key, data) => {
       if (t)         localStorage.setItem('fd_access', t);
