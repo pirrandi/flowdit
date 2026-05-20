@@ -51,6 +51,7 @@ router.post('/pdf', auth, async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.addStyleTag({ content: 'html,body{width:794px!important;max-width:794px!important;margin:0!important;padding:0!important;overflow-x:hidden!important}' });
 
     const pdfBytes = await page.pdf({
       format: 'A4',
