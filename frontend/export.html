@@ -3365,6 +3365,11 @@ async function exportPdf() {
   const m = getReportData().meta;
   const password = m.pdfPassword?.trim();
 
+  if (!password) {
+    window.print();
+    return;
+  }
+
   const btn = document.querySelector('[onclick="exportPdf()"]');
   const origText = btn.textContent;
   btn.textContent = 'Generating…';
