@@ -32,16 +32,16 @@ function encryptWithGs(pdfBytes, password) {
 }
 
 // POST /api/export/pdf
-// Body: { html, filename?, password? }
+// Body: { pageUrl, token, rptKey, rptData, filename?, password? }
 router.post('/pdf', auth, async (req, res) => {
-  const { html, password, filename } = req.body;
-  if (!html) return res.status(400).json({ error: 'html required' });
+  const { pageUrl, token, rptKey, rptData, password, filename } = req.body;
+  if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
   let browser;
   try {
     const launchOpts = {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process', '--no-zygote'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     };
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
       launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -49,14 +49,23 @@ router.post('/pdf', auth, async (req, res) => {
     browser = await puppeteer.launch(launchOpts);
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1024, height: 1448, deviceScaleFactor: 1 });
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+
+    await page.evaluateOnNewDocument((t, key, data) => {
+      if (t)         localStorage.setItem('fd_access', t);
+      if (key && data) localStorage.setItem(key, data);
+    }, token || '', rptKey || '', rptData || '');
+
+    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+
+    await page.waitForFunction(
+      () => document.getElementById('report-preview')?.children.length > 0,
+      { timeout: 15000 }
+    );
 
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
-      scale: 0.78,
     });
 
     await browser.close();

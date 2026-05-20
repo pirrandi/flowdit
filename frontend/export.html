@@ -3373,69 +3373,15 @@ async function exportPdf() {
   try {
     const token    = localStorage.getItem('fd_access');
     const filename = m.coverTitle || state.currentProject?.name || 'report';
-
-    // Build a self-contained HTML for WeasyPrint.
-    // Header/footer use position:fixed — WeasyPrint repeats fixed elements on every page
-    // and (unlike position:running) correctly respects CSS dimensions on images inside them.
-    const styles = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map(el => el.outerHTML).join('\n');
-    const wrap = document.getElementById('rpt-ph-wrap');
-    const phEl = wrap?.classList.contains('ph-active') ? document.getElementById('rpt-ph') : null;
-    const pfEl = wrap?.classList.contains('pf-active') ? document.getElementById('rpt-pf') : null;
-    const phH = '1.8cm';
-    const pfH = '1.8cm';
-    const weasyOverride = `<style>
-@page {
-  margin: ${phEl ? '0' : '0.6cm'} 0 ${pfEl ? '0' : '0.6cm'} 0 !important;
-}
-${phEl ? `#weasyphdr {
-  position: fixed !important;
-  top: 0 !important; left: 0 !important; right: 0 !important;
-  width: 100% !important;
-  max-width: none !important;
-  height: ${phH} !important;
-  padding: 0.35cm 2cm !important;
-  display: flex !important;
-  align-items: center !important;
-  background: white !important;
-  box-sizing: border-box !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-}` : ''}
-${pfEl ? `#weasypftr {
-  position: fixed !important;
-  bottom: 0 !important; left: 0 !important; right: 0 !important;
-  width: 100% !important;
-  max-width: none !important;
-  height: ${pfH} !important;
-  padding: 0.35cm 2cm !important;
-  display: flex !important;
-  align-items: center !important;
-  background: white !important;
-  box-sizing: border-box !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-}` : ''}
-#rpt-ph-wrap.ph-active .rpt-phw-head,
-#rpt-ph-wrap.pf-active .rpt-phw-foot { display: none !important; }
-</style>`;
-    // WeasyPrint ignores CSS class height on imgs inside position:fixed — use inline style
-    const _inlineLogoSize = html => html.replace(/<img([^>]*)class="rpt-ph-logo"([^>]*)>/g, (_, pre, post) => {
-      const styleMatch = (pre + post).match(/style="([^"]*)"/);
-      const existingStyle = styleMatch ? styleMatch[1] : '';
-      const cleanPre = pre.replace(/\s*style="[^"]*"/, '');
-      const cleanPost = post.replace(/\s*style="[^"]*"/, '');
-      return `<img${cleanPre}class="rpt-ph-logo"${cleanPost} style="height:26px;width:auto;${existingStyle}">`;
-    });
-    const phHtml = phEl ? `<div id="weasyphdr" class="${phEl.className}">${_inlineLogoSize(phEl.innerHTML)}</div>` : '';
-    const pfHtml = pfEl ? `<div id="weasypftr" class="${pfEl.className}">${_inlineLogoSize(pfEl.innerHTML)}</div>` : '';
-    const reportContent = wrap.outerHTML;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${location.origin}/">${styles}${weasyOverride}</head><body>${phHtml}${pfHtml}${reportContent}</body></html>`;
+    const pid      = state.currentProject?.id;
+    const rptKey   = `fd_rpt_${pid}`;
+    const rptData  = localStorage.getItem(rptKey);
+    const pageUrl  = window.location.href;
 
     const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ html, password, filename }),
+      body: JSON.stringify({ pageUrl, token, rptKey, rptData, password, filename }),
     });
 
     if (!res.ok) {
