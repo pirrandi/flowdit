@@ -519,7 +519,7 @@
 .rpt-ph.enabled,.rpt-pf.enabled { display:flex; }
 .rpt-ph { margin-bottom:20px; }
 .rpt-pf { margin-top:20px; }
-.rpt-ph-logo { height:26px;max-width:90px;object-fit:contain;flex-shrink:0;border-radius:3px; }
+.rpt-ph-logo { height:26px;width:auto;flex-shrink:0;border-radius:3px;vertical-align:middle; }
 .rpt-ph-l,.rpt-ph-c,.rpt-ph-r { flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .rpt-ph-c { text-align:center; }
 .rpt-ph-r { text-align:right; }
@@ -2195,7 +2195,7 @@ function buildSectionList() {
       <button onclick="this.previousElementSibling.type=this.previousElementSibling.type==='password'?'text':'password'"
         style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);font-size:12px;padding:2px">show</button>
     </div>
-    ${m.pdfPassword ? `<div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--accent)">Export PDF uses backend rendering</div>` : ''}
+    <div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--accent)">PDF rendered server-side — consistent on all devices</div>
   </div>`;
 
   // ── Report Info section ────────────────────────────────────────
@@ -3129,7 +3129,7 @@ function buildReport() {
           if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediación</div><div class="rpt-field-rem">${isRich && edit.remediation ? edit.remediation : renderMd(rem)}</div></div>`;
           if (showEvid && evid.length) {
             html += `<div class="rpt-field"><div class="rpt-field-label">Evidencia</div><div class="rpt-evidence-grid">`;
-            evid.forEach(img => { html += `<img src="${img.data}" class="rpt-evidence-img">`; });
+            evid.forEach(img => { html += `<div style="break-inside:avoid;page-break-inside:avoid"><img src="${img.data}" class="rpt-evidence-img"></div>`; });
             html += '</div></div>';
           }
           html += '</div></div>';
@@ -3358,16 +3358,12 @@ function buildReport() {
   document.getElementById('report-preview').innerHTML = html;
   document.getElementById('export-project-name').textContent = p.name;
   buildPageLayout();
+  document.getElementById('report-preview').dataset.rendered = 'true';
 }
 
 async function exportPdf() {
   const m = getReportData().meta;
   const password = m.pdfPassword?.trim();
-
-  if (!password) {
-    window.print();
-    return;
-  }
 
   const btn = document.querySelector('[onclick="exportPdf()"]');
   const origText = btn.textContent;
@@ -3375,16 +3371,71 @@ async function exportPdf() {
   btn.disabled = true;
 
   try {
-    const token   = localStorage.getItem('fd_access');
-    const pageUrl = window.location.href;
-    const pid     = state.currentProject?.id;
-    const rptKey  = `fd_rpt_${pid}`;
-    const rptData = localStorage.getItem(rptKey);
+    const token    = localStorage.getItem('fd_access');
+    const filename = m.coverTitle || state.currentProject?.name || 'report';
 
-    const res = await fetch(`${window.FLOWDIT_API || 'http://localhost:4000/api'}/export/pdf`, {
+    // Build a self-contained HTML for WeasyPrint.
+    // Header/footer use position:fixed — WeasyPrint repeats fixed elements on every page
+    // and (unlike position:running) correctly respects CSS dimensions on images inside them.
+    const styles = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(el => el.outerHTML).join('\n');
+    const wrap = document.getElementById('rpt-ph-wrap');
+    const phEl = wrap?.classList.contains('ph-active') ? document.getElementById('rpt-ph') : null;
+    const pfEl = wrap?.classList.contains('pf-active') ? document.getElementById('rpt-pf') : null;
+    const phH = '1.8cm';
+    const pfH = '1.8cm';
+    const weasyOverride = `<style>
+@page {
+  margin: ${phEl ? '0' : '0.6cm'} 0 ${pfEl ? '0' : '0.6cm'} 0 !important;
+}
+${phEl ? `#weasyphdr {
+  position: fixed !important;
+  top: 0 !important; left: 0 !important; right: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: ${phH} !important;
+  padding: 0.35cm 2cm !important;
+  display: flex !important;
+  align-items: center !important;
+  background: white !important;
+  box-sizing: border-box !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}` : ''}
+${pfEl ? `#weasypftr {
+  position: fixed !important;
+  bottom: 0 !important; left: 0 !important; right: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: ${pfH} !important;
+  padding: 0.35cm 2cm !important;
+  display: flex !important;
+  align-items: center !important;
+  background: white !important;
+  box-sizing: border-box !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}` : ''}
+#rpt-ph-wrap.ph-active .rpt-phw-head,
+#rpt-ph-wrap.pf-active .rpt-phw-foot { display: none !important; }
+</style>`;
+    // WeasyPrint ignores CSS class height on imgs inside position:fixed — use inline style
+    const _inlineLogoSize = html => html.replace(/<img([^>]*)class="rpt-ph-logo"([^>]*)>/g, (_, pre, post) => {
+      const styleMatch = (pre + post).match(/style="([^"]*)"/);
+      const existingStyle = styleMatch ? styleMatch[1] : '';
+      const cleanPre = pre.replace(/\s*style="[^"]*"/, '');
+      const cleanPost = post.replace(/\s*style="[^"]*"/, '');
+      return `<img${cleanPre}class="rpt-ph-logo"${cleanPost} style="height:26px;width:auto;${existingStyle}">`;
+    });
+    const phHtml = phEl ? `<div id="weasyphdr" class="${phEl.className}">${_inlineLogoSize(phEl.innerHTML)}</div>` : '';
+    const pfHtml = pfEl ? `<div id="weasypftr" class="${pfEl.className}">${_inlineLogoSize(pfEl.innerHTML)}</div>` : '';
+    const reportContent = wrap.outerHTML;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${location.origin}/">${styles}${weasyOverride}</head><body>${phHtml}${pfHtml}${reportContent}</body></html>`;
+
+    const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ pageUrl, token, password, rptKey, rptData }),
+      body: JSON.stringify({ html, password, filename }),
     });
 
     if (!res.ok) {
@@ -3397,7 +3448,7 @@ async function exportPdf() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;
-    a.download = `${m.coverTitle || state.currentProject?.name || 'report'}.pdf`;
+    a.download = `${filename}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('PDF downloaded', 'success');

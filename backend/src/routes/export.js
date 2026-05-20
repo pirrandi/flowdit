@@ -32,10 +32,10 @@ function encryptWithGs(pdfBytes, password) {
 }
 
 // POST /api/export/pdf
-// Body: { pageUrl, token, password? }
+// Body: { html, filename?, password? }
 router.post('/pdf', auth, async (req, res) => {
-  const { pageUrl, token, password, rptKey, rptData } = req.body;
-  if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
+  const { html, password, filename } = req.body;
+  if (!html) return res.status(400).json({ error: 'html required' });
 
   let browser;
   try {
@@ -45,20 +45,7 @@ router.post('/pdf', auth, async (req, res) => {
     });
 
     const page = await browser.newPage();
-
-    // Inject auth token + report data into localStorage before page loads
-    await page.evaluateOnNewDocument((t, key, data) => {
-      if (t)    localStorage.setItem('fd_access', t);
-      if (key && data) localStorage.setItem(key, data);
-    }, token || '', rptKey || '', rptData || '');
-
-    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-
-    // Wait for report content to be rendered
-    await page.waitForFunction(
-      () => document.getElementById('report-preview')?.children.length > 0,
-      { timeout: 15000 }
-    );
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
 
     const pdfBytes = await page.pdf({
       format: 'A4',
@@ -74,9 +61,10 @@ router.post('/pdf', auth, async (req, res) => {
       finalBytes = await encryptWithGs(pdfBytes, password.trim());
     }
 
+    const safeName = (filename || 'report').replace(/[^a-z0-9_\-\s]/gi, '_');
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="report.pdf"`,
+      'Content-Disposition': `attachment; filename="${safeName}.pdf"`,
       'Content-Length': finalBytes.length,
     });
     res.end(Buffer.from(finalBytes));
