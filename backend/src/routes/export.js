@@ -49,6 +49,7 @@ router.post('/pdf', auth, async (req, res) => {
     browser = await puppeteer.launch(launchOpts);
 
     const page = await browser.newPage();
+    await page.emulateMediaType('print');
 
     await page.evaluateOnNewDocument((t, key, data) => {
       if (t)         localStorage.setItem('fd_access', t);
