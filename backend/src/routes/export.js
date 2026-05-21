@@ -80,6 +80,9 @@ router.post('/pdf', auth, async (req, res) => {
       { timeout: 15000 }
     );
 
+    // Switch to print media after JS has built the layout
+    await page.emulateMediaType('print');
+
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
