@@ -64,6 +64,7 @@ router.post('/pdf', auth, async (req, res) => {
     });
 
     const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123 });
 
     // Inject auth token + report data into localStorage before page loads
     await page.evaluateOnNewDocument((t, key, data) => {
