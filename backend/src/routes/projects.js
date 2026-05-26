@@ -1,12 +1,22 @@
 const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
+const crypto   = require('crypto');
+const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor, requireOwner } = require('../middleware/project');
 
 router.use(requireAuth);
+
+// Strip the bcrypt hash from project objects — frontend only needs a boolean flag
+function sanitizeProject(p) {
+  const out = { ...p };
+  out.has_portal_password = !!out.portal_password_hash;
+  delete out.portal_password_hash;
+  return out;
+}
 
 // GET /projects
 router.get('/', async (req, res, next) => {
@@ -21,7 +31,7 @@ router.get('/', async (req, res, next) => {
        ORDER BY p.updated_at DESC`,
       [req.user.id]
     );
-    res.json(rows);
+    res.json(rows.map(sanitizeProject));
   } catch (err) { next(err); }
 });
 
@@ -46,23 +56,43 @@ router.post('/', [
       `INSERT INTO project_members (project_id, user_id, role) VALUES ($1,$2,'owner')`,
       [project.id, req.user.id]
     );
-    res.status(201).json({ ...project, member_role:'owner' });
+    res.status(201).json(sanitizeProject({ ...project, member_role:'owner' }));
   } catch (err) { next(err); }
 });
 
 // GET /projects/:projectId
-router.get('/:projectId', requireProjectAccess, (req, res) => res.json(req.project));
+router.get('/:projectId', requireProjectAccess, (req, res) => res.json(sanitizeProject(req.project)));
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg'];
+  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password'];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
+
+  // portal_password — hash before storing, empty string clears it
+  if (req.body.portal_password !== undefined) {
+    if (req.body.portal_password) {
+      const hash = await bcrypt.hash(req.body.portal_password, 10);
+      updates.push(`portal_password_hash=$${values.length+1}`); values.push(hash);
+    } else {
+      updates.push(`portal_password_hash=NULL`);
+    }
+  }
+
   if (!updates.length) return res.json(req.project);
   values.push(req.params.projectId);
   try {
     const { rows } = await db.query(`UPDATE projects SET ${updates.join(',')} WHERE id=$${values.length} RETURNING *`, values);
-    res.json(rows[0]);
+    res.json(sanitizeProject(rows[0]));
+  } catch (err) { next(err); }
+});
+
+// POST /projects/:projectId/portal/token — generate or regenerate portal link token
+router.post('/:projectId/portal/token', requireProjectAccess, requireOwner, async (req, res, next) => {
+  const token = crypto.randomBytes(24).toString('hex');
+  try {
+    await db.query('UPDATE projects SET portal_token=$1 WHERE id=$2', [token, req.params.projectId]);
+    res.json({ portal_token: token });
   } catch (err) { next(err); }
 });
 
@@ -80,7 +110,7 @@ router.get('/:projectId/members', requireProjectAccess, async (req, res, next) =
   try {
     const { rows } = await db.query(
       `SELECT u.id, u.username, u.email, u.avatar_color, u.avatar_url, pm.role, pm.joined_at,
-              inv.username AS invited_by_username
+              pm.label, inv.username AS invited_by_username
        FROM project_members pm
        JOIN users u ON u.id=pm.user_id
        LEFT JOIN users inv ON inv.id=pm.invited_by
@@ -191,9 +221,9 @@ router.post('/join', async (req, res, next) => {
     if (already.rows.length) return res.status(409).json({ error:'You are already a member of this project' });
 
     await db.query(
-      `INSERT INTO project_members (project_id, user_id, role, invited_by)
-       VALUES ($1,$2,$3,$4)`,
-      [invite.project_id, req.user.id, invite.role, invite.invited_by]
+      `INSERT INTO project_members (project_id, user_id, role, invited_by, label)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [invite.project_id, req.user.id, invite.role, invite.invited_by, invite.label || null]
     );
     await db.query(
       `UPDATE project_invites SET accepted_at=NOW(), accepted_by=$1 WHERE id=$2`,

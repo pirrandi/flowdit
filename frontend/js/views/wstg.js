@@ -56,18 +56,18 @@ function renderWSTG() {
   });
 }
 
-const TARGET_ICONS = { domain:'🌐', ip:'🖥', cidr:'🔲', url:'🔗', other:'📌' };
+
 
 function buildTargetSelector(testId, currentTargetId) {
   const inScope = (state.targets||[]).filter(t => t.scope === 'in');
   if (!inScope.length) return '';
 
   const options = inScope.map(t =>
-    `<option value="${t.id}" ${t.id === currentTargetId ? 'selected' : ''}>${TARGET_ICONS[t.type]||'📌'} ${esc(t.host)}</option>`
+    `<option value="${t.id}" ${t.id === currentTargetId ? 'selected' : ''}>${esc(t.host)}</option>`
   ).join('');
 
   return `<div class="wstg-target-row" id="target-row-${testId}">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">🎯 Affected target</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">Affected target</span>
     <select class="wstg-target-select" onchange="saveWSTGTarget('${testId}',this.value)">
       <option value="">— Unassigned —</option>
       ${options}
@@ -121,10 +121,10 @@ function buildTestItem(test) {
 
   // Badges in header (only when fail + assigned)
   const targetBadge = (status === 'fail' && td.target_id)
-    ? `<span class="wstg-target-badge">🎯 ${esc(_getTargetHost(td.target_id))}</span>`
+    ? `<span class="wstg-target-badge">${esc(_getTargetHost(td.target_id))}</span>`
     : '';
   const linkBadge = (status === 'fail' && td.linked_vuln_id)
-    ? `<span class="wstg-link-badge">🔗 ${esc(_getVulnName(td.linked_vuln_id))}</span>`
+    ? `<span class="wstg-link-badge">${esc(_getVulnName(td.linked_vuln_id))}</span>`
     : '';
 
   const statusClass = status==='done'?'completed':status==='fail'?'failed':status==='na'?'na':'';
@@ -165,16 +165,14 @@ function _getVulnName(vulnId) {
   return (state.customVulns||[]).find(v => v.id === vulnId)?.name || vulnId;
 }
 
-const SEV_ICONS = { critical:'🔴', high:'🟠', medium:'🟡', low:'🔵', info:'⚪' };
-
 function buildVulnLinkSelector(testId, currentLinkedId) {
   const vulns = (state.customVulns || []);
   if (!vulns.length) return '';
   const options = vulns.map(v =>
-    `<option value="${esc(v.id)}" ${v.id === currentLinkedId ? 'selected' : ''}>${SEV_ICONS[v.severity]||'⚪'} ${esc(v.name)}</option>`
+    `<option value="${esc(v.id)}" ${v.id === currentLinkedId ? 'selected' : ''}>${esc(v.name)}</option>`
   ).join('');
   return `<div class="wstg-link-row" id="link-row-${testId}">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--accent3);flex-shrink:0">🔗 Link to finding</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--accent3);flex-shrink:0">→ Link to finding</span>
     <select class="wstg-link-select" onchange="saveWSTGLink('${testId}',this.value)">
       <option value="">— Not linked —</option>
       ${options}
@@ -286,7 +284,7 @@ async function saveWSTGTarget(testId, targetId) {
     if (!el) return;
     const existing = el.querySelector('.wstg-target-badge');
     if (targetId) {
-      const badge = `<span class="wstg-target-badge">🎯 ${esc(_getTargetHost(targetId))}</span>`;
+      const badge = `<span class="wstg-target-badge">${esc(_getTargetHost(targetId))}</span>`;
       if (existing) existing.outerHTML = badge;
       else el.querySelector('.test-id')?.insertAdjacentHTML('afterend', badge);
     } else {
@@ -405,7 +403,7 @@ async function saveWSTGLink(testId, vulnId) {
     const existing = el.querySelector('.wstg-link-badge');
     if (vulnId) {
       const vulnName = _getVulnName(vulnId);
-      const badge = `<span class="wstg-link-badge">🔗 ${esc(vulnName)}</span>`;
+      const badge = `<span class="wstg-link-badge">→ ${esc(vulnName)}</span>`;
       if (existing) existing.outerHTML = badge;
       else el.querySelector('.wstg-target-badge')?.insertAdjacentHTML('afterend', badge)
         || el.querySelector('.test-id')?.insertAdjacentHTML('afterend', badge);

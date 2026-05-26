@@ -44,6 +44,7 @@ async function bootPage(viewName) {
   renderTopbar();   // re-render with correct role color
   if (state.onlineUsers?.length) renderOnlinePresence(state.onlineUsers); // restore after topbar rebuild
   hide('loading-overlay');
+  mountAiChat();
   if (typeof pageInit === 'function') pageInit();
   refreshTopbarProgress();
 }
@@ -107,35 +108,37 @@ function renderSidenav() {
   const current = window.location.pathname.split('/').pop() || 'dashboard.html';
   const proj = state.currentProject;
   const pid  = proj ? `?pid=${proj.id}` : '';
+  const u    = state.user;
 
   const navGroups = [
     {
       label: 'Engagement',
       items: [
-        { href:`dashboard.html${pid}`,   icon:'◈', label:'Overview'   },
-        { href:`targets.html${pid}`,     icon:'⊕', label:'Targets'    },
-        { href:`vulns.html${pid}`,       icon:'⚡', label:'Findings'   },
-        { href:`export.html${pid}`,      icon:'↓', label:'Report'     },
+        { href:`dashboard.html${pid}`,   label:'Overview'      },
+        { href:`targets.html${pid}`,     label:'Targets'       },
+        { href:`vulns.html${pid}`,       label:'Findings'      },
+        { href:`export.html${pid}`,      label:'Report'        },
       ]
     },
     {
       label: 'Testing',
       items: [
-        { href:`wstg.html${pid}`,        icon:'◉', label:'OWASP WSTG'    },
-        { href:`methodology.html${pid}`, icon:'◧', label:'Methodologies' },
+        { href:`wstg.html${pid}`,        label:'OWASP WSTG'    },
+        { href:`methodology.html${pid}`, label:'Methodologies' },
       ]
     },
     {
       label: 'Team',
       items: [
-        { href:`members.html${pid}`,     icon:'◎', label:'Members'    },
-        ...(proj?.tickets_enabled ? [{ href:`tickets.html${pid}`, icon:'💬', label:'Queries' }] : []),
+        { href:`members.html${pid}`,     label:'Members'       },
+        { href:`settings.html${pid}`,    label:'Settings'      },
+        ...(proj?.tickets_enabled ? [{ href:`tickets.html${pid}`, label:'Queries' }] : []),
       ]
     },
     {
       label: 'Practice',
       items: [
-        { href:`portswigger.html${pid}`, icon:'◪', label:'PortSwigger' },
+        { href:`portswigger.html${pid}`, label:'PortSwigger'   },
       ]
     },
   ];
@@ -144,39 +147,50 @@ function renderSidenav() {
   const pct = total ? Math.round(done/total*100) : 0;
 
   let html = `
-    <div class="sidenav-logo">
-      <img src="img/flowdit-logo.png" class="topbar-logo-img" alt="Flowdit">
-      <span class="topbar-logo-text">Flowdit</span>
+    <div class="brand">
+      <img src="img/flowdit-logo.png" class="brand-logo-img" alt="Flowdit">
+      <span class="brand-wordmark">Flowdit</span>
+      <span class="brand-tag">SELF-HOSTED</span>
     </div>
-    <a href="projects.html" class="sidenav-back-link">
-      <span>←</span><span>All Projects</span>
-    </a>`;
+    <a href="projects.html" class="nav-back-link">← All Projects</a>`;
 
   if (proj) {
     html += `
-    <div class="sidenav-project">
-      ${proj.logo_url ? `<div class="sidenav-project-logo-wrap"><img src="${esc(proj.logo_url)}" class="sidenav-project-logo sidenav-project-logo--${proj.logo_bg||'light'}" alt="Project logo"></div>` : ''}
-      <div class="sidenav-project-name">${esc(proj.name)}</div>
-      ${proj.description ? `<div class="sidenav-project-desc">${esc(proj.description)}</div>` : ''}
-      <div class="sidenav-progress">
-        <div class="sidenav-progress-bar">
-          <div class="sidenav-progress-fill" id="sidenav-bar" style="width:${pct}%"></div>
+    <div class="nav-project">
+      ${proj.logo_url ? `<div class="nav-project-logo-wrap"><img src="${esc(proj.logo_url)}" class="nav-project-logo nav-project-logo--${proj.logo_bg||'light'}" alt="Project logo"></div>` : ''}
+      <div class="nav-project-name">${esc(proj.name)}</div>
+      ${proj.description ? `<div class="nav-project-target">${esc(proj.description)}</div>` : ''}
+      <div class="nav-progress">
+        <div class="nav-progress-bar">
+          <div class="nav-progress-fill" id="sidenav-bar" style="width:${pct}%"></div>
         </div>
-        <span class="sidenav-progress-pct" id="sidenav-pct">${pct}%</span>
+        <span class="nav-progress-pct" id="sidenav-pct">${pct}%</span>
       </div>
     </div>`;
   }
 
+  html += `<div class="nav-scroll">`;
   navGroups.forEach(g => {
-    html += `<div class="sidenav-group-label">${g.label}</div>`;
+    html += `<div class="nav-group-label">${g.label}</div>`;
     g.items.forEach(item => {
       const active = current === item.href.split('?')[0];
-      html += `<a href="${item.href}" class="sidenav-item ${active?'active':''}">
-        <span class="sidenav-item-icon">${item.icon}</span>
-        <span class="sidenav-item-label">${item.label}</span>
-      </a>`;
+      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${item.label}</a>`;
     });
   });
+  html += `</div>`;
+
+  if (u) {
+    const role  = proj?.member_role;
+    const color = roleColor(role);
+    html += `
+    <div class="nav-foot">
+      ${avatarHtml(u.username, color, 24, u.avatar_url)}
+      <div>
+        <div class="nav-foot-name">${esc(u.username)}</div>
+        ${role ? `<div class="nav-foot-role">${role}</div>` : ''}
+      </div>
+    </div>`;
+  }
 
   const sidenav = document.getElementById('sidenav');
   if (sidenav) sidenav.innerHTML = html;
@@ -192,7 +206,7 @@ function renderTopbar() {
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
       <div class="search-wrap">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon">⌕</span>
         <input type="text" class="search-input" placeholder="Search..." oninput="handleSearch(this.value)">
       </div>
     </div>
@@ -414,11 +428,173 @@ async function saveProject() {
   finally { btn.disabled = false; }
 }
 
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (typeof closeVulnDrawer === 'function') closeVulnDrawer();
+  }
+});
+
 ['project-modal','vuln-modal'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', e => {
     if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
   });
 });
+
+// ── AI CHAT BUBBLE ────────────────────────────────────────────────────
+let _chatHistory = [];
+
+function _buildProjectContext() {
+  const p       = state.currentProject || {};
+  const vulns   = state.customVulns   || [];
+  const targets = state.targets       || [];
+
+  let wDone=0, wFail=0, wTotal=0;
+  if (typeof WSTG_DATA !== 'undefined') {
+    WSTG_DATA.forEach(cat => cat.tests.forEach(t => {
+      wTotal++;
+      const s = state.wstgProgress?.[t.id]?.status;
+      if (s === 'done') wDone++;
+      if (s === 'fail') wFail++;
+    }));
+  }
+
+  const activeProg   = state.activeMethodProgress || {};
+  const methodologies = Object.values(activeProg).map(m => ({
+    name: m.name,
+    pct:  m.total ? Math.round((m.done + m.fail) / m.total * 100) : 0,
+  }));
+
+  const feed        = state.activityFeed || [];
+  const todayStr    = new Date().toDateString();
+  const todayCount  = feed.filter(e => new Date(e.created_at).toDateString() === todayStr).length;
+  const activity    = feed.slice(0, Math.max(todayCount, 20)).map(e => ({
+    who: e.username, action: e.action,
+    entity: e.entity_name || e.entity_type || '', when: e.created_at,
+  }));
+
+  return {
+    project: { name: p.name, target: p.target, description: p.description, status: p.status },
+    vulns:   vulns.map(v => ({ name: v.name, severity: v.severity, status: v.status, target_host: v.target_host || null })),
+    wstg:    { done: wDone, fail: wFail, pending: wTotal-wDone-wFail, pct: wTotal ? Math.round((wDone+wFail)/wTotal*100) : 0 },
+    targets: targets.map(t => ({ host: t.host, type: t.type, scope: t.scope })),
+    team:    (state.members || []).map(m => ({ username: m.username, role: m.role })),
+    methodologies, activity,
+  };
+}
+
+function _chatRender() {
+  const box = document.getElementById('ai-panel-messages');
+  if (!box) return;
+  if (!_chatHistory.length) {
+    box.innerHTML = `<div class="ai-chat-empty">Pregúntame sobre hallazgos, cobertura, próximos pasos...</div>`;
+    return;
+  }
+  box.innerHTML = _chatHistory.map(msg => {
+    const isUser  = msg.role === 'user';
+    const content = isUser ? esc(msg.content) : renderMd(msg.content);
+    return `<div class="ai-chat-msg ${isUser ? 'user' : 'ai'}"><div class="ai-chat-bubble">${content}</div></div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function _chatSetLoading(on) {
+  const btn    = document.getElementById('ai-panel-send');
+  const inp    = document.getElementById('ai-panel-input');
+  const typing = document.getElementById('ai-panel-typing');
+  if (btn)    btn.disabled    = on;
+  if (inp)    inp.disabled    = on;
+  if (typing) typing.style.display = on ? 'flex' : 'none';
+  const box = document.getElementById('ai-panel-messages');
+  if (on && box) box.scrollTop = box.scrollHeight;
+}
+
+async function aiChatSend() {
+  const inp      = document.getElementById('ai-panel-input');
+  const question = inp?.value.trim();
+  if (!question) return;
+  inp.value = '';
+  inp.style.height = '';
+  _chatHistory.push({ role: 'user', content: question });
+  _chatRender();
+  _chatSetLoading(true);
+  try {
+    const result = await request('POST', '/ai/chat', {
+      question,
+      history: _chatHistory.slice(-7, -1),
+      context: _buildProjectContext(),
+    });
+    _chatHistory.push({ role: 'assistant', content: result.answer });
+    if (_chatHistory.length > 20) _chatHistory = _chatHistory.slice(-20);
+  } catch(e) {
+    _chatHistory.push({ role: 'assistant', content: `_Error: ${e.message}_` });
+  } finally {
+    _chatSetLoading(false);
+    _chatRender();
+  }
+}
+
+function aiChatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiChatSend(); }
+}
+
+function aiChatClear() {
+  _chatHistory = [];
+  _chatRender();
+}
+
+function toggleAiPanel() {
+  const panel = document.getElementById('ai-panel');
+  if (!panel) return;
+  const open = panel.classList.toggle('open');
+  if (open) {
+    _chatRender();
+    setTimeout(() => document.getElementById('ai-panel-input')?.focus(), 50);
+  }
+}
+
+function mountAiChat() {
+  if (document.getElementById('ai-fab')) return; // already mounted
+
+  // FAB button
+  const fab = document.createElement('button');
+  fab.id        = 'ai-fab';
+  fab.className = 'no-print';
+  fab.innerHTML = '✦';
+  fab.title     = 'AI Assistant';
+  fab.onclick   = toggleAiPanel;
+  document.body.appendChild(fab);
+
+  // Floating panel
+  const panel = document.createElement('div');
+  panel.id        = 'ai-panel';
+  panel.className = 'no-print';
+  panel.innerHTML = `
+    <div class="ai-panel-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--a);font-size:14px">✦</span>
+        <span style="font-size:12px;font-weight:700">AI Assistant</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button onclick="aiChatClear()" style="font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--r)" title="Clear">clear</button>
+        <button onclick="toggleAiPanel()" style="font-size:16px;color:var(--t3);background:none;border:none;cursor:pointer;line-height:1;padding:2px 4px" title="Close">×</button>
+      </div>
+    </div>
+    <div class="ai-chat-messages" id="ai-panel-messages">
+      <div class="ai-chat-empty">Pregúntame sobre hallazgos, cobertura, próximos pasos...</div>
+    </div>
+    <div class="ai-chat-typing" id="ai-panel-typing" style="display:none">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="ai-chat-input-row">
+      <textarea class="ai-chat-input" id="ai-panel-input"
+        placeholder="Ej: ¿qué vulnerabilidades críticas hay?" rows="1"
+        onkeydown="aiChatKeydown(event)"
+        oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
+      <button class="ai-chat-send" id="ai-panel-send" onclick="aiChatSend()">↑</button>
+    </div>
+  `;
+  document.body.appendChild(panel);
+}
 
 window.bootPage             = bootPage;
 window.switchProject        = switchProject;
@@ -435,3 +611,8 @@ window.saveProfile          = saveProfile;
 window.openProfileModal     = openProfileModal;
 window.closeProfileModal    = closeProfileModal;
 window.saveProject          = saveProject;
+window.mountAiChat          = mountAiChat;
+window.toggleAiPanel        = toggleAiPanel;
+window.aiChatSend           = aiChatSend;
+window.aiChatKeydown        = aiChatKeydown;
+window.aiChatClear          = aiChatClear;

@@ -38,7 +38,7 @@ function renderTickets() {
   if (!tickets.length) {
     main.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">💬</div>
+        <div class="empty-icon">◌</div>
         <div class="empty-title">No queries yet</div>
         <div class="empty-sub">Client queries will appear here once the client opens a question</div>
       </div>`;
@@ -46,7 +46,7 @@ function renderTickets() {
   }
 
   if (!filtered.length) {
-    main.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--text3);padding:40px 0;text-align:center">No ${STATUS_LABEL[_activeFilter]?.toLowerCase()} queries</div>`;
+    main.innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--t3);padding:40px 0;text-align:center">No ${STATUS_LABEL[_activeFilter]?.toLowerCase()} queries</div>`;
     return;
   }
 
@@ -54,9 +54,11 @@ function renderTickets() {
 }
 
 function ticketRowHtml(t) {
-  const color = STATUS_COLOR[t.status] || 'var(--text3)';
-  const label = STATUS_LABEL[t.status] || t.status;
+  const color      = STATUS_COLOR[t.status] || 'var(--t3)';
+  const label      = STATUS_LABEL[t.status] || t.status;
   const hasReplies = t.reply_count > 0;
+  const author     = t.opened_by_username || t.client_name || 'Client';
+  const isPortal   = !t.opened_by_username && t.client_name;
 
   return `
     <div class="ticket-row" onclick="openTicketModal('${t.id}')">
@@ -64,18 +66,19 @@ function ticketRowHtml(t) {
       <div class="ticket-row-body">
         <div style="display:flex;align-items:center;gap:8px;min-width:0">
           <span class="ticket-row-title">${esc(t.title)}</span>
-          ${t.vuln_name ? `<span class="ticket-row-tag">⚡ ${esc(t.vuln_name)}</span>` : ''}
+          ${t.vuln_name ? `<span class="ticket-row-tag">${esc(t.vuln_name)}</span>` : ''}
+          ${isPortal ? `<span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:1px 5px">portal</span>` : ''}
         </div>
         <div class="ticket-row-meta">
-          <span>opened by <strong>${esc(t.opened_by_username || '?')}</strong></span>
+          <span>opened by <strong>${esc(author)}</strong></span>
           <span>·</span>
           <span>${relativeDate(t.updated_at)}</span>
-          ${hasReplies ? `<span>·</span><span>💬 ${t.reply_count} repl${t.reply_count === 1 ? 'y' : 'ies'}</span>` : ''}
+          ${hasReplies ? `<span>·</span><span>${t.reply_count} repl${t.reply_count === 1 ? 'y' : 'ies'}</span>` : ''}
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <span class="ticket-status-badge" style="color:${color};border-color:${color}44">${label}</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">→</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">→</span>
       </div>
     </div>`;
 }
@@ -94,9 +97,11 @@ async function openTicketModal(ticketId) {
 
   document.getElementById('ticket-modal-title').textContent = t.title;
   document.getElementById('ticket-modal-desc').textContent  = t.description || '';
+  const openedBy = t.opened_by_username || t.client_name || 'Client';
+  const isPortalTicket = !t.opened_by_username && t.client_name;
   document.getElementById('ticket-modal-meta').innerHTML    =
-    `Opened by <strong>${esc(t.opened_by_username || '?')}</strong> · ${relativeDate(t.created_at)}` +
-    (t.vuln_name ? ` · re: <span style="color:var(--accent)">${esc(t.vuln_name)}</span>` : '');
+    `Opened by <strong>${esc(openedBy)}</strong>${isPortalTicket ? ' <span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:1px 5px">portal</span>' : ''} · ${relativeDate(t.created_at)}` +
+    (t.vuln_name ? ` · re: <span style="color:var(--a)">${esc(t.vuln_name)}</span>` : '');
 
   const color = STATUS_COLOR[t.status] || 'var(--text3)';
   const btns  = ['open','in_review','closed'].filter(s => s !== t.status).map(s =>
@@ -124,18 +129,24 @@ function closeTicketModal() {
 function renderTicketThread(replies) {
   const thread = document.getElementById('ticket-modal-thread');
   if (!replies.length) {
-    thread.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:16px 0">No replies yet — be the first to respond.</div>`;
+    thread.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-align:center;padding:16px 0">No replies yet — be the first to respond.</div>`;
     return;
   }
   thread.innerHTML = replies.map(r => {
-    const isMe  = r.author_id === state.user?.id;
-    const color = roleColor(isMe ? state.currentProject?.member_role : 'viewer');
+    const isPortal    = !r.author_id;
+    const displayName = r.author_username || r.client_name || 'Client';
+    const isMe        = !isPortal && r.author_id === state.user?.id;
+    const color       = isPortal ? 'var(--a)' : roleColor(isMe ? state.currentProject?.member_role : 'viewer');
+    const bgColor     = isPortal ? 'rgba(245,158,11,.08)' : isMe ? color + '18' : 'var(--bg3)';
+    const borderColor = isPortal ? 'rgba(245,158,11,.2)'  : isMe ? color + '33' : 'var(--b1)';
     return `
       <div style="display:flex;gap:8px;${isMe ? 'flex-direction:row-reverse' : ''}">
-        ${avatarHtml(r.author_username || '?', color, 26, r.author_avatar_url || null)}
+        ${avatarHtml(displayName, color, 26, r.author_avatar_url || null)}
         <div style="max-width:78%;display:flex;flex-direction:column;gap:3px;${isMe ? 'align-items:flex-end' : ''}">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(r.author_username || '?')} · ${relativeDate(r.created_at)}</div>
-          <div style="background:${isMe ? color + '18' : 'var(--bg3)'};border:1px solid ${isMe ? color + '33' : 'var(--border)'};border-radius:8px;padding:9px 13px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--text)">${esc(r.body)}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">
+            ${esc(displayName)}${isPortal ? ' <span style="color:var(--a)">· client</span>' : ''} · ${relativeDate(r.created_at)}
+          </div>
+          <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:9px 13px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--t1)">${esc(r.body)}</div>
         </div>
       </div>`;
   }).join('');

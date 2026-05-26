@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,34 +10,34 @@
   <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <script src="js/config.js"></script>
 </head>
-<body style="display:flex;flex-direction:column;min-height:100vh">
+<body>
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="sidenav" id="sidenav"></div>
-<div class="app-main">
-<div class="topbar slim" id="topbar"></div>
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
 
-<div style="display:flex;flex:1;overflow:hidden;min-height:0">
-  <div class="main-content">
+<div class="workarea">
+  <main class="main">
     <div class="page-header">
       <div>
         <div class="page-title">My Custom Vulns</div>
-        <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--accent);text-decoration:none">add descriptions & export →</a></div>
+        <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--a);text-decoration:none">add descriptions & export →</a></div>
       </div>
-      <button class="btn-accent" onclick="openAddVulnModal()">+ Add Vulnerability</button>
+      <button class="btn btn-prim" onclick="openAddVulnModal()">+ Add Vulnerability</button>
     </div>
     <div id="custom-content"></div>
-  </div>
-  <div class="activity-panel">
+  </main>
+
+  <aside class="activity-col">
     <div class="activity-header">
       <span class="activity-title">Activity</span>
       <div style="display:flex;align-items:center;gap:6px">
         <div class="live-badge"></div>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">live</span>
       </div>
     </div>
     <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
-  </div>
+  </aside>
 </div>
 
 <!-- Modal — focused on operational data only -->
@@ -53,11 +53,11 @@
       <div class="form-group" style="margin:0">
         <label class="form-label">Severity</label>
         <select class="form-input" id="modal-vuln-sev" style="cursor:pointer">
-          <option value="critical">🔴 Critical</option>
-          <option value="high">🟠 High</option>
-          <option value="medium" selected>🟡 Medium</option>
-          <option value="low">🔵 Low</option>
-          <option value="info">⚪ Info</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium" selected>Medium</option>
+          <option value="low">Low</option>
+          <option value="info">Info</option>
         </select>
       </div>
     </div>
@@ -69,13 +69,13 @@
       </div>
       <div class="form-group" style="margin:0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-          <label class="form-label" style="margin:0">CWE <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+          <label class="form-label" style="margin:0">CWE <span style="color:var(--t3);font-weight:400">(optional)</span></label>
           <button type="button" class="ai-btn" id="ai-cwe-btn" onclick="aiCWE()" title="Suggest CWE from name & description" style="font-size:9px;padding:2px 6px">✦</button>
         </div>
         <input type="text" class="form-input" id="modal-vuln-cwe" placeholder="e.g. CWE-79">
       </div>
       <div class="form-group" style="margin:0">
-        <label class="form-label">Target <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+        <label class="form-label">Target <span style="color:var(--t3);font-weight:400">(optional)</span></label>
         <select class="form-input" id="modal-vuln-target" style="cursor:pointer">
           <option value="">— No target —</option>
         </select>
@@ -95,13 +95,13 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Notes <span style="color:var(--text3);font-weight:400">(quick observations)</span></label>
+      <label class="form-label">Notes <span style="color:var(--t3);font-weight:400">(quick observations)</span></label>
       <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="Quick notes, references..."></textarea>
     </div>
 
     <div class="form-group">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-        <label class="form-label" style="margin:0">Description <span style="color:var(--text3);font-weight:400">supports markdown</span></label>
+        <label class="form-label" style="margin:0">Description <span style="color:var(--t3);font-weight:400">supports markdown</span></label>
         <button type="button" class="ai-btn" id="ai-draft-btn" onclick="aiDraft()" title="Generate full draft from name + category">✦ Draft</button>
       </div>
       <textarea class="form-input note-textarea" id="modal-vuln-desc" style="min-height:80px" placeholder="What is this vulnerability and why does it matter..."></textarea>
@@ -109,7 +109,7 @@
 
     <div class="form-group">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-        <label class="form-label" style="margin:0">Remediation <span style="color:var(--text3);font-weight:400">supports markdown</span></label>
+        <label class="form-label" style="margin:0">Remediation <span style="color:var(--t3);font-weight:400">supports markdown</span></label>
         <button type="button" class="ai-btn" id="ai-rem-btn" onclick="aiRemediation()" title="Generate remediation from description">✦ Suggest</button>
       </div>
       <textarea class="form-input note-textarea" id="modal-vuln-rem" style="min-height:80px" placeholder="How to fix or mitigate this vulnerability..."></textarea>
@@ -118,11 +118,11 @@
     <!-- CVSS v3.1 Calculator -->
     <div class="form-group" style="margin-bottom:0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <label class="form-label" style="margin:0">CVSS v3.1 <span style="font-size:10px;color:var(--text3);font-weight:400">(optional)</span></label>
+        <label class="form-label" style="margin:0">CVSS v3.1 <span style="font-size:10px;color:var(--t3);font-weight:400">(optional)</span></label>
         <div style="display:flex;align-items:center;gap:8px">
-          <span id="cvss-header-pill" style="font-family:var(--mono);font-size:11px;color:var(--text3)">not scored</span>
-          <button type="button" id="cvss-clear-btn" onclick="clearCVSS()" style="font-family:var(--mono);font-size:10px;color:var(--red);background:none;border:none;cursor:pointer;padding:0;display:none">✕ clear</button>
-          <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">▸ open</button>
+          <span id="cvss-header-pill" style="font-family:var(--mono);font-size:11px;color:var(--t3)">not scored</span>
+          <button type="button" id="cvss-clear-btn" onclick="clearCVSS()" style="font-family:var(--mono);font-size:10px;color:var(--c-crit);background:none;border:none;cursor:pointer;padding:0;display:none">✕ clear</button>
+          <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--a);background:none;border:none;cursor:pointer;padding:0">▸ open</button>
         </div>
       </div>
       <div id="cvss-calc" style="display:none">
@@ -177,18 +177,18 @@
         </div>
         <div class="cvss-score-wrap">
           <div id="cvss-score-display" style="display:flex;align-items:center;gap:8px;min-width:110px">
-            <span style="font-family:var(--mono);font-size:26px;font-weight:800;color:var(--text3);line-height:1">0.0</span>
+            <span style="font-family:var(--mono);font-size:26px;font-weight:800;color:var(--t3);line-height:1">0.0</span>
             <span class="sev-badge sev-info">None</span>
           </div>
-          <div style="flex:1;font-family:var(--mono);font-size:10px;color:var(--text3);word-break:break-all" id="cvss-vector-display">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N</div>
-          <button type="button" onclick="copyCVSSVector()" style="font-family:var(--mono);font-size:10px;color:var(--accent);background:none;border:1px solid var(--accent)44;border-radius:4px;padding:3px 8px;cursor:pointer;flex-shrink:0">Copy</button>
+          <div style="flex:1;font-family:var(--mono);font-size:10px;color:var(--t3);word-break:break-all" id="cvss-vector-display">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N</div>
+          <button type="button" onclick="copyCVSSVector()" style="font-family:var(--mono);font-size:10px;color:var(--a);background:none;border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:3px 8px;cursor:pointer;flex-shrink:0">Copy</button>
         </div>
       </div>
     </div>
 
     <div class="form-error" id="vuln-error"></div>
     <div class="modal-footer">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">Markdown supported in description & remediation</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">Markdown supported in description & remediation</span>
       <div style="display:flex;gap:8px">
         <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
         <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
@@ -213,6 +213,5 @@
   }
   bootPage('custom');
 </script>
-</div>
 </body>
 </html>

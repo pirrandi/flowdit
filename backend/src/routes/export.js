@@ -4,7 +4,7 @@ const { execFile } = require('child_process');
 const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
-const { requireAuth: auth } = require('../middleware/auth');
+const { requireAuth: auth, requireUser } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -48,7 +48,7 @@ function encryptWithGs(pdfBytes, password) {
 
 // POST /api/export/pdf
 // Body: { pageUrl, token, password? }
-router.post('/pdf', auth, async (req, res) => {
+router.post('/pdf', auth, requireUser, async (req, res) => {
   const { pageUrl, token, password, rptKey, rptData } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
@@ -60,11 +60,17 @@ router.post('/pdf', auth, async (req, res) => {
     browser = await puppeteer.launch({
       executablePath,
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process', '--no-zygote'],
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-gpu', '--single-process', '--no-zygote',
+        '--force-device-scale-factor=1',
+        '--font-render-hinting=none',
+        '--disable-font-subpixel-positioning',
+      ],
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123 });
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
 
     // Inject auth token + report data into localStorage before page loads
     await page.evaluateOnNewDocument((t, key, data) => {
@@ -74,7 +80,8 @@ router.post('/pdf', auth, async (req, res) => {
 
     await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
 
-    // Wait for report content to be rendered
+    // Wait for fonts and report content to be ready
+    await page.evaluateHandle('document.fonts.ready');
     await page.waitForFunction(
       () => document.getElementById('report-preview')?.children.length > 0,
       { timeout: 15000 }
@@ -82,6 +89,19 @@ router.post('/pdf', auth, async (req, res) => {
 
     // Switch to print media after JS has built the layout
     await page.emulateMediaType('print');
+
+    // Explicitly hide UI chrome and fix layout via JS
+    await page.evaluate(() => {
+      ['.sidenav','#sidenav','.topbar','#topbar','.exp-editor','.export-controls','.no-print','.toast-container','#loading-overlay']
+        .forEach(sel => document.querySelectorAll(sel).forEach(el => el.style.setProperty('display','none','important')));
+      document.body.style.cssText = 'display:block!important;margin:0!important;padding:0!important;overflow:visible!important;';
+      ['.app-main','.exp-outer','.exp-inner','.exp-layout'].forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) el.style.cssText = 'display:block!important;margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important;';
+      });
+      const prev = document.querySelector('.exp-preview');
+      if (prev) prev.style.cssText = 'display:block!important;padding:0!important;width:100%!important;overflow:visible!important;height:auto!important;';
+    });
 
     const pdfBytes = await page.pdf({
       format: 'A4',
@@ -110,5 +130,6 @@ router.post('/pdf', auth, async (req, res) => {
     res.status(500).json({ error: 'PDF generation failed: ' + err.message });
   }
 });
+
 
 module.exports = router;

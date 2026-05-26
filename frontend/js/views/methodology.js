@@ -12,7 +12,7 @@ function renderMethodologyList() {
   const methods = state.methodologies || [];
   if (!methods.length) {
     list.innerHTML = `<div class="empty-state" style="padding:20px 0">
-      <div class="empty-icon">📋</div>
+      
       <div class="empty-title">No methodologies yet</div>
       <div class="empty-sub">Create your first custom checklist</div>
     </div>`;
@@ -108,7 +108,7 @@ function buildMethodTestItem(methodId, test, idx, prog) {
 
   const targetRow = status === 'fail' && inScope.length ? `
     <div class="wstg-target-row" id="mtr-${methodId}-${idx}">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">🎯 Affected target</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">Affected target</span>
       <select class="wstg-target-select" onchange="saveMethodTarget('${methodId}',${idx},this.value)">
         <option value="">— Unassigned —</option>
         ${targetOpts}
@@ -121,7 +121,7 @@ function buildMethodTestItem(methodId, test, idx, prog) {
         style="${status==='done'?'background:var(--green);border-color:var(--green);color:var(--bg)':status==='fail'?'background:var(--red);border-color:var(--red);color:#fff':''}"
         onclick="cycleMethodStatus('${methodId}',${idx},event)">${status==='done'?'✓':status==='fail'?'✕':''}</div>
       <span class="test-name">${esc(test.name)}</span>
-      ${target_host && status==='fail' ? `<span class="wstg-target-badge">🎯 ${esc(target_host)}</span>` : ''}
+      ${target_host && status==='fail' ? `<span class="wstg-target-badge">${esc(target_host)}</span>` : ''}
       <div class="test-actions">
         <button class="test-action-btn pass" onclick="setMethodStatus('${methodId}',${idx},'done',event)">✓</button>
         <button class="test-action-btn vuln" onclick="setMethodStatus('${methodId}',${idx},'fail',event)">✕ vuln</button>
@@ -179,7 +179,7 @@ async function _applyMethodStatus(methodId, idx, status) {
         const targetOpts = inScope.map(t => `<option value="${t.id}">${esc(t.host)}</option>`).join('');
         el.querySelector('.test-header').insertAdjacentHTML('afterend', `
           <div class="wstg-target-row" id="mtr-${methodId}-${idx}">
-            <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">🎯 Affected target</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">Affected target</span>
             <select class="wstg-target-select" onchange="saveMethodTarget('${methodId}',${idx},this.value)">
               <option value="">— Unassigned —</option>${targetOpts}
             </select>
@@ -215,7 +215,7 @@ async function saveMethodTarget(methodId, idx, targetId) {
     const host = (state.targets||[]).find(t=>t.id===targetId)?.host||'';
     const existing = el?.querySelector('.wstg-target-badge');
     if (targetId && host) {
-      const badge = `<span class="wstg-target-badge">🎯 ${esc(host)}</span>`;
+      const badge = `<span class="wstg-target-badge">${esc(host)}</span>`;
       if (existing) existing.outerHTML = badge;
       else el?.querySelector('.test-name')?.insertAdjacentHTML('afterend', badge);
     } else { existing?.remove(); }
@@ -228,7 +228,7 @@ function closeMethodRunner() {
   _activeMethodData = null;
   document.getElementById('method-runner').innerHTML = `
     <div class="empty-state" style="padding:48px 0">
-      <div class="empty-icon">📋</div>
+      
       <div class="empty-title">Select a methodology</div>
       <div class="empty-sub">Choose from your library on the left</div>
     </div>`;

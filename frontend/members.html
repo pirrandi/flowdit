@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,28 +10,27 @@
   <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <script src="js/config.js"></script>
 </head>
-<body style="display:flex;flex-direction:column;min-height:100vh">
+<body>
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="sidenav" id="sidenav"></div>
-<div class="app-main">
-<div class="topbar slim" id="topbar"></div>
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
 
-<div style="display:flex;flex:1;overflow:hidden;min-height:0">
-  <div class="main-content">
+<div class="workarea">
+  <main class="main">
     <div id="view-members"></div>
-  </div>
+  </main>
 
-  <div class="activity-panel">
+  <aside class="activity-col">
     <div class="activity-header">
       <span class="activity-title">Activity</span>
       <div style="display:flex;align-items:center;gap:6px">
         <div class="live-badge"></div>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">live</span>
       </div>
     </div>
     <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
-  </div>
+  </aside>
 </div>
 
 <!-- Generate Invite Modal -->
@@ -44,12 +43,12 @@
         <button class="invite-role-btn active" data-role="editor" onclick="selectInviteRole('editor')">Editor</button>
         <button class="invite-role-btn" data-role="viewer" onclick="selectInviteRole('viewer')">Viewer</button>
       </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="invite-role-hint">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:6px" id="invite-role-hint">
         Can create findings, update methodology and manage the project.
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Label <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <label class="form-label">Label <span style="color:var(--t3);font-weight:400">(optional)</span></label>
       <input type="text" class="form-input" id="invite-label" placeholder="e.g. Alice, External Auditor…">
     </div>
     <div class="modal-footer">
@@ -59,7 +58,7 @@
   </div>
 </div>
 
-<!-- New Project Modal (needed for openNewProjectModal in topbar) -->
+<!-- New Project Modal -->
 <div class="modal-overlay" id="project-modal">
   <div class="modal">
     <div class="modal-title">New Project</div>
@@ -94,6 +93,5 @@
 
   bootPage('members');
 </script>
-</div>
 </body>
 </html>

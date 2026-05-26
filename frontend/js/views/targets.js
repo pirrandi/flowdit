@@ -1,8 +1,7 @@
 // ── views/targets.js ─────────────────────────────────────────────────
 
 const TARGET_TYPES  = ['domain','ip','cidr','url','other'];
-const TARGET_ICONS  = { domain:'🌐', ip:'🖥', cidr:'🔲', url:'🔗', other:'📌' };
-const TARGET_STATUS_COLORS = { active:'var(--accent)', completed:'var(--green)', 'out-of-scope':'var(--text3)' };
+const TARGET_STATUS_COLORS = { active:'var(--a)', completed:'var(--c-low)', 'out-of-scope':'var(--t3)' };
 
 // Cache de ports/endpoints por target (lazy-loaded)
 const _targetCache = {}; // { [targetId]: { ports:[], endpoints:[], loaded:false } }
@@ -13,7 +12,7 @@ function renderTargets() {
 
   if (!state.targets.length) {
     container.innerHTML = `<div class="empty-state">
-      <div class="empty-icon">🎯</div>
+      <div class="empty-icon">◌</div>
       <div class="empty-title">No targets defined</div>
       <div class="empty-sub">Add IPs, domains, URLs and CIDRs in scope for this engagement</div>
     </div>`;
@@ -50,7 +49,6 @@ function buildTargetCard(t) {
 
   card.innerHTML = `
     <div class="vuln-header" onclick="toggleTargetBody('${t.id}',event)">
-      <span style="font-size:16px;flex-shrink:0">${TARGET_ICONS[t.type]||'📌'}</span>
       <span class="vuln-tag" style="text-transform:uppercase">${t.type}</span>
       <span class="vuln-name" style="font-family:var(--mono);font-size:12px">${esc(t.host)}</span>
       <span style="font-family:var(--mono);font-size:10px;color:${statusColor};margin-left:auto;flex-shrink:0">${statusLabel}</span>
