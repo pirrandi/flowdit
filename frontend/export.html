@@ -576,7 +576,8 @@
       <!-- Actions -->
       <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
         <button class="btn-secondary" onclick="copyMarkdown()" style="padding:6px 12px;font-size:12px">Copy MD</button>
-<button class="btn-accent"    onclick="exportPdf()"   style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
+        <button class="btn-secondary" onclick="exportDocx()"  style="padding:6px 12px;font-size:12px">↓ DOCX</button>
+        <button class="btn-accent"    onclick="exportPdf()"   style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
       </div>
     </div>
 
@@ -3450,6 +3451,44 @@ async function exportPdf() {
     showToast('PDF downloaded', 'success');
   } catch (e) {
     showToast('PDF generation failed: ' + e.message, 'error');
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
+async function exportDocx() {
+  const btn = document.querySelector('[onclick="exportDocx()"]');
+  const origText = btn.textContent;
+  btn.textContent = 'Generating…';
+  btn.disabled = true;
+  try {
+    const token    = localStorage.getItem('fd_access');
+    const pid      = state.currentProject?.id;
+    if (!pid) { showToast('No project loaded', 'error'); return; }
+    const rptKey   = `fd_rpt_${pid}`;
+    const rptData  = localStorage.getItem(rptKey);
+    const meta     = getReportData().meta;
+    const filename = meta.coverTitle || state.currentProject?.name || 'report';
+
+    const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/docx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ pageUrl: window.location.href, token, rptKey, rptData, filename }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'DOCX generation failed', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `${filename}.docx`; a.click();
+    URL.revokeObjectURL(url);
+    showToast('DOCX downloaded', 'success');
+  } catch (e) {
+    showToast('DOCX generation failed: ' + e.message, 'error');
   } finally {
     btn.textContent = origText;
     btn.disabled = false;
