@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireUser } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ El contenido debe ser técnicamente preciso y específico a la evidencia proporc
 Puedes y debes usar markdown dentro de los valores del JSON: **negritas**, \`código inline\`, bloques de código con triple backtick, listas, saltos de línea con \\n.
 Responde ÚNICAMENTE con JSON válido siguiendo el esquema solicitado. Sin texto fuera del objeto JSON.`;
 
-router.post('/generate', requireAuth, async (req, res) => {
+router.post('/generate', requireAuth, requireUser, async (req, res) => {
   const { type, context = {} } = req.body;
   if (!type) return res.status(400).json({ error: 'type required' });
 
@@ -170,7 +170,7 @@ Respond with this exact JSON schema:
 
 // POST /api/ai/chat
 // Body: { question, history: [{role,content}], context: { project, vulns, wstg, targets, team, tickets, methodologies } }
-router.post('/chat', requireAuth, async (req, res) => {
+router.post('/chat', requireAuth, requireUser, async (req, res) => {
   const { question, history = [], context = {} } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
 

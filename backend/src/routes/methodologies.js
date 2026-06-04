@@ -2,7 +2,7 @@ const router = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
 
 router.use(requireAuth);
@@ -25,7 +25,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST create methodology
-router.post('/', [
+router.post('/', requireUser, [
   body('name').trim().isLength({ min:1, max:200 }),
 ], async (req, res, next) => {
   const errors = validationResult(req);
@@ -42,7 +42,7 @@ router.post('/', [
 });
 
 // PATCH update methodology (owner only)
-router.patch('/:methodId', async (req, res, next) => {
+router.patch('/:methodId', requireUser, async (req, res, next) => {
   const allowed = ['name','description','is_shared','tests'];
   const updates = [], values = [];
   allowed.forEach(f => {
@@ -65,7 +65,7 @@ router.patch('/:methodId', async (req, res, next) => {
 });
 
 // DELETE methodology (owner only)
-router.delete('/:methodId', async (req, res, next) => {
+router.delete('/:methodId', requireUser, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM methodologies WHERE id=$1 AND owner_id=$2 RETURNING name`,

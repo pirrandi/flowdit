@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client Portal — Flowdit</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+<style>
+  body { margin: 0; display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; background: var(--bg); overflow: hidden; }
+  .cl-bg {
+    position: fixed; inset: 0;
+    background-image: linear-gradient(var(--b1) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--b1) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: .3; pointer-events: none;
+  }
+  .cl-card {
+    position: relative; z-index: 1;
+    background: var(--bg1); border: 1px solid var(--b2);
+    border-radius: var(--r-lg); padding: 40px 36px; width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .cl-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .cl-brand img { width: 30px; height: 30px; object-fit: contain; }
+  .cl-brand-name { font-size: 15px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--t1); }
+  .cl-tag {
+    font-family: var(--mono); font-size: 9px; color: var(--a);
+    border: 1px solid rgba(245,158,11,.3); border-radius: var(--r-sm);
+    padding: 2px 7px; text-transform: uppercase; letter-spacing: .08em;
+  }
+  .cl-subtitle { font-family: var(--mono); font-size: 11px; color: var(--t3); margin: 10px 0 28px; }
+  .cl-btn {
+    width: 100%; padding: 11px; background: var(--a); border: none;
+    border-radius: var(--r); color: #000; font-family: var(--mono);
+    font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    cursor: pointer; transition: opacity .15s; margin-top: 4px;
+  }
+  .cl-btn:hover { opacity: .88; }
+  .cl-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .cl-no-token {
+    text-align: center; padding: 20px 0;
+    font-family: var(--mono); font-size: 12px; color: var(--t3); line-height: 1.8;
+  }
+  .cl-no-token strong { color: var(--t1); display: block; font-size: 14px; margin-bottom: 8px; }
+  .cl-back { display: block; text-align: center; margin-top: 20px;
+             font-family: var(--mono); font-size: 10px; color: var(--t3);
+             text-decoration: none; transition: color .15s; }
+  .cl-back:hover { color: var(--t1); }
+  .cl-project-name {
+    font-size: 17px; font-weight: 700; color: var(--t1);
+    margin-bottom: 4px; margin-top: 20px;
+  }
+  .cl-project-sub { font-family: var(--mono); font-size: 11px; color: var(--t3); margin-bottom: 24px; }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="spinner-text">// loading...</div>
+</div>
+
+<div class="cl-bg"></div>
+
+<div class="cl-card" id="cl-card" style="display:none">
+  <div class="cl-brand">
+    <img src="img/flowdit-logo.png" alt="Flowdit">
+    <span class="cl-brand-name">Flowdit</span>
+    <span class="cl-tag">Client Portal</span>
+  </div>
+  <div class="cl-subtitle">Secure access to your security assessment</div>
+
+  <!-- State: no token in URL -->
+  <div id="cl-no-token" style="display:none">
+    <div class="cl-no-token">
+      <strong>No access link provided</strong>
+      Contact your security team to receive a portal access link.
+    </div>
+  </div>
+
+  <!-- State: token found, project loaded — no password required -->
+  <div id="cl-ready" style="display:none">
+    <div class="cl-project-name" id="cl-proj-name"></div>
+    <div class="cl-project-sub">Security Assessment Portal</div>
+    <div class="form-group">
+      <label class="form-label">Your name <span style="color:var(--t3);font-weight:400">(optional)</span></label>
+      <input type="text" class="form-input" id="cl-name" placeholder="e.g. John @ Acme Corp"
+        onkeydown="if(event.key==='Enter') clEnter()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email for notifications <span style="color:var(--t3);font-weight:400">(optional)</span></label>
+      <input type="email" class="form-input" id="cl-email" placeholder="you@yourcompany.com"
+        onkeydown="if(event.key==='Enter') clEnter()">
+    </div>
+    <button class="cl-btn" id="cl-enter-btn" onclick="clEnter()">Enter Portal</button>
+    <div class="form-error" id="cl-ready-error"></div>
+  </div>
+
+  <!-- State: token found — password required -->
+  <div id="cl-password" style="display:none">
+    <div class="cl-project-name" id="cl-proj-name-pw"></div>
+    <div class="cl-project-sub">This portal is password protected</div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" class="form-input" id="cl-pw-input"
+        placeholder="Enter portal password"
+        onkeydown="if(event.key==='Enter') clEnterWithPassword()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Your name <span style="color:var(--t3);font-weight:400">(optional)</span></label>
+      <input type="text" class="form-input" id="cl-pw-name" placeholder="e.g. John @ Acme Corp"
+        onkeydown="if(event.key==='Enter') clEnterWithPassword()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email for notifications <span style="color:var(--t3);font-weight:400">(optional)</span></label>
+      <input type="email" class="form-input" id="cl-pw-email" placeholder="you@yourcompany.com"
+        onkeydown="if(event.key==='Enter') clEnterWithPassword()">
+    </div>
+    <div class="form-error" id="cl-pw-error"></div>
+    <button class="cl-btn" id="cl-pw-btn" onclick="clEnterWithPassword()">Access Portal</button>
+  </div>
+
+  <a href="index.html" class="cl-back">Team member? Sign in here</a>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/utils.js"></script>
+<script>
+let _portalToken = null;
+let _projectName = null;
+let _needsPassword = false;
+
+async function boot() {
+  // Already have a valid portal session → go straight in
+  if (api.portal.session.has()) {
+    window.location.href = 'client.html';
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  _portalToken = params.get('token');
+
+  hide('loading-overlay');
+  document.getElementById('cl-card').style.display = 'block';
+
+  if (!_portalToken) {
+    show('cl-no-token');
+    return;
+  }
+
+  // Probe the token — try without password first
+  try {
+    const data = await api.portal.auth(_portalToken, null);
+    _projectName = data.projectName;
+
+    if (!data.portalOpen) {
+      show('cl-no-token');
+      document.querySelector('.cl-no-token').innerHTML =
+        '<strong>Portal not yet available</strong>The security team hasn\'t opened the portal yet. Check back soon.';
+      return;
+    }
+
+    // No password needed — show enter button
+    document.getElementById('cl-proj-name').textContent = data.projectName;
+    // Store the token immediately — enter just redirects
+    api.portal.session.set(data.accessToken, data.projectId);
+    show('cl-ready');
+
+  } catch (e) {
+    if (e.data?.passwordRequired) {
+      // Password required — show password form after a second probe to get project name
+      _needsPassword = true;
+      // We can't get the project name without auth, so use a generic label
+      document.getElementById('cl-proj-name-pw').textContent = 'Security Assessment';
+      show('cl-password');
+      setTimeout(() => document.getElementById('cl-pw-input').focus(), 100);
+    } else {
+      show('cl-no-token');
+      document.querySelector('.cl-no-token').innerHTML =
+        '<strong>Invalid link</strong>This access link is invalid or has expired.<br>Contact your security team for a new link.';
+    }
+  }
+}
+
+function clEnter() {
+  const name  = document.getElementById('cl-name')?.value.trim()  || '';
+  const email = document.getElementById('cl-email')?.value.trim() || '';
+  // Re-set session to include name/email (token+pid were already stored on boot)
+  const token = api.portal.session.token;
+  const pid   = api.portal.session.projectId;
+  api.portal.session.set(token, pid, name, email);
+  window.location.href = 'client.html';
+}
+
+async function clEnterWithPassword() {
+  const pw    = document.getElementById('cl-pw-input').value;
+  const name  = document.getElementById('cl-pw-name')?.value.trim()  || '';
+  const email = document.getElementById('cl-pw-email')?.value.trim() || '';
+  const err   = document.getElementById('cl-pw-error');
+  const btn   = document.getElementById('cl-pw-btn');
+  err.style.display = 'none';
+  if (!pw) { err.textContent = 'Password is required'; err.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Verifying...';
+  try {
+    const data = await api.portal.auth(_portalToken, pw);
+    api.portal.session.set(data.accessToken, data.projectId, name, email);
+    window.location.href = 'client.html';
+  } catch (e) {
+    err.textContent = e.message || 'Incorrect password';
+    err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Access Portal';
+  }
+}
+
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+window.clEnter             = clEnter;
+window.clEnterWithPassword = clEnterWithPassword;
+
+boot();
+</script>
+</body>
+</html>

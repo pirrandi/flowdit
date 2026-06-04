@@ -156,7 +156,7 @@ async function copyCVSSVector() {
 }
 
 const SEVERITY_ORDER  = ['critical','high','medium','low','info'];
-const TARGET_ICONS    = { domain:'🌐', ip:'🖥', cidr:'🔲', url:'🔗', other:'📌' };
+
 const SEVERITY_LABELS = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
 
 function severityBadge(sev) {
@@ -167,7 +167,7 @@ function severityBadge(sev) {
 function renderCustomVulns() {
   const container = document.getElementById('custom-content');
   if (!state.customVulns.length) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🛠</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div></div>';
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div></div>';
     return;
   }
   const bySev = {};
@@ -239,7 +239,7 @@ function buildVulnCard(v) {
       ${severityBadge(v.severity)}
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
       ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
-      ${v.target_host ? `<span class="vuln-tag" style="color:var(--accent);border-color:var(--accent)33">🎯 ${esc(v.target_host)}</span>` : ''}
+      ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
       <div class="vuln-actions">
@@ -484,7 +484,7 @@ function populateTargetSelect(selectedId) {
   if (!sel) return;
   const inScope = (state.targets||[]).filter(t => t.scope==='in');
   sel.innerHTML = '<option value="">— No target —</option>' +
-    inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${TARGET_ICONS[t.type]||'📌'} ${esc(t.host)}</option>`).join('');
+    inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${esc(t.host)}</option>`).join('');
 }
 
 window.setCVSSMetric      = setCVSSMetric;

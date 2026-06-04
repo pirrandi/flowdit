@@ -1,7 +1,8 @@
 const router   = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db       = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const mailer   = require('../services/mailer');
+const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
 
 router.use(requireAuth, requireProjectAccess);
@@ -17,7 +18,7 @@ router.get('/', async (req, res, next) => {
               v.name AS vuln_name,
               (SELECT COUNT(*) FROM ticket_replies r WHERE r.ticket_id = t.id)::int AS reply_count
        FROM tickets t
-       JOIN users u ON u.id = t.opened_by
+       LEFT JOIN users u ON u.id = t.opened_by
        LEFT JOIN custom_vulns v ON v.id = t.vuln_id
        WHERE t.project_id = $1
        ORDER BY t.updated_at DESC`,
@@ -35,7 +36,7 @@ router.get('/:ticketId', async (req, res, next) => {
               u.username AS opened_by_username, u.avatar_color AS opened_by_color,
               v.name AS vuln_name
        FROM tickets t
-       JOIN users u ON u.id = t.opened_by
+       LEFT JOIN users u ON u.id = t.opened_by
        LEFT JOIN custom_vulns v ON v.id = t.vuln_id
        WHERE t.id = $1 AND t.project_id = $2`,
       [req.params.ticketId, req.params.projectId]
@@ -45,7 +46,7 @@ router.get('/:ticketId', async (req, res, next) => {
     const { rows: replies } = await db.query(
       `SELECT r.*, u.username AS author_username, u.avatar_color AS author_color
        FROM ticket_replies r
-       JOIN users u ON u.id = r.author_id
+       LEFT JOIN users u ON u.id = r.author_id
        WHERE r.ticket_id = $1
        ORDER BY r.created_at ASC`,
       [req.params.ticketId]
@@ -54,16 +55,17 @@ router.get('/:ticketId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST create ticket (any project member — clients with viewer role can open tickets)
+// POST create ticket — team members or portal users
 router.post('/', [
   body('title').trim().isLength({ min: 1, max: 300 }),
   body('description').optional().trim(),
   body('vuln_id').optional().isUUID(),
+  body('client_name').optional().trim().isLength({ max: 200 }),
+  body('client_email').optional().trim().isEmail().normalizeEmail(),
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  // Check tickets are enabled for this project
   const { rows: proj } = await db.query(
     `SELECT tickets_enabled FROM projects WHERE id=$1`, [req.params.projectId]
   );
@@ -72,6 +74,23 @@ router.post('/', [
   }
 
   const { title, description = '', vuln_id = null } = req.body;
+
+  if (req.isPortal) {
+    // Portal user — no user account, store client_name/email instead
+    const clientName  = req.body.client_name?.trim()  || 'Client';
+    const clientEmail = req.body.client_email?.trim()  || null;
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO tickets (project_id, vuln_id, title, description, client_name, client_email)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [req.params.projectId, vuln_id || null, title, description, clientName, clientEmail]
+      );
+      return res.status(201).json(rows[0]);
+    } catch (err) { return next(err); }
+  }
+
+  // Team member
+  if (!req.user) return res.status(403).json({ error: 'Authentication required' });
   try {
     const { rows } = await db.query(
       `INSERT INTO tickets (project_id, vuln_id, title, description, opened_by)
@@ -124,35 +143,73 @@ router.delete('/:ticketId', requireEditor, async (req, res, next) => {
 
 // ── REPLIES ───────────────────────────────────────────────────────
 
-// POST add reply (any project member)
+// POST add reply — team members or portal users
 router.post('/:ticketId/replies', [
   body('body').trim().isLength({ min: 1 }),
+  body('client_name').optional().trim().isLength({ max: 200 }),
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+  // Portal: require a session (already enforced by requireProjectAccess)
+  // Team: require a real user
+  if (!req.isPortal && !req.user) return res.status(403).json({ error: 'Authentication required' });
+
   try {
-    // Verify ticket belongs to this project
     const { rows: ticket } = await db.query(
-      `SELECT id FROM tickets WHERE id=$1 AND project_id=$2`,
+      `SELECT id, title, client_email, client_name, project_id FROM tickets WHERE id=$1 AND project_id=$2`,
       [req.params.ticketId, req.params.projectId]
     );
     if (!ticket.length) return res.status(404).json({ error: 'Ticket not found' });
 
-    const { rows } = await db.query(
-      `INSERT INTO ticket_replies (ticket_id, body, author_id) VALUES ($1,$2,$3) RETURNING *`,
-      [req.params.ticketId, req.body.body, req.user.id]
-    );
-    // Bump ticket updated_at so it surfaces on top
-    await db.query(`UPDATE tickets SET updated_at=NOW() WHERE id=$1`, [req.params.ticketId]);
+    let newReply;
 
-    const { rows: full } = await db.query(
-      `SELECT r.*, u.username AS author_username, u.avatar_color AS author_color
-       FROM ticket_replies r JOIN users u ON u.id = r.author_id
-       WHERE r.id=$1`,
-      [rows[0].id]
-    );
-    res.status(201).json(full[0]);
+    if (req.isPortal) {
+      const clientName = req.body.client_name?.trim() || 'Client';
+      const { rows } = await db.query(
+        `INSERT INTO ticket_replies (ticket_id, body, client_name) VALUES ($1,$2,$3) RETURNING *`,
+        [req.params.ticketId, req.body.body, clientName]
+      );
+      newReply = { ...rows[0], author_username: clientName, author_color: null };
+    } else {
+      const { rows } = await db.query(
+        `INSERT INTO ticket_replies (ticket_id, body, author_id) VALUES ($1,$2,$3) RETURNING *`,
+        [req.params.ticketId, req.body.body, req.user.id]
+      );
+      // Bump ticket updated_at
+      await db.query(`UPDATE tickets SET updated_at=NOW() WHERE id=$1`, [req.params.ticketId]);
+
+      const { rows: full } = await db.query(
+        `SELECT r.*, u.username AS author_username, u.avatar_color AS author_color
+         FROM ticket_replies r JOIN users u ON u.id = r.author_id
+         WHERE r.id=$1`,
+        [rows[0].id]
+      );
+      newReply = full[0];
+
+      // Email notification to client if ticket has client_email
+      if (ticket[0].client_email) {
+        const { rows: projRows } = await db.query(
+          `SELECT name, portal_token FROM projects WHERE id=$1`, [req.params.projectId]
+        );
+        const proj       = projRows[0];
+        const portalUrl  = proj?.portal_token
+          ? `${process.env.FRONTEND_URL || ''}/client-login.html?token=${proj.portal_token}`
+          : null;
+        mailer.sendTicketReplyNotification({
+          toEmail:     ticket[0].client_email,
+          toName:      ticket[0].client_name,
+          projectName: proj?.name || 'Your project',
+          ticketTitle: ticket[0].title,
+          replyBody:   req.body.body,
+          replyAuthor: req.user.username,
+          portalUrl,
+        }).catch(err => console.error('Email notification failed:', err.message));
+      }
+    }
+
+    await db.query(`UPDATE tickets SET updated_at=NOW() WHERE id=$1`, [req.params.ticketId]);
+    res.status(201).json(newReply);
   } catch (err) { next(err); }
 });
 

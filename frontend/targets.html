@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,39 +10,36 @@
   <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <script src="js/config.js"></script>
 </head>
-<body style="display:flex;flex-direction:column;min-height:100vh">
+<body>
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
-<div class="sidenav" id="sidenav"></div>
-<div class="app-main">
-<div class="topbar slim" id="topbar"></div>
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
 
-<div style="display:flex;flex:1;overflow:hidden;min-height:0">
-  <div class="main-content">
+<div class="workarea">
+  <main class="main">
     <div class="page-header">
       <div>
         <div class="page-title">Targets & Scope</div>
         <div class="page-subtitle">// hosts, IPs, CIDRs and URLs in scope</div>
       </div>
-      <button class="btn-accent" onclick="openAddTargetModal()">+ Add Target</button>
+      <button class="btn btn-prim" onclick="openAddTargetModal()">+ Add Target</button>
     </div>
 
-    <!-- Scope summary bar -->
     <div id="scope-summary" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
-
     <div id="targets-content"></div>
-  </div>
+  </main>
 
-  <div class="activity-panel">
+  <aside class="activity-col">
     <div class="activity-header">
       <span class="activity-title">Activity</span>
       <div style="display:flex;align-items:center;gap:6px">
         <div class="live-badge"></div>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">live</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">live</span>
       </div>
     </div>
     <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
-  </div>
+  </aside>
 </div>
 
 <!-- Add/Edit Target Modal -->
@@ -61,18 +58,18 @@
       <div class="form-group" style="margin:0">
         <label class="form-label">Type</label>
         <select class="form-input" id="modal-target-type" style="cursor:pointer">
-          <option value="domain">🌐 Domain</option>
-          <option value="ip">🖥 IP</option>
-          <option value="cidr">🔲 CIDR</option>
-          <option value="url">🔗 URL</option>
-          <option value="other">📌 Other</option>
+          <option value="domain">Domain</option>
+          <option value="ip">IP</option>
+          <option value="cidr">CIDR</option>
+          <option value="url">URL</option>
+          <option value="other">Other</option>
         </select>
       </div>
       <div class="form-group" style="margin:0">
         <label class="form-label">Scope</label>
         <select class="form-input" id="modal-target-scope" style="cursor:pointer">
-          <option value="in">✅ In Scope</option>
-          <option value="out">🚫 Out of Scope</option>
+          <option value="in">In Scope</option>
+          <option value="out">Out of Scope</option>
         </select>
       </div>
       <div class="form-group" style="margin:0">
@@ -86,7 +83,7 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Notes <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+      <label class="form-label">Notes <span style="color:var(--t3);font-weight:400">(optional)</span></label>
       <textarea class="form-input note-textarea" id="modal-target-notes"
         placeholder="Technologies, open ports, relevant info..."></textarea>
     </div>
@@ -143,6 +140,5 @@ function pageInit() {
 
 bootPage('targets');
 </script>
-</div>
 </body>
 </html>

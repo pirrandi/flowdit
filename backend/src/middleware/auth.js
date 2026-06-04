@@ -9,7 +9,17 @@ async function requireAuth(req, res, next) {
   const token = header.slice(7);
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    // Attach full user (including avatar_color) so activity log can use it
+
+    // Portal token — no user account, project-scoped read-only access
+    if (payload.type === 'portal') {
+      req.isPortal        = true;
+      req.portalProjectId = payload.projectId;
+      req.portalTok       = payload.tok;   // bound to a specific portal link
+      req.user            = { id: null, username: 'client', role: 'viewer' };
+      return next();
+    }
+
+    // Regular user token
     const { rows } = await db.query(
       'SELECT id, username, email, avatar_color, avatar_url FROM users WHERE id = $1', [payload.sub]
     );
@@ -21,4 +31,11 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+// Blocks portal sessions from routes that require a real user account
+function requireUser(req, res, next) {
+  if (req.isPortal)
+    return res.status(403).json({ error: 'Not available in portal sessions' });
+  next();
+}
+
+module.exports = { requireAuth, requireUser };

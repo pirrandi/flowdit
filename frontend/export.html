@@ -12,15 +12,15 @@
 <style>
 /* ── Two-panel layout ────────────────────────────────────────────── */
 .exp-layout { display:flex;flex:1;overflow:hidden;min-height:0; }
-.exp-editor { width:400px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;background:var(--bg2); }
+.exp-editor { width:400px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--b1);overflow:hidden;background:var(--bg2); }
 #editor-panel { flex:1;overflow-y:auto;display:flex;flex-direction:column; }
 .exp-preview { flex:1;overflow-y:auto;padding:40px 48px; }
 
 /* Editor panel sections */
-.exp-section { border-bottom:1px solid var(--border); }
+.exp-section { border-bottom:1px solid var(--b1); }
 .exp-section-header {
   display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;
-  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2);
+  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2);
   user-select:none;
 }
 .exp-section-header:hover { background:var(--bg3); }
@@ -30,7 +30,7 @@
 .exp-section-body.open { display:block; }
 
 /* Finding editor cards */
-.exp-finding { border:1px solid var(--border);border-radius:7px;margin-bottom:8px;overflow:hidden; }
+.exp-finding { border:1px solid var(--b1);border-radius:7px;margin-bottom:8px;overflow:hidden; }
 .exp-finding-header {
   display:flex;align-items:center;gap:8px;padding:8px 10px;
   background:var(--bg3);cursor:pointer;font-size:12px;font-weight:600;
@@ -38,85 +38,85 @@
 .exp-finding-header:hover { background:var(--bg); }
 .exp-finding-body { display:none;padding:10px; }
 .exp-finding-body.open { display:flex;flex-direction:column;gap:8px; }
-.exp-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:3px; }
-.exp-sub-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin:12px 0 6px;padding-top:10px;border-top:1px solid var(--border); }
+.exp-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:3px; }
+.exp-sub-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin:12px 0 6px;padding-top:10px;border-top:1px solid var(--b1); }
 .exp-textarea {
-  width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;
-  color:var(--text);font-size:11px;font-family:inherit;padding:7px 9px;
+  width:100%;background:var(--bg);border:1px solid var(--b1);border-radius:5px;
+  color:var(--t1);font-size:11px;font-family:inherit;padding:7px 9px;
   resize:vertical;min-height:60px;line-height:1.5;box-sizing:border-box;
 }
-.exp-textarea:focus { outline:none;border-color:var(--accent); }
-.exp-textarea.rem { border-color:var(--green)44; }
-.exp-textarea.rem:focus { border-color:var(--green); }
-.exp-saved-dot { width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:auto;opacity:0;transition:opacity .3s; }
+.exp-textarea:focus { outline:none;border-color:var(--a); }
+.exp-textarea.rem { border-color:var(--c-low)44; }
+.exp-textarea.rem:focus { border-color:var(--c-low); }
+.exp-saved-dot { width:6px;height:6px;border-radius:50%;background:var(--c-low);margin-left:auto;opacity:0;transition:opacity .3s; }
 .exp-saved-dot.show { opacity:1; }
 
 /* Evidence picker in editor */
 .exp-evidence-row { display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:5px 7px;
-  background:var(--bg);border:1px solid var(--border);border-radius:5px; }
+  background:var(--bg);border:1px solid var(--b1);border-radius:5px; }
 .exp-evidence-thumb { width:36px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0; }
-.exp-evidence-name { flex:1;font-family:var(--mono);font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.exp-evidence-name { flex:1;font-family:var(--mono);font-size:10px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 
 /* Toggle checkboxes */
-.exp-opt { display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text2);cursor:pointer;padding:3px 0; }
+.exp-opt { display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--t2);cursor:pointer;padding:3px 0; }
 .exp-opt input[type="checkbox"] {
   appearance:none;-webkit-appearance:none;
-  width:13px;height:13px;border:1px solid var(--border2);border-radius:3px;
+  width:13px;height:13px;border:1px solid var(--b2);border-radius:3px;
   background:var(--bg3);cursor:pointer;position:relative;flex-shrink:0;
   transition:background .12s,border-color .12s;
 }
-.exp-opt input[type="checkbox"]:checked { background:var(--accent);border-color:var(--accent); }
+.exp-opt input[type="checkbox"]:checked { background:var(--a);border-color:var(--a); }
 .exp-opt input[type="checkbox"]:checked::after {
   content:'';position:absolute;left:3px;top:1px;width:4px;height:7px;
   border:2px solid #fff;border-top:none;border-left:none;transform:rotate(45deg);
 }
-.exp-opt input[type="checkbox"]:hover:not(:checked) { border-color:var(--accent);background:rgba(124,58,237,.1); }
+.exp-opt input[type="checkbox"]:hover:not(:checked) { border-color:var(--a);background:rgba(124,58,237,.1); }
 .exp-opt input[type="radio"] {
   appearance:none;-webkit-appearance:none;
-  width:13px;height:13px;border:1px solid var(--border2);border-radius:50%;
+  width:13px;height:13px;border:1px solid var(--b2);border-radius:50%;
   background:var(--bg3);cursor:pointer;position:relative;flex-shrink:0;
   transition:background .12s,border-color .12s;
 }
-.exp-opt input[type="radio"]:checked { border-color:var(--accent); }
+.exp-opt input[type="radio"]:checked { border-color:var(--a); }
 .exp-opt input[type="radio"]:checked::after {
   content:'';position:absolute;left:3px;top:3px;width:5px;height:5px;
-  border-radius:50%;background:var(--accent);
+  border-radius:50%;background:var(--a);
 }
-.exp-opt input[type="radio"]:hover:not(:checked) { border-color:var(--accent);background:rgba(124,58,237,.1); }
+.exp-opt input[type="radio"]:hover:not(:checked) { border-color:var(--a);background:rgba(124,58,237,.1); }
 
 /* ── Report base ─────────────────────────────────────────────────── */
-.rpt { font-family:var(--rpt-font,'Inter',system-ui,sans-serif);color:var(--text);line-height:1.7; }
+.rpt { font-family:var(--rpt-font,'Inter',system-ui,sans-serif);color:var(--t1);line-height:1.7; }
 .rpt h1 { font-size:28px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em; }
-.rpt h2 { font-size:var(--rpt-h2-size,13px);font-weight:700;margin:40px 0 16px;color:var(--text2);
+.rpt h2 { font-size:var(--rpt-h2-size,13px);font-weight:700;margin:40px 0 16px;color:var(--t2);
           text-transform:uppercase;letter-spacing:.1em;
-          border-bottom:1px solid var(--border);padding-bottom:10px;display:flex;align-items:center;gap:8px; }
-.rpt h2::before { content:'';display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--accent);flex-shrink:0; }
+          border-bottom:1px solid var(--b1);padding-bottom:10px;display:flex;align-items:center;gap:8px; }
+.rpt h2::before { content:'';display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--a);flex-shrink:0; }
 .rpt h3 { font-size:13px;font-weight:700;margin:22px 0 10px; }
-.rpt-sub-title { font-size:var(--rpt-h3-size,11px)!important;font-weight:700;margin:28px 0 12px;color:var(--text3);
+.rpt-sub-title { font-size:var(--rpt-h3-size,11px)!important;font-weight:700;margin:28px 0 12px;color:var(--t3);
                  text-transform:uppercase;letter-spacing:.09em;
-                 border-bottom:1px solid var(--border)88;padding-bottom:7px;display:flex;align-items:center;gap:7px; }
-.rpt-sub-title::before { content:'';display:inline-block;width:2px;height:10px;border-radius:2px;background:var(--accent);opacity:.55;flex-shrink:0; }
+                 border-bottom:1px solid var(--b1)88;padding-bottom:7px;display:flex;align-items:center;gap:7px; }
+.rpt-sub-title::before { content:'';display:inline-block;width:2px;height:10px;border-radius:2px;background:var(--a);opacity:.55;flex-shrink:0; }
 .rpt-sec-desc { margin-bottom:16px!important; }
-.rpt p  { margin:4px 0 10px;color:var(--text2);font-size:var(--rpt-base-size,13px); }
+.rpt p  { margin:4px 0 10px;color:var(--t2);font-size:var(--rpt-base-size,13px); }
 
 /* ── Cover / header ──────────────────────────────────────────────── */
 .rpt-cover { margin-bottom:40px; }
-.rpt-cover-bar { height:3px;border-radius:0;background:var(--accent);margin-bottom:32px; }
+.rpt-cover-bar { height:3px;border-radius:0;background:var(--a);margin-bottom:32px; }
 .rpt-cover-labels { display:flex;align-items:center;gap:10px;margin-bottom:12px; }
 .rpt-cover-type { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--accent);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:3px 9px; }
+  color:var(--a);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:3px 9px; }
 .rpt-cover-conf { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--red);border:1px solid var(--red)44;border-radius:3px;padding:3px 9px; }
+  color:var(--red);border:1px solid var(--c-crit)44;border-radius:3px;padding:3px 9px; }
 /* ── Cover metadata table (replaces grid of cards) ───────────────── */
-.rpt-cover-meta { margin-top:28px;border-top:1px solid var(--border); }
-.rpt-cover-meta-row { display:flex;border-bottom:1px solid var(--border)66;padding:10px 0;gap:0; }
+.rpt-cover-meta { margin-top:28px;border-top:1px solid var(--b1); }
+.rpt-cover-meta-row { display:flex;border-bottom:1px solid var(--b1)66;padding:10px 0;gap:0; }
 .rpt-cover-meta-cell { flex:1;display:flex;gap:14px;align-items:baseline;padding:0 16px 0 0; }
-.rpt-cover-meta-cell + .rpt-cover-meta-cell { border-left:1px solid var(--border)44;padding-left:16px;padding-right:0; }
-.rpt-cover-meta-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);white-space:nowrap;min-width:100px;flex-shrink:0; }
-.rpt-cover-meta-val { font-size:13px;font-weight:500;color:var(--text);line-height:1.4; }
+.rpt-cover-meta-cell + .rpt-cover-meta-cell { border-left:1px solid var(--b1)44;padding-left:16px;padding-right:0; }
+.rpt-cover-meta-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);white-space:nowrap;min-width:100px;flex-shrink:0; }
+.rpt-cover-meta-val { font-size:13px;font-weight:500;color:var(--t1);line-height:1.4; }
 /* ── TOC links ───────────────────────────────────────────────────── */
-.rpt-toc-item a { color:var(--text2);text-decoration:none;border-bottom:1px solid transparent;transition:color .15s,border-color .15s; }
-.rpt-toc-item a:hover { color:var(--accent);border-bottom-color:rgba(124,58,237,.27); }
+.rpt-toc-item a { color:var(--t2);text-decoration:none;border-bottom:1px solid transparent;transition:color .15s,border-color .15s; }
+.rpt-toc-item a:hover { color:var(--a);border-bottom-color:rgba(124,58,237,.27); }
 
 /* ── Summary cards ───────────────────────────────────────────────── */
 .rpt-summary { display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 16px; }
@@ -129,7 +129,7 @@
 .card-medium  {background:#eab30818;border:1px solid #eab30840;color:#eab308;}
 .card-low     {background:#05966918;border:1px solid #05966940;color:#059669;}
 .card-info    {background:#6b728018;border:1px solid #6b728040;color:#9ca3af;}
-.card-wstg    {background:var(--bg3);border:1px solid var(--border);color:var(--green);}
+.card-wstg    {background:var(--bg3);border:1px solid var(--b1);color:var(--c-low);}
 
 /* ── Risk distribution bar ───────────────────────────────────────── */
 .rpt-risk-wrap { margin:4px 0 24px; }
@@ -141,25 +141,25 @@
 .rpt-risk-low      { background:#059669; }
 .rpt-risk-info     { background:#6b7280; }
 .rpt-risk-legend   { display:flex;gap:14px;margin-top:8px;flex-wrap:wrap; }
-.rpt-risk-legend-item { display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--text3); }
+.rpt-risk-legend-item { display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--t3); }
 .rpt-risk-legend-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
 
 /* ── Findings overview table ─────────────────────────────────────── */
 .rpt-cell { display:flex;align-items:center;min-height:20px; }
 .rpt-table { width:100%;border-collapse:separate;border-spacing:0;font-size:12px;margin:10px 0; }
 .rpt-table th { text-align:left;padding:9px 12px;background:var(--bg3);font-family:var(--mono);
-  font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);border-bottom:1px solid var(--border); }
-.rpt-table td { padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top; }
+  font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);border-bottom:1px solid var(--b1); }
+.rpt-table td { padding:7px 12px;border-bottom:1px solid var(--b1);color:var(--t2);vertical-align:top; }
 .rpt-table tr:last-child td { border-bottom:none; }
 .rpt-table tr:hover td { background:var(--bg2); }
 .rpt-table td.num { text-align:center;font-family:var(--mono);font-weight:600; }
 .rpt-table td.vuln-found { color:var(--red);font-weight:700; }
 .rpt-progress-cell { display:flex;align-items:center;gap:8px; }
-.rpt-mini-bar { flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden; }
-.rpt-mini-fill { height:100%;background:var(--green);border-radius:2px; }
+.rpt-mini-bar { flex:1;height:4px;background:var(--b1);border-radius:2px;overflow:hidden; }
+.rpt-mini-fill { height:100%;background:var(--c-low);border-radius:2px; }
 
 /* ── Vulnerability cards ─────────────────────────────────────────── */
-.rpt-vuln { border:1px solid var(--border);border-radius:8px;margin-bottom:14px;overflow:hidden;page-break-inside:avoid; }
+.rpt-vuln { border:1px solid var(--b1);border-radius:8px;margin-bottom:14px;overflow:hidden;page-break-inside:avoid; }
 .rpt-vuln-critical { border-left:4px solid #ef4444!important; }
 .rpt-vuln-high     { border-left:4px solid #f97316!important; }
 .rpt-vuln-medium   { border-left:4px solid #eab308!important; }
@@ -167,40 +167,38 @@
 .rpt-vuln-info     { border-left:4px solid #6b7280!important; }
 .rpt-vuln-header { display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--bg2); }
 .rpt-vuln-name { font-weight:600;font-size:13px;flex:1; }
-.rpt-vuln-cat  { font-family:var(--mono);font-size:10px;color:var(--text3); }
+.rpt-vuln-cat  { font-family:var(--mono);font-size:10px;color:var(--t3); }
 .rpt-vuln-status { font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px; }
-.rpt-status-done { color:var(--green);background:var(--green)18;border:1px solid var(--green)30; }
-.rpt-status-fail { color:var(--red);background:var(--red)18;border:1px solid var(--red)30; }
-.rpt-status-pending { color:var(--text3);background:var(--bg3);border:1px solid var(--border); }
-.rpt-field { padding:10px 14px;border-top:1px solid var(--border); }
-.rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:5px; }
-.rpt-field-val  { font-size:12px;color:var(--text2);line-height:1.6; }
-.rpt-field-rem  { font-size:12px;color:var(--green);line-height:1.6; }
-.rpt-code { background:var(--bg);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6;border:1px solid var(--border);white-space:pre-wrap;word-break:break-all; }
-.rpt-divider { border:none;border-top:1px solid var(--border);margin:32px 0; }
+.rpt-status-done { color:var(--c-low);background:var(--c-low)18;border:1px solid var(--c-low)30; }
+.rpt-status-fail { color:var(--red);background:var(--c-crit)18;border:1px solid var(--c-crit)30; }
+.rpt-status-pending { color:var(--t3);background:var(--bg3);border:1px solid var(--b1); }
+.rpt-field { padding:10px 14px;border-top:1px solid var(--b1); }
+.rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:5px; }
+.rpt-field-val  { font-size:12px;color:var(--t2);line-height:1.6; }
+.rpt-field-rem  { font-size:12px;color:var(--c-low);line-height:1.6; }
+.rpt-code { background:var(--bg);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--t2);line-height:1.6;border:1px solid var(--b1);white-space:pre-wrap;word-break:break-all; }
+.rpt-divider { border:none;border-top:1px solid var(--b1);margin:32px 0; }
 
 /* ── WSTG vuln items ─────────────────────────────────────────────── */
-.rpt-wstg-vuln { padding:11px 14px;border:1px solid var(--border);border-left:4px solid var(--red);border-radius:6px;margin-bottom:8px;background:var(--bg2); }
+.rpt-wstg-vuln { padding:11px 14px;border:1px solid var(--b1);border-left:4px solid var(--red);border-radius:6px;margin-bottom:8px;background:var(--bg2); }
 
 /* ── Evidence ────────────────────────────────────────────────────── */
 .rpt-evidence-grid { display:flex;flex-direction:column;gap:12px;margin-top:6px; }
-.rpt-evidence-img { max-width:100%;max-height:600px;border-radius:6px;border:1px solid var(--border);object-fit:contain;display:block; }
+.rpt-evidence-img { max-width:100%;max-height:600px;border-radius:6px;border:1px solid var(--b1);object-fit:contain;display:block; }
 
 /* ── Findings index table (before details) ───────────────────────── */
-.rpt-idx-num  { width:52px;font-family:var(--mono);color:var(--text3);white-space:nowrap; }
+.rpt-idx-num  { width:52px;font-family:var(--mono);color:var(--t3);white-space:nowrap; }
 .rpt-idx-sev  { width:90px; }
 .rpt-idx-status { width:100px; }
 
-@page { margin:0; }
+@page { size: A4 portrait; margin:0; }
 
 @media print {
   :root {
+    /* Legacy variable names (kept for compatibility) */
     --text:    #111111;
     --text2:   #333333;
     --text3:   #666666;
-    --bg:      #ffffff;
-    --bg2:     #f7f7f7;
-    --bg3:     #eeeeee;
     --surface: #f9f9f9;
     --border:  #e0e0e0;
     --border2: #d0d0d0;
@@ -210,6 +208,18 @@
     --accent2: #22d3a3;
     --blue:    #1d4ed8;
     --mono:    'JetBrains Mono', monospace;
+    /* Signal design system variables — override dark theme for print */
+    --bg:  #ffffff;
+    --bg1: #ffffff;
+    --bg2: #f8f8fa;
+    --bg3: #f0f0f4;
+    --bg4: #e8e8ee;
+    --b1:  #e0e0e8;
+    --b2:  #ccccda;
+    --t1:  #0d0d14;
+    --t2:  #3a3a4a;
+    --t3:  #666677;
+    --t4:  #9898aa;
   }
   * { -webkit-print-color-adjust:exact!important;print-color-adjust:exact!important; }
 
@@ -233,9 +243,8 @@
   .rpt-pf-pgnum-wrap::after { content:attr(data-pre) counter(page);font-family:monospace;font-size:10px;color:#666; }
 
   /* ── Reset layout — prevent clipping ────────────────── */
-  html,body { display:block!important;background:#fff!important;margin:0!important;padding:0!important;height:auto!important;overflow:visible!important; }
-  .app-main  { display:block!important;margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important; }
-  .exp-outer,.exp-inner { display:block!important;overflow:visible!important;height:auto!important;min-height:0!important; }
+  html,body { display:block!important;background:#fff!important;margin:0!important;padding:0!important;height:auto!important;overflow:visible!important;width:210mm!important;max-width:210mm!important;min-width:0!important; }
+  .workarea,.main { display:block!important;margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;height:auto!important;overflow:visible!important; }
   .exp-layout  { display:block!important;overflow:visible!important;height:auto!important; }
   .exp-preview { display:block!important;overflow:visible!important;padding:0!important;width:100%!important;height:auto!important; }
   #report-preview { max-width:100%!important;margin:0!important; }
@@ -262,6 +271,7 @@
   .rpt-risk-class td, .rpt-risk-class th { display:table-cell!important;vertical-align:top!important;padding:10px 12px!important; }
 
   /* ── Base text ──────────────────────────────────────── */
+  .rpt { color:#111!important; }
   .rpt p, .rpt-field-val  { color:#333!important; }
   .rpt h2 { color:#444!important;border-color:#ccc!important; }
   .rpt h2::before { background:#666!important; }
@@ -275,8 +285,8 @@
   .rpt-cover-meta-val   { color:#111!important; }
   .rpt-cover-type { color:#3b82f6!important;border-color:#3b82f644!important; }
   .rpt-cover-conf { color:#ef4444!important;border-color:#ef444444!important; }
-  .rpt-cover-bar  { background:var(--accent)!important; }
-  .rpt-cover-page-bar  { background:var(--accent)!important; }
+  .rpt-cover-bar  { background:var(--a)!important; }
+  .rpt-cover-page-bar  { background:var(--a)!important; }
   .rpt-cover-page-type { color:#3b82f6!important;border-color:#3b82f644!important; }
   .rpt-cover-page-h1   { color:#111!important; }
   .rpt-cover-page-client { color:#666!important; }
@@ -333,144 +343,144 @@
 
 
 /* ── Report meta editor inputs ───────────────────────────────────── */
-.exp-input { width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;font-family:inherit;padding:5px 8px;box-sizing:border-box; }
-.exp-input:focus { outline:none;border-color:var(--accent); }
+.exp-input { width:100%;background:var(--bg);border:1px solid var(--b1);border-radius:5px;color:var(--t1);font-size:11px;font-family:inherit;padding:5px 8px;box-sizing:border-box; }
+.exp-input:focus { outline:none;border-color:var(--a); }
 .exp-meta-row { display:flex;flex-direction:column;gap:3px;margin-bottom:8px; }
 
 /* ── TOC ─────────────────────────────────────────────────────────── */
-.rpt-toc { background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin:0 0 28px; }
-.rpt-toc-title { font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);margin-bottom:10px; }
-.rpt-toc-item { font-size:13px;color:var(--text2);padding:3px 0;display:flex;gap:8px; }
-.rpt-toc-item.rpt-toc-sub { font-size:11px;padding:1px 0 1px 22px;color:var(--text3); }
-.rpt-toc-num { font-family:var(--mono);font-size:11px;color:var(--text3);min-width:22px; }
+.rpt-toc { background:var(--bg2);border:1px solid var(--b1);border-radius:8px;padding:16px 20px;margin:0 0 28px; }
+.rpt-toc-title { font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:10px; }
+.rpt-toc-item { font-size:13px;color:var(--t2);padding:3px 0;display:flex;gap:8px; }
+.rpt-toc-item.rpt-toc-sub { font-size:11px;padding:1px 0 1px 22px;color:var(--t3); }
+.rpt-toc-num { font-family:var(--mono);font-size:11px;color:var(--t3);min-width:22px; }
 .rpt-toc-item.rpt-toc-sub .rpt-toc-num { min-width:32px; }
 
 /* ── Prose sections ──────────────────────────────────────────────── */
-.rpt-prose { font-size:var(--rpt-base-size,13px);color:var(--text2);line-height:1.7;margin:6px 0 20px; }
-.rpt-prose h2 { font-size:15px;font-weight:700;margin:16px 0 6px;color:var(--text);border:none;text-transform:none;letter-spacing:0;padding:0; }
+.rpt-prose { font-size:var(--rpt-base-size,13px);color:var(--t2);line-height:1.7;margin:6px 0 20px; }
+.rpt-prose h2 { font-size:15px;font-weight:700;margin:16px 0 6px;color:var(--t1);border:none;text-transform:none;letter-spacing:0;padding:0; }
 .rpt-prose h2::before { display:none; }
-.rpt-prose h3 { font-size:13px;font-weight:700;margin:12px 0 5px;color:var(--text); }
+.rpt-prose h3 { font-size:13px;font-weight:700;margin:12px 0 5px;color:var(--t1); }
 .rpt-prose ul,.rpt-prose ol { padding-left:20px;margin:5px 0; }
 .rpt-prose li { margin:3px 0; }
-.rpt-prose a { color:var(--accent);text-decoration:underline; }
-.rpt-prose blockquote { border-left:3px solid var(--accent);margin:8px 0;padding:4px 12px;color:var(--text2);font-style:italic; }
-.rpt-prose pre { background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:10px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:8px 0; }
+.rpt-prose a { color:var(--a);text-decoration:underline; }
+.rpt-prose blockquote { border-left:3px solid var(--a);margin:8px 0;padding:4px 12px;color:var(--t2);font-style:italic; }
+.rpt-prose pre { background:var(--bg3);border:1px solid var(--b1);border-radius:5px;padding:10px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:8px 0; }
 
 /* ── Rich text editor ────────────────────────────────────────────── */
-.rich-tb { display:flex;align-items:center;gap:1px;padding:4px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:5px 5px 0 0;flex-wrap:wrap;gap:2px; }
-.rich-tb-btn { background:none;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--text2);font-size:11px;padding:2px 5px;line-height:1.5;min-width:22px;text-align:center;flex-shrink:0; }
-.rich-tb-btn:hover { background:var(--bg);border-color:var(--border); }
-.rich-tb-btn.active { background:var(--accent)18;border-color:var(--accent)55;color:var(--accent); }
-.rich-tb-sep { width:1px;height:13px;background:var(--border);margin:0 2px;flex-shrink:0; }
-.rich-editor { min-height:80px;max-height:280px;overflow-y:auto;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;color:var(--text);font-size:13px;line-height:1.7;outline:none;word-break:break-word; }
-.rich-editor:focus { border-color:var(--accent); }
+.rich-tb { display:flex;align-items:center;gap:1px;padding:4px 6px;background:var(--bg3);border:1px solid var(--b1);border-radius:5px 5px 0 0;flex-wrap:wrap;gap:2px; }
+.rich-tb-btn { background:none;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--t2);font-size:11px;padding:2px 5px;line-height:1.5;min-width:22px;text-align:center;flex-shrink:0; }
+.rich-tb-btn:hover { background:var(--bg);border-color:var(--b1); }
+.rich-tb-btn.active { background:var(--a)18;border-color:var(--a)55;color:var(--a); }
+.rich-tb-sep { width:1px;height:13px;background:var(--b1);margin:0 2px;flex-shrink:0; }
+.rich-editor { min-height:80px;max-height:280px;overflow-y:auto;padding:8px 10px;background:var(--bg);border:1px solid var(--b1);border-top:none;border-radius:0 0 5px 5px;color:var(--t1);font-size:13px;line-height:1.7;outline:none;word-break:break-word; }
+.rich-editor:focus { border-color:var(--a); }
 .rich-editor h2 { font-size:15px;font-weight:700;margin:10px 0 4px; }
 .rich-editor h3 { font-size:13px;font-weight:700;margin:8px 0 3px; }
-.rich-editor h4 { font-size:12px;font-weight:700;margin:6px 0 3px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3); }
+.rich-editor h4 { font-size:12px;font-weight:700;margin:6px 0 3px;text-transform:uppercase;letter-spacing:.05em;color:var(--t3); }
 .rich-editor ul,.rich-editor ol { padding-left:20px;margin:4px 0; }
 .rich-editor li { margin:2px 0; }
 .rich-editor a { color:#7c3aed;text-decoration:underline; }
-.rich-editor blockquote { border-left:3px solid var(--accent);margin:6px 0;padding:3px 10px;color:var(--text3);font-style:italic; }
-.rich-editor pre { background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:7px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:5px 0; }
+.rich-editor blockquote { border-left:3px solid var(--a);margin:6px 0;padding:3px 10px;color:var(--t3);font-style:italic; }
+.rich-editor pre { background:var(--bg3);border:1px solid var(--b1);border-radius:4px;padding:7px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:5px 0; }
 .rich-editor table { border-collapse:collapse;width:100%;margin:6px 0; }
-.rich-editor th { background:var(--bg3);font-weight:600;font-size:11px;padding:5px 9px;border:1px solid var(--border2);text-align:left; }
-.rich-editor td { padding:5px 9px;border:1px solid var(--border2);font-size:12px;vertical-align:top; }
-.rich-editor hr { border:none;border-top:1px solid var(--border);margin:10px 0; }
+.rich-editor th { background:var(--bg3);font-weight:600;font-size:11px;padding:5px 9px;border:1px solid var(--b2);text-align:left; }
+.rich-editor td { padding:5px 9px;border:1px solid var(--b2);font-size:12px;vertical-align:top; }
+.rich-editor hr { border:none;border-top:1px solid var(--b1);margin:10px 0; }
 .rich-editor img { max-width:100%;border-radius:4px;margin:4px 0;display:block; }
 
 /* ── Table grid picker ───────────────────────────────────────────── */
 .rich-tg { display:grid;grid-template-columns:repeat(8,16px);gap:2px; }
-.rich-tc { width:16px;height:16px;border:1px solid var(--border2);border-radius:2px;cursor:pointer;transition:background .08s,border-color .08s; }
-.rich-tc.active { background:var(--accent)55;border-color:var(--accent); }
-.rich-tc:hover  { background:var(--accent)33;border-color:var(--accent); }
-.rich-tg-label  { font-family:var(--mono);font-size:10px;color:var(--accent);text-align:center;margin-top:6px;min-height:14px;letter-spacing:.04em; }
-.rich-tiny-input { width:44px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none;text-align:center; }
-.rich-tiny-input:focus { border-color:var(--accent); }
+.rich-tc { width:16px;height:16px;border:1px solid var(--b2);border-radius:2px;cursor:pointer;transition:background .08s,border-color .08s; }
+.rich-tc.active { background:var(--a)55;border-color:var(--a); }
+.rich-tc:hover  { background:var(--a)33;border-color:var(--a); }
+.rich-tg-label  { font-family:var(--mono);font-size:10px;color:var(--a);text-align:center;margin-top:6px;min-height:14px;letter-spacing:.04em; }
+.rich-tiny-input { width:44px;background:var(--bg);border:1px solid var(--b1);border-radius:4px;padding:3px 5px;color:var(--t1);font-family:var(--mono);font-size:11px;outline:none;text-align:center; }
+.rich-tiny-input:focus { border-color:var(--a); }
 /* ── Font-size input ─────────────────────────────────────────────── */
-.rich-fs-input { width:38px;height:22px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text2);font-family:var(--mono);font-size:10px;padding:1px 4px;outline:none;text-align:center;-moz-appearance:textfield; }
-.rich-fs-input:focus { border-color:var(--accent); }
+.rich-fs-input { width:38px;height:22px;background:var(--bg3);border:1px solid var(--b1);border-radius:3px;color:var(--t2);font-family:var(--mono);font-size:10px;padding:1px 4px;outline:none;text-align:center;-moz-appearance:textfield; }
+.rich-fs-input:focus { border-color:var(--a); }
 .rich-fs-input::-webkit-inner-spin-button,.rich-fs-input::-webkit-outer-spin-button { -webkit-appearance:none; }
 /* ── Context toolbars (table / image) ────────────────────────────── */
-.rich-ctx-tb { position:fixed;z-index:9500;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 4px;display:none;align-items:center;gap:2px;box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:all; }
+.rich-ctx-tb { position:fixed;z-index:9500;background:var(--bg2);border:1px solid var(--b1);border-radius:6px;padding:3px 4px;display:none;align-items:center;gap:2px;box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:all; }
 /* ── Active section edit button ──────────────────────────────────── */
-.sec-btn.active { color:var(--accent)!important;border-color:var(--accent)55!important;background:var(--accent)10!important; }
+.sec-btn.active { color:var(--a)!important;border-color:var(--a)55!important;background:var(--a)10!important; }
 .rich-color-wrap { position:relative;display:inline-flex; }
-.rich-color-palette { position:absolute;top:calc(100% + 3px);left:0;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px;display:none;flex-wrap:wrap;gap:3px;z-index:300;box-shadow:0 6px 20px rgba(0,0,0,.25);width:140px; }
+.rich-color-palette { position:absolute;top:calc(100% + 3px);left:0;background:var(--bg2);border:1px solid var(--b1);border-radius:6px;padding:7px;display:none;flex-wrap:wrap;gap:3px;z-index:300;box-shadow:0 6px 20px rgba(0,0,0,.25);width:140px; }
 .rich-color-palette.open { display:flex; }
 .rich-sw { width:18px;height:18px;border-radius:3px;cursor:pointer;border:1px solid rgba(128,128,128,.2);flex-shrink:0;transition:transform .1s; }
 .rich-sw:hover { transform:scale(1.25);z-index:1;position:relative; }
 
 /* ── Risk classification table ───────────────────────────────────── */
 .rpt-risk-class { width:100%;border-collapse:separate;border-spacing:0;font-size:12px;margin:10px 0 24px; }
-.rpt-risk-class th { text-align:left;padding:9px 12px;background:var(--bg3);font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);border-bottom:1px solid var(--border); }
-.rpt-risk-class td { padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top; }
+.rpt-risk-class th { text-align:left;padding:9px 12px;background:var(--bg3);font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);border-bottom:1px solid var(--b1); }
+.rpt-risk-class td { padding:7px 12px;border-bottom:1px solid var(--b1);color:var(--t2);vertical-align:top; }
 .rpt-risk-class tr:last-child td { border-bottom:none; }
 
 
 /* ── Cover page (full dedicated first page) ──────────────────────── */
 .rpt-cover-page { display:flex;flex-direction:column;min-height:88vh;margin-bottom:60px; }
-.rpt-cover-page-bar { height:4px;background:var(--accent);flex-shrink:0; }
+.rpt-cover-page-bar { height:4px;background:var(--a);flex-shrink:0; }
 .rpt-cover-page-body { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 40px 40px;gap:36px;text-align:center; }
 .rpt-cover-logo-wrap { display:flex;align-items:center;justify-content:center; }
-.rpt-cover-logo-ph { width:96px;height:96px;border-radius:16px;background:rgba(124,58,237,.09);border:2px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800;color:var(--accent); }
+.rpt-cover-logo-ph { width:96px;height:96px;border-radius:16px;background:rgba(124,58,237,.09);border:2px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800;color:var(--a); }
 .rpt-cover-title-block { display:flex;flex-direction:column;align-items:center;gap:14px; }
-.rpt-cover-page-type { font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:4px 14px; }
-.rpt-cover-page-h1 { font-size:36px;font-weight:800;letter-spacing:-.03em;color:var(--text);margin:0;line-height:1.1; }
-.rpt-cover-page-client { font-size:15px;color:var(--text3);font-style:italic; }
+.rpt-cover-page-type { font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--a);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:4px 14px; }
+.rpt-cover-page-h1 { font-size:36px;font-weight:800;letter-spacing:-.03em;color:var(--t1);margin:0;line-height:1.1; }
+.rpt-cover-page-client { font-size:15px;color:var(--t3);font-style:italic; }
 .rpt-cover-page-footer { padding:0 40px 40px;flex-shrink:0; }
-.sec-pb-btn.sec-pb-on { color:var(--accent)!important;border-color:var(--accent)55!important;background:var(--accent)10!important; }
+.sec-pb-btn.sec-pb-on { color:var(--a)!important;border-color:var(--a)55!important;background:var(--a)10!important; }
 
 /* ── Free Edit modal ─────────────────────────────────────────────── */
 .fe-modal { position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px); }
-.fe-modal-inner { background:var(--bg2);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;width:100%;max-width:900px;height:100%;max-height:calc(100vh - 48px);overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4);transition:max-width .2s ease; }
+.fe-modal-inner { background:var(--bg2);border:1px solid var(--b1);border-radius:10px;display:flex;flex-direction:column;width:100%;max-width:900px;height:100%;max-height:calc(100vh - 48px);overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4);transition:max-width .2s ease; }
 .fe-modal-inner.split { max-width:1440px; }
 .fe-body { flex:1;display:flex;overflow:hidden;min-height:0; }
-#fe-preview { flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none; }
+#fe-preview { flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--b1);background:var(--bg);display:none; }
 #fe-preview.open { display:block; }
 
 /* ── Section builder ─────────────────────────────────────────────── */
 .sec-list { display:flex;flex-direction:column; }
-.sec-item { border-bottom:1px solid var(--border);background:var(--bg2);transition:background .1s; }
-.sec-item.drag-over { box-shadow:inset 0 2px 0 var(--accent);background:var(--bg3); }
+.sec-item { border-bottom:1px solid var(--b1);background:var(--bg2);transition:background .1s; }
+.sec-item.drag-over { box-shadow:inset 0 2px 0 var(--a);background:var(--bg3); }
 .sec-item.dragging { opacity:.35;background:var(--bg3); }
 .sec-row { display:flex;align-items:center;gap:5px;padding:5px 8px;min-height:32px; }
-.sec-drag { cursor:grab;color:var(--text3);font-size:13px;padding:0 3px;user-select:none;flex-shrink:0;line-height:1; }
+.sec-drag { cursor:grab;color:var(--t3);font-size:13px;padding:0 3px;user-select:none;flex-shrink:0;line-height:1; }
 .sec-drag:active { cursor:grabbing; }
 .sec-eye { background:none;border:none;cursor:pointer;padding:0 3px;flex-shrink:0;line-height:1;display:flex;align-items:center; }
 .sec-eye-dot { display:inline-block;width:8px;height:8px;border-radius:50%;background:#00e87a;box-shadow:0 0 5px #00e87a,0 0 2px #00e87a;transition:all .2s; }
-.sec-eye.off .sec-eye-dot { background:transparent;box-shadow:none;border:1.5px solid var(--text3);opacity:.5; }
+.sec-eye.off .sec-eye-dot { background:transparent;box-shadow:none;border:1.5px solid var(--t3);opacity:.5; }
 .sec-title-wrap { flex:1;min-width:0; }
-.sec-title { font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.sec-title.sec-dim { color:var(--text3);text-decoration:line-through;font-weight:400; }
-.sec-type-badge { font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.04em; }
-.sec-btn { background:none;border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text3);font-size:10px;padding:1px 5px;line-height:1.5;flex-shrink:0; }
-.sec-btn:hover { color:var(--text);border-color:var(--text3);background:var(--bg3); }
-.sec-btn.del:hover { color:var(--red);border-color:var(--red)55;background:var(--red)08; }
-.sec-edit-body { display:none;padding:8px 10px 10px;border-top:1px solid var(--border)44;background:var(--bg); }
+.sec-title { font-size:11px;font-weight:600;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.sec-title.sec-dim { color:var(--t3);text-decoration:line-through;font-weight:400; }
+.sec-type-badge { font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:.04em; }
+.sec-btn { background:none;border:1px solid var(--b1);border-radius:3px;cursor:pointer;color:var(--t3);font-size:10px;padding:1px 5px;line-height:1.5;flex-shrink:0; }
+.sec-btn:hover { color:var(--t1);border-color:var(--t3);background:var(--bg3); }
+.sec-btn.del:hover { color:var(--red);border-color:var(--c-crit)55;background:var(--c-crit)08; }
+.sec-edit-body { display:none;padding:8px 10px 10px;border-top:1px solid var(--b1)44;background:var(--bg); }
 .sec-edit-body.open { display:block; }
-.sec-meta-header { padding:7px 14px 6px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--text2);font-weight:600;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none; }
+.sec-meta-header { padding:7px 14px 6px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--t2);font-weight:600;background:var(--bg3);border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none; }
 .sec-meta-header:hover { filter:brightness(1.08); }
 /* ── Subsections ── */
-.sec-sub-list { border-top:1px solid var(--border)55; }
-.sec-sub-item { border-bottom:1px solid var(--border)44; }
+.sec-sub-list { border-top:1px solid var(--b1)55; }
+.sec-sub-item { border-bottom:1px solid var(--b1)44; }
 .sec-sub-row { display:flex;align-items:center;gap:5px;padding:4px 8px 4px 20px;min-height:28px; }
-.sec-sub-indicator { color:var(--text3);font-size:10px;flex-shrink:0;margin-right:1px; }
-.sec-sub-title { flex:1;min-width:0;font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.sec-sub-title.sec-dim { color:var(--text3);text-decoration:line-through;font-weight:400; }
+.sec-sub-indicator { color:var(--t3);font-size:10px;flex-shrink:0;margin-right:1px; }
+.sec-sub-title { flex:1;min-width:0;font-size:11px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.sec-sub-title.sec-dim { color:var(--t3);text-decoration:line-through;font-weight:400; }
 .sec-sub-body { display:none;padding:6px 10px 8px 20px;background:var(--bg); }
 .sec-sub-body.open { display:block; }
-.sec-sub-add { display:flex;align-items:center;padding:4px 8px 6px 20px;border-top:1px dashed var(--border)55; }
+.sec-sub-add { display:flex;align-items:center;padding:4px 8px 6px 20px;border-top:1px dashed var(--b1)55; }
 /* ── Numbering toggle ── */
-.sec-num-prefix { color:var(--text3);font-weight:400;margin-right:3px; }
+.sec-num-prefix { color:var(--t3);font-weight:400;margin-right:3px; }
 .sec-meta-chevron { font-size:8px;transition:transform .18s;margin-left:auto;margin-right:2px; }
 .sec-meta-header.collapsed .sec-meta-chevron { transform:rotate(-90deg); }
 .cover-fields-grid { display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;margin:4px 0 6px; }
 
 /* ── Rich editor interaction cursors ─────────────────────────────── */
 .rich-editor td,.rich-editor th { cursor:cell; }
-.rich-editor td:hover,.rich-editor th:hover { background:var(--accent)0e!important; }
+.rich-editor td:hover,.rich-editor th:hover { background:var(--a)0e!important; }
 .rich-editor img { cursor:pointer;transition:outline .1s; }
-.rich-editor img:hover { outline:2px solid var(--accent)88;border-radius:2px; }
+.rich-editor img:hover { outline:2px solid var(--a)88;border-radius:2px; }
 
 /* ── Watermark ───────────────────────────────────────────────────── */
 #rpt-watermark {
@@ -485,7 +495,7 @@
   #rpt-watermark.wm-on {
     position:absolute;top:50%;left:50%;
     transform:translate(-50%,-50%) rotate(-45deg);
-    font-size:96px;color:var(--text);opacity:.045;
+    font-size:96px;color:var(--t1);opacity:.045;
   }
 }
 /* print: fixed so it repeats on every page */
@@ -500,7 +510,7 @@
 /* ── Screen-only: proper full-height independent scroll ──────────── */
 @media screen {
   body { height:100vh!important;overflow:hidden; }
-  .app-main { flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0; }
+  .workarea { overflow:hidden;min-height:0; }
   /* Reset table wrapper to block so screen preview looks normal */
   #rpt-ph-wrap { display:block;width:100%; }
   #rpt-ph-wrap > thead, #rpt-ph-wrap > tfoot, #rpt-ph-wrap > tbody { display:block;border:none; }
@@ -514,7 +524,7 @@
   display:none;max-width:720px;margin:0 auto;
   padding:7px 12px;align-items:center;gap:10px;
   background:var(--bg3);border-radius:5px;
-  font-size:11px;color:var(--text2);font-family:inherit;
+  font-size:11px;color:var(--t2);font-family:inherit;
 }
 .rpt-ph.enabled,.rpt-pf.enabled { display:flex; }
 .rpt-ph { margin-bottom:20px; }
@@ -523,33 +533,31 @@
 .rpt-ph-l,.rpt-ph-c,.rpt-ph-r { flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .rpt-ph-c { text-align:center; }
 .rpt-ph-r { text-align:right; }
-.rpt-pf-pgnum-screen { font-family:var(--mono);font-size:10px;color:var(--text3); }
+.rpt-pf-pgnum-screen { font-family:var(--mono);font-size:10px;color:var(--t3); }
 </style>
 </head>
-<body style="display:flex;flex-direction:column;min-height:100vh">
+<body>
 
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading report...</div></div>
-<div class="sidenav" id="sidenav"></div>
-<div class="app-main">
-<div class="topbar slim" id="topbar"></div>
-
-<div class="exp-outer" style="display:flex;flex:1;overflow:hidden;min-height:0">
-  <div class="exp-inner" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
+<div class="workarea no-activity">
+<main class="main" style="padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:0">
 
     <!-- Topbar controls -->
     <div class="export-controls no-print"
-      style="padding:8px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--bg2);flex-shrink:0;height:50px">
+      style="padding:8px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;background:var(--bg2);flex-shrink:0;height:50px">
 
       <!-- Project title -->
-      <div style="display:flex;flex-direction:column;gap:1px;padding-right:16px;border-right:1px solid var(--border);flex-shrink:0">
-        <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.2">Export Report</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3)" id="export-project-name">—</div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding-right:16px;border-right:1px solid var(--b1);flex-shrink:0">
+        <div style="font-size:13px;font-weight:700;color:var(--t1);line-height:1.2">Export Report</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)" id="export-project-name">—</div>
       </div>
 
       <!-- Scope + Type -->
       <div style="display:flex;gap:8px;align-items:center">
         <div style="display:flex;flex-direction:column;gap:2px">
-          <span style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.09em">SCOPE</span>
+          <span style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:.09em">SCOPE</span>
           <select id="export-scope" class="form-input" style="width:130px;cursor:pointer;padding:4px 8px;font-size:12px" onchange="buildReport()">
             <option value="all">Full Report</option>
             <option value="vulns">Vulns Only</option>
@@ -557,7 +565,7 @@
           </select>
         </div>
         <div style="display:flex;flex-direction:column;gap:2px">
-          <span style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.09em">TYPE</span>
+          <span style="font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:.09em">TYPE</span>
           <select id="report-type" class="form-input" style="width:118px;cursor:pointer;padding:4px 8px;font-size:12px" onchange="buildReport()">
             <option value="technical">Technical</option>
             <option value="executive">Executive</option>
@@ -568,7 +576,8 @@
       <!-- Actions -->
       <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
         <button class="btn-secondary" onclick="copyMarkdown()" style="padding:6px 12px;font-size:12px">Copy MD</button>
-        <button class="btn-accent"    onclick="exportPdf()"  style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
+        <button class="btn-secondary" onclick="exportDocx()"  style="padding:6px 12px;font-size:12px">↓ DOCX</button>
+        <button class="btn-accent"    onclick="exportPdf()"   style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
       </div>
     </div>
 
@@ -577,9 +586,9 @@
 
       <!-- LEFT: editor panel -->
       <div class="exp-editor no-print">
-        <div style="flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg2)">
+        <div style="flex-shrink:0;border-bottom:1px solid var(--b1);background:var(--bg2)">
           <div style="padding:9px 14px;display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;font-weight:700;color:var(--text2)">Report Editor</span>
+            <span style="font-size:12px;font-weight:700;color:var(--t2)">Report Editor</span>
             <button id="btn-free-edit" class="btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px" onclick="confirmFreeEdit()">⇄ Free Edit</button>
           </div>
         </div>
@@ -604,8 +613,7 @@
         </table>
       </div>
 
-    </div>
-  </div>
+    </main>
 </div>
 
 <!-- Table context toolbar -->
@@ -629,7 +637,7 @@
     title="Custom width in pixels"
     onkeydown="if(event.key==='Enter')richImgWidthPx(this.value)"
     onblur="richImgWidthPx(this.value)">
-  <span style="font-family:var(--mono);font-size:9px;color:var(--text3)">px</span>
+  <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">px</span>
   <span class="rich-tb-sep"></span>
   <button class="rich-tb-btn" onclick="richImgAlign('left')"   title="Float left">◧</button>
   <button class="rich-tb-btn" onclick="richImgAlign('center')" title="Center">⊡</button>
@@ -688,13 +696,13 @@ function renderMdStyled(raw) {
     }
     if (/^\|.+\|/.test(line)) { endList(); tableRows.push(line); continue; }
     endTable();
-    if (line.startsWith('#### ')) { endList(); out.push(`<h3 style="font-size:12px;font-weight:700;margin:18px 0 8px;color:var(--text)">${inline(line.slice(5))}</h3>`); continue; }
+    if (line.startsWith('#### ')) { endList(); out.push(`<h3 style="font-size:12px;font-weight:700;margin:18px 0 8px;color:var(--t1)">${inline(line.slice(5))}</h3>`); continue; }
     if (line.startsWith('### '))  { endList(); out.push(`<h3>${inline(line.slice(4))}</h3>`); continue; }
     if (line.startsWith('## '))   { endList(); out.push(`<h2>${inline(line.slice(3))}</h2>`); continue; }
     if (line.startsWith('# '))    { endList(); out.push(`<h1 style="font-size:26px;font-weight:800;margin:0 0 8px;letter-spacing:-.02em">${inline(line.slice(2))}</h1>`); continue; }
     if (/^[-*] /.test(line)) {
       if (!inList) { out.push('<ul style="padding-left:18px;margin:6px 0">'); inList=true; }
-      out.push(`<li style="color:var(--text2);font-size:13px;line-height:1.7;margin:2px 0">${inline(line.slice(2))}</li>`);
+      out.push(`<li style="color:var(--t2);font-size:13px;line-height:1.7;margin:2px 0">${inline(line.slice(2))}</li>`);
       continue;
     }
     endList();
@@ -725,20 +733,20 @@ function confirmFreeEdit() {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)';
   overlay.innerHTML = `
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:100%;max-width:420px;margin:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4)">
+    <div style="background:var(--bg2);border:1px solid var(--b1);border-radius:12px;width:100%;max-width:420px;margin:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4)">
       <div style="padding:20px 22px 0">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <div style="width:34px;height:34px;border-radius:8px;background:var(--accent)18;border:1px solid var(--accent)33;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⇄</div>
+          <div style="width:34px;height:34px;border-radius:8px;background:var(--a)18;border:1px solid var(--a)33;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⇄</div>
           <div>
-            <div style="font-weight:700;font-size:14px;color:var(--text)">Convertir a Markdown</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:1px">modo de edición libre</div>
+            <div style="font-weight:700;font-size:14px;color:var(--t1)">Convertir a Markdown</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:1px">modo de edición libre</div>
           </div>
         </div>
-        <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0 0 10px">
-          El reporte pasará a <strong style="color:var(--text)">texto plano editable</strong>. El diseño con tarjetas de severity, colores y componentes visuales será reemplazado por un formato simplificado.
+        <p style="font-size:13px;color:var(--t2);line-height:1.6;margin:0 0 10px">
+          El reporte pasará a <strong style="color:var(--t1)">texto plano editable</strong>. El diseño con tarjetas de severity, colores y componentes visuales será reemplazado por un formato simplificado.
         </p>
-        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-size:12px;color:var(--text3);line-height:1.5">
-          Podés <strong style="color:var(--text2)">Descartar</strong> en cualquier momento para volver al formato original con todo el diseño intacto.
+        <div style="background:var(--bg3);border:1px solid var(--b1);border-radius:7px;padding:10px 12px;font-size:12px;color:var(--t3);line-height:1.5">
+          Podés <strong style="color:var(--t2)">Descartar</strong> en cualquier momento para volver al formato original con todo el diseño intacto.
         </div>
       </div>
       <div style="padding:16px 22px;display:flex;gap:8px;justify-content:flex-end">
@@ -763,9 +771,9 @@ function enterFreeEdit() {
   modal.id = 'fe-modal';
   modal.innerHTML = `
     <div class="fe-modal-inner">
-      <div style="padding:9px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
-        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent)">⇄ Modo Markdown</span>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">— diseño visual reemplazado por texto plano</span>
+      <div style="padding:9px 16px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--a)">⇄ Modo Markdown</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">— diseño visual reemplazado por texto plano</span>
         <div style="margin-left:auto;display:flex;gap:6px">
           <button id="fe-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="toggleFeSplit()">◫ Split View</button>
           <button class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="discardFreeEdit()">✕ Descartar</button>
@@ -774,7 +782,7 @@ function enterFreeEdit() {
       </div>
       <div class="fe-body">
         <textarea id="fe-ta" spellcheck="false"
-          style="flex:1;min-width:0;background:var(--bg);border:none;color:var(--text);font-family:var(--mono);font-size:12px;padding:16px 20px;resize:none;box-sizing:border-box;line-height:1.8;outline:none"
+          style="flex:1;min-width:0;background:var(--bg);border:none;color:var(--t1);font-family:var(--mono);font-size:12px;padding:16px 20px;resize:none;box-sizing:border-box;line-height:1.8;outline:none"
           oninput="onFreeEditInput(this.value)">${esc(md)}</textarea>
         <div id="fe-preview">
           <div id="fe-preview-content" class="rpt" style="max-width:680px;margin:0 auto"></div>
@@ -1480,9 +1488,9 @@ function _richToolbar(editorId, palPfx) {
       <div class="rich-color-palette" id="${palPfx}-tp" style="width:auto;padding:10px">
         <div class="rich-tg" id="${palPfx}-tg" onmouseleave="richTableHoverReset('${palPfx}')">${gridCells}</div>
         <div class="rich-tg-label" id="${palPfx}-tl">hover to select size</div>
-        <div style="display:flex;gap:5px;margin-top:7px;align-items:center;border-top:1px solid var(--border);padding-top:7px">
+        <div style="display:flex;gap:5px;margin-top:7px;align-items:center;border-top:1px solid var(--b1);padding-top:7px">
           <input class="rich-tiny-input" id="${palPfx}-trows" type="number" min="1" max="30" value="3" title="Rows">
-          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">×</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">×</span>
           <input class="rich-tiny-input" id="${palPfx}-tcols" type="number" min="1" max="20" value="3" title="Columns">
           <button class="rich-tb-btn" style="font-size:9px;padding:2px 8px" onmousedown="event.preventDefault()"
             onclick="richTableCustom('${editorId}','${palPfx}')">Insert</button>
@@ -1573,7 +1581,7 @@ function richInsertImage(editorId) {
 function richInsertHR(editorId) {
   document.getElementById(editorId)?.focus();
   document.execCommand('insertHTML', false,
-    '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0"><p></p>');
+    '<hr style="border:none;border-top:1px solid var(--b1);margin:12px 0"><p></p>');
 }
 
 // ── Context toolbar state ─────────────────────────────────────────
@@ -1778,8 +1786,8 @@ function openRichModal(secId, defaultSplit = false, field = 'content') {
   modal.className = 'fe-modal no-print';
   modal.innerHTML = `
     <div class="fe-modal-inner" id="rich-modal-inner">
-      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
-        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2)">${esc(title)}</span>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2)">${esc(title)}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
           <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richModalToggleSplit('${secId}')">◫ Split</button>
           <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModal('${secId}')">← Close</button>
@@ -1789,10 +1797,10 @@ function openRichModal(secId, defaultSplit = false, field = 'content') {
         <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden">
           ${_richToolbar(`rich-modal-ed-${secId}`, `rpal-modal-${secId}`)}
           <div class="rich-editor" contenteditable="true" id="rich-modal-ed-${secId}"
-            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--border)"
+            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--b1)"
             oninput="richModalInput('${secId}',this.innerHTML,'${field}')">${content}</div>
         </div>
-        <div id="rich-modal-preview-${secId}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none">
+        <div id="rich-modal-preview-${secId}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--b1);background:var(--bg);display:none">
           <div class="rpt" style="max-width:640px;margin:0 auto">
             <div class="rpt-prose" id="rich-modal-pv-content-${secId}">${content}</div>
           </div>
@@ -1855,8 +1863,8 @@ function openRichModalSub(secId, subId) {
   modal.className = 'fe-modal no-print';
   modal.innerHTML = `
     <div class="fe-modal-inner" id="rich-modal-inner">
-      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
-        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2)">${esc(sub.title)}</span>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2)">${esc(sub.title)}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
           <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richSubModalToggleSplit('${subId}')">◫ Split</button>
           <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModalSub('${secId}','${subId}')">← Close</button>
@@ -1866,10 +1874,10 @@ function openRichModalSub(secId, subId) {
         <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden">
           ${_richToolbar(`rich-modal-sub-ed-${subId}`, `rpal-sub-modal-${subId}`)}
           <div class="rich-editor" contenteditable="true" id="rich-modal-sub-ed-${subId}"
-            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--border)"
+            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--b1)"
             oninput="richSubModalInput('${secId}','${subId}',this.innerHTML)">${content}</div>
         </div>
-        <div id="rich-sub-modal-preview-${subId}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none">
+        <div id="rich-sub-modal-preview-${subId}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--b1);background:var(--bg);display:none">
           <div class="rpt" style="max-width:640px;margin:0 auto">
             <div class="rpt-prose" id="rich-sub-modal-pv-${subId}">${content}</div>
           </div>
@@ -1977,7 +1985,7 @@ function buildSecItem(sec) {
 
   // ── Findings options (detailed-findings only) ──
   if (sec.type === 'detailed-findings') {
-    html += `<div style="padding:4px 14px 8px;border-top:1px dashed var(--border)55">
+    html += `<div style="padding:4px 14px 8px;border-top:1px dashed var(--b1)55">
       <div class="exp-field-label" style="margin-bottom:4px;font-size:9px;text-transform:uppercase;letter-spacing:.06em">Include in findings</div>
       <div style="display:flex;flex-wrap:wrap;gap:2px 10px">
         <label class="exp-opt"><input type="checkbox" id="opt-desc"  checked onchange="buildReport()"> Description</label>
@@ -2089,10 +2097,10 @@ function _renderTemplatesSection(_sh) {
   if (list.length) {
     inner += `<div style="display:flex;flex-direction:column;gap:4px">`;
     list.forEach((tpl, i) => {
-      inner += `<div style="display:flex;align-items:center;gap:4px;padding:5px 7px;background:var(--bg);border:1px solid var(--border);border-radius:5px">
+      inner += `<div style="display:flex;align-items:center;gap:4px;padding:5px 7px;background:var(--bg);border:1px solid var(--b1);border-radius:5px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(tpl.name)}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">${tpl.created||''} · ${tpl.sections?.length||0} sections</div>
+          <div style="font-size:11px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(tpl.name)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${tpl.created||''} · ${tpl.sections?.length||0} sections</div>
         </div>
         <button class="sec-btn" onclick="loadTemplate(${i})" title="Load">↓ Load</button>
         <button class="sec-btn" onclick="exportTemplate(${i})" title="Export JSON">↓ .json</button>
@@ -2101,7 +2109,7 @@ function _renderTemplatesSection(_sh) {
     });
     inner += `</div>`;
   } else {
-    inner += `<div style="font-family:var(--mono);font-size:10px;color:var(--text3);padding:4px 0">No saved templates.</div>`;
+    inner += `<div style="font-family:var(--mono);font-size:10px;color:var(--t3);padding:4px 0">No saved templates.</div>`;
   }
   return inner;
 }
@@ -2121,8 +2129,8 @@ function buildSectionList() {
   let html = '';
 
   if (_freeEditMd !== null) {
-    html += `<div style="padding:7px 14px;background:var(--accent)0f;border-bottom:1px solid var(--accent)33;display:flex;align-items:center;gap:8px">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:600">⇄ Modo markdown activo</span>
+    html += `<div style="padding:7px 14px;background:var(--a)0f;border-bottom:1px solid var(--a)33;display:flex;align-items:center;gap:8px">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--a);font-weight:600">⇄ Modo markdown activo</span>
       <div style="margin-left:auto;display:flex;gap:5px">
         <button class="sec-btn" onclick="enterFreeEdit()">Editar</button>
         <button class="sec-btn del" onclick="discardFreeEdit()">Descartar</button>
@@ -2137,13 +2145,13 @@ function buildSectionList() {
 
   // ── Templates section ─────────────────────────────────────────
   html += _sh('templates','Templates');
-  html += `<div id="esec-templates" style="padding:10px 14px 14px;border-bottom:1px solid var(--border);display:${_secOpen.templates?'':'none'}">
+  html += `<div id="esec-templates" style="padding:10px 14px 14px;border-bottom:1px solid var(--b1);display:${_secOpen.templates?'':'none'}">
     ${_renderTemplatesSection(_sh)}
   </div>`;
 
   // ── Cover section ──────────────────────────────────────────────
   html += _sh('cover','Cover');
-  html += `<div id="esec-cover" style="padding:10px 14px 14px;border-bottom:1px solid var(--border);display:${_secOpen.cover?'':'none'}">
+  html += `<div id="esec-cover" style="padding:10px 14px 14px;border-bottom:1px solid var(--b1);display:${_secOpen.cover?'':'none'}">
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px">
       <div class="exp-meta-row" style="margin-bottom:0">
@@ -2170,7 +2178,7 @@ function buildSectionList() {
 
     <div class="exp-sub-label">Logo</div>
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-      ${(m.coverLogoBase64||m.clientLogoUrl) ? `<img src="${m.coverLogoBase64||m.clientLogoUrl}" style="height:28px;max-width:80px;object-fit:contain;border-radius:4px;border:1px solid var(--border);flex-shrink:0">` : ''}
+      ${(m.coverLogoBase64||m.clientLogoUrl) ? `<img src="${m.coverLogoBase64||m.clientLogoUrl}" style="height:28px;max-width:80px;object-fit:contain;border-radius:4px;border:1px solid var(--b1);flex-shrink:0">` : ''}
       <label class="sec-btn" style="cursor:pointer;flex-shrink:0">Upload<input type="file" accept="image/*" style="display:none" onchange="uploadCoverLogo(this)"></label>
       ${m.coverLogoBase64 ? `<button class="sec-btn del" onclick="setRptMeta('coverLogoBase64','');buildEditor()">✕</button>` : ''}
     </div>
@@ -2193,14 +2201,14 @@ function buildSectionList() {
         placeholder="Leave empty for no protection"
         oninput="setRptMeta('pdfPassword',this.value)" style="padding-right:32px">
       <button onclick="this.previousElementSibling.type=this.previousElementSibling.type==='password'?'text':'password'"
-        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);font-size:12px;padding:2px">show</button>
+        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t3);font-size:12px;padding:2px">show</button>
     </div>
-    <div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--accent)">PDF rendered server-side — consistent on all devices</div>
+    <div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--a)">PDF rendered server-side — consistent on all devices</div>
   </div>`;
 
   // ── Report Info section ────────────────────────────────────────
   html += _sh('info','Report Info');
-  html += `<div id="esec-info" style="padding:10px 14px 14px;border-bottom:1px solid var(--border);display:${_secOpen.info?'':'none'}">
+  html += `<div id="esec-info" style="padding:10px 14px 14px;border-bottom:1px solid var(--b1);display:${_secOpen.info?'':'none'}">
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px">
         <div class="exp-meta-row" style="margin-bottom:0">
@@ -2246,11 +2254,11 @@ function buildSectionList() {
       <div class="exp-sub-label">Accent Color</div>
       <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
         ${['#7c3aed','#2563eb','#0891b2','#059669','#dc2626','#d97706','#db2777','#374151'].map(c =>
-          `<div onclick="setRptAccent('${c}')" style="width:20px;height:20px;border-radius:4px;background:${c};cursor:pointer;flex-shrink:0;outline:${(m.accentColor||'#7c3aed')===c?'2px solid var(--text)':'none'};outline-offset:2px;transition:transform .1s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"></div>`
+          `<div onclick="setRptAccent('${c}')" style="width:20px;height:20px;border-radius:4px;background:${c};cursor:pointer;flex-shrink:0;outline:${(m.accentColor||'#7c3aed')===c?'2px solid var(--t1)':'none'};outline-offset:2px;transition:transform .1s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"></div>`
         ).join('')}
         <input type="color" value="${m.accentColor||'#7c3aed'}"
           oninput="setRptAccent(this.value)"
-          style="width:22px;height:22px;padding:1px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);cursor:pointer;flex-shrink:0">
+          style="width:22px;height:22px;padding:1px;border:1px solid var(--b1);border-radius:4px;background:var(--bg3);cursor:pointer;flex-shrink:0">
       </div>
 
       <div class="exp-sub-label" style="display:flex;align-items:center;justify-content:space-between">
@@ -2266,10 +2274,10 @@ function buildSectionList() {
           const active = (m.watermark?.text || 'DRAFT') === t;
           return `<button class="sec-btn${active?' active':''}" onclick="(()=>{const d=getReportData();d.meta.watermark=d.meta.watermark||{};d.meta.watermark.text='${t}';saveReportData(d);buildEditor()})()">${t}</button>`;
         }).join('')}
-      </div>` : `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Off</div>`}
+      </div>` : `<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">Off</div>`}
     </div>
     ${_sh('layout','Page Layout')}
-    <div id="esec-layout" style="padding:10px 14px 12px;border-bottom:1px solid var(--border);display:${_secOpen.layout?'':'none'}">
+    <div id="esec-layout" style="padding:10px 14px 12px;border-bottom:1px solid var(--b1);display:${_secOpen.layout?'':'none'}">
       ${(()=>{
         const dm = getReportData().meta;
         const hz = _getZone(dm,'header'), fz = _getZone(dm,'footer');
@@ -2291,7 +2299,7 @@ function buildSectionList() {
             ${modeText ? `<input class="exp-input" value="${esc(col.text||'')}" placeholder="${modeNum?'prefix':'text'}"
                 oninput="setPageLayoutColText('${zone}','${key}',this.value)">` : ''}
             ${modeImg ? `<div style="display:flex;align-items:center;gap:4px">
-                ${col.img ? `<img src="${col.img}" style="height:22px;max-width:64px;object-fit:contain;border-radius:3px;border:1px solid var(--border);flex-shrink:0;${col.imgShadow?'filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))':''}">` : ''}
+                ${col.img ? `<img src="${col.img}" style="height:22px;max-width:64px;object-fit:contain;border-radius:3px;border:1px solid var(--b1);flex-shrink:0;${col.imgShadow?'filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))':''}">` : ''}
                 <label class="sec-btn" style="cursor:pointer;flex-shrink:0">img<input type="file" accept="image/*" style="display:none" onchange="uploadColLogo('${zone}','${key}',this)"></label>
                 ${col.img ? `<button class="sec-btn del" onclick="setPageLayoutColImg('${zone}','${key}','')">✕</button>` : ''}
               </div>
@@ -2302,7 +2310,7 @@ function buildSectionList() {
         }
         return `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)">Header</span>
+          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3)">Header</span>
           <label class="exp-opt"><input type="checkbox" ${hz.enabled?'checked':''} onchange="setPageLayoutEnabled('header',this.checked)"> Enabled</label>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
@@ -2310,8 +2318,8 @@ function buildSectionList() {
           ${colEditor('header','center',hz.cols.center, false)}
           ${colEditor('header','right', hz.cols.right,  false)}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">
-          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)">Footer</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;border-top:1px solid var(--b1);padding-top:10px">
+          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3)">Footer</span>
           <label class="exp-opt"><input type="checkbox" ${fz.enabled?'checked':''} onchange="setPageLayoutEnabled('footer',this.checked)"> Enabled</label>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
@@ -2323,7 +2331,7 @@ function buildSectionList() {
     </div>
     ${_sh('sections','Report Sections',`<button class="sec-btn" onclick="event.stopPropagation();secAddCustom()" style="font-size:9px;margin-left:6px">+ Custom</button>`)}
     <div id="esec-sections" style="display:${_secOpen.sections?'':'none'}">
-      <div style="padding:8px 14px 6px;border-bottom:1px solid var(--border)">
+      <div style="padding:8px 14px 6px;border-bottom:1px solid var(--b1)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
           <div class="exp-field-label" style="margin:0">Findings include</div>
           <label class="exp-opt" style="margin:0"><input type="checkbox" ${m.numbering?'checked':''} onchange="secToggleNumbering(this.checked)"> Number sections</label>
@@ -2430,8 +2438,8 @@ function openVulnFieldModal(id, field) {
   modal.className = 'fe-modal no-print';
   modal.innerHTML = `
     <div class="fe-modal-inner" id="rich-modal-inner">
-      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
-        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2)">${esc(vulnName)} — ${fieldLabel}</span>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2)">${esc(vulnName)} — ${fieldLabel}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
           <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richVulnModalToggleSplit('${id}','${field}')">◫ Split</button>
           <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeVulnFieldModal('${id}','${field}')">← Close</button>
@@ -2441,10 +2449,10 @@ function openVulnFieldModal(id, field) {
         <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden">
           ${_richToolbar(`vfield-modal-ed-${id}-${field}`, `rpal-vf-modal-${id}-${field}`)}
           <div class="rich-editor" contenteditable="true" id="vfield-modal-ed-${id}-${field}"
-            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--border)"
+            style="flex:1;max-height:none;border-radius:0;border-left:none;border-right:none;border-bottom:none;border-top:1px solid var(--b1)"
             oninput="saveVulnEdit('${id}','${field}',this.innerHTML);syncVulnFieldInline('${id}','${field}',this.innerHTML)">${content}</div>
         </div>
-        <div id="vfield-modal-preview-${id}-${field}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--border);background:var(--bg);display:none">
+        <div id="vfield-modal-preview-${id}-${field}" style="flex:1;overflow-y:auto;padding:32px 40px;border-left:1px solid var(--b1);background:var(--bg);display:none">
           <div class="rpt" style="max-width:640px;margin:0 auto">
             <div class="rpt-prose" id="vfield-modal-pv-${id}-${field}">${content}</div>
           </div>
@@ -2540,7 +2548,7 @@ function renderEvidenceList(id, isWSTG) {
           <span class="exp-evidence-name">${esc(img.name||'image')}</span>
           <button class="btn-remove" onclick="removeEvidence('${id}',${i},${isWSTG})">✕</button>
         </div>`).join('')
-    : `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">No images</div>`;
+    : `<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">No images</div>`;
   buildReport();
 }
 
@@ -2626,7 +2634,7 @@ function buildEditor() {
     });
   }
 
-  if (!html) html = `<div style="padding:20px 14px;font-family:var(--mono);font-size:11px;color:var(--text3)">No findings to edit for this scope.</div>`;
+  if (!html) html = `<div style="padding:20px 14px;font-family:var(--mono);font-size:11px;color:var(--t3)">No findings to edit for this scope.</div>`;
 
   document.getElementById('editor-panel').innerHTML = html;
   // Restore evidence lists
@@ -2845,7 +2853,7 @@ function buildReport() {
       <div class="rpt-cover-title-block">
         <span class="rpt-cover-page-type">${esc(_coverType)}</span>
         <h1 class="rpt-cover-page-h1">${esc(_coverTitle)}</h1>
-        ${_coverSubtitle ? `<div class="rpt-cover-page-client" style="font-style:normal;font-size:16px;color:var(--text2)">${esc(_coverSubtitle)}</div>` : ''}
+        ${_coverSubtitle ? `<div class="rpt-cover-page-client" style="font-style:normal;font-size:16px;color:var(--t2)">${esc(_coverSubtitle)}</div>` : ''}
         ${m.clientName ? `<div class="rpt-cover-page-client">${esc(m.clientName)}</div>` : ''}
         <span class="rpt-cover-conf">${esc(m.classification||'Confidencial')}</span>
       </div>
@@ -2960,7 +2968,7 @@ function buildReport() {
         });
         html += `</div></div>${_ce}`;
       } else {
-        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<p style="color:var(--text3);font-style:italic">Sin hallazgos registrados para este proyecto.</p>${_ce}`;
+        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<p style="color:var(--t3);font-style:italic">Sin hallazgos registrados para este proyecto.</p>${_ce}`;
       }
       html += _subsHtml(sec, _secNum);
       continue;
@@ -2982,9 +2990,9 @@ function buildReport() {
           const num = vulnNumMap[v.id];
           md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${v.category||'Custom'} | ${sl} |`);
           html += `<tr>
-            <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--text2);white-space:nowrap">${num}</div></td>
+            <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--t2);white-space:nowrap">${num}</div></td>
             <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
-            <td style="font-weight:600;color:var(--text);word-break:break-word"><div class="rpt-cell">${esc(v.name)}</div></td>
+            <td style="font-weight:600;color:var(--t1);word-break:break-word"><div class="rpt-cell">${esc(v.name)}</div></td>
             <td style="font-family:var(--mono);font-size:11px"><div class="rpt-cell">${esc(v.category||'Custom')}</div></td>
             <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span></div></td>
           </tr>`;
@@ -3004,7 +3012,7 @@ function buildReport() {
       md(`**Total:** ${wTested}/${wTotal} (${wPct}%) · **Aprobadas:** ${wDone} · **Hallazgos:** ${wFail}`); md('');
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
         <p><strong>${wTested}/${wTotal}</strong> pruebas completadas &nbsp;·&nbsp;
-          <strong style="color:var(--green)">${wDone} aprobadas</strong> &nbsp;·&nbsp;
+          <strong style="color:var(--c-low)">${wDone} aprobadas</strong> &nbsp;·&nbsp;
           <strong style="color:var(--red)">${wFail} hallazgos</strong></p>
         <table class="rpt-table"><thead><tr>
           <th>Categoría</th><th style="text-align:center">Realizadas</th>
@@ -3020,7 +3028,7 @@ function buildReport() {
         html += `<tr><td>${esc(cat.name)}</td><td class="num">${d+f}</td><td class="num">${t}</td>
           <td class="num ${f?'vuln-found':''}">${f||'—'}</td>
           <td><div class="rpt-progress-cell"><div class="rpt-mini-bar"><div class="rpt-mini-fill" style="width:${pct}%"></div></div>
-            <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:30px">${pct}%</span></div></td></tr>`;
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3);min-width:30px">${pct}%</span></div></td></tr>`;
       });
       html += '</tbody></table>';
       const failedWSTG = [];
@@ -3044,17 +3052,17 @@ function buildReport() {
           md('');
           html += `<div class="rpt-wstg-vuln">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:var(--red)18;border:1px solid var(--red)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
-              <span style="font-weight:600;font-size:13px;color:var(--text)">${esc(test.name)}</span>
+              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:var(--c-crit)18;border:1px solid var(--c-crit)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
+              <span style="font-weight:600;font-size:13px;color:var(--t1)">${esc(test.name)}</span>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${desc||rem?'8px':'0'}">
-              <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(cat)}</span>
-              ${targetHost ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">${esc(targetHost)}</span>` : ''}
-              ${linkedVuln ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent3);background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:3px;padding:1px 6px">→ ${esc(linkedVuln.name)}</span>` : ''}
+              <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(cat)}</span>
+              ${targetHost ? `<span style="font-family:var(--mono);font-size:10px;color:var(--a)">${esc(targetHost)}</span>` : ''}
+              ${linkedVuln ? `<span style="font-family:var(--mono);font-size:10px;color:var(--a);background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:3px;padding:1px 6px">→ ${esc(linkedVuln.name)}</span>` : ''}
             </div>
             ${showDesc&&desc?`<div class="rpt-field-label" style="margin-top:4px">Descripción</div><div class="rpt-field-val">${renderMd(desc)}</div>`:''}
             ${showRem&&rem?`<div class="rpt-field-label">Remediación</div><div class="rpt-field-rem">${renderMd(rem)}</div>`:''}
-            ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic">${esc(prog.note)}</div>`:''}
+            ${showNotes&&prog?.note?`<div style="margin-top:6px;font-size:11px;color:var(--t3);font-style:italic">${esc(prog.note)}</div>`:''}
           </div>`;
         });
       }
@@ -3079,8 +3087,8 @@ function buildReport() {
         if (!bySev[sev].length) return;
         html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px;page-break-after:avoid;break-after:avoid">
           <span class="sev-badge sev-${sev}" style="font-size:11px;padding:3px 10px;width:auto;white-space:nowrap">${SEV_LABEL[sev]}</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${bySev[sev].length} hallazgo${bySev[sev].length>1?'s':''}</span>
-          <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${bySev[sev].length} hallazgo${bySev[sev].length>1?'s':''}</span>
+          <div style="flex:1;height:1px;background:var(--b1);margin-left:4px"></div>
         </div>`;
         bySev[sev].forEach(v => {
           const edit    = _localEdits[v.id] || {};
@@ -3108,23 +3116,23 @@ function buildReport() {
           const _cvssColor = {critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b';
           const _meta = [
             v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor}">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : '',
-            v.cwe        ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(v.cwe)}</span>` : '',
-            v.category   ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(v.category)}</span>` : '',
-            v.target_host? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">${esc(v.target_host)}</span>` : '',
-            wstgLinks.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent3)">WSTG: ${wstgLinks.join(', ')}</span>` : '',
-          ].filter(Boolean).join(`<span style="color:var(--border2);margin:0 4px">·</span>`);
+            v.cwe        ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(v.cwe)}</span>` : '',
+            v.category   ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(v.category)}</span>` : '',
+            v.target_host? `<span style="font-family:var(--mono);font-size:10px;color:var(--a)">${esc(v.target_host)}</span>` : '',
+            wstgLinks.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--a)">WSTG: ${wstgLinks.join(', ')}</span>` : '',
+          ].filter(Boolean).join(`<span style="color:var(--b2);margin:0 4px">·</span>`);
           html += `<div class="rpt-vuln rpt-vuln-${sev}">
             <div class="rpt-vuln-header" style="flex-direction:column;align-items:stretch;gap:5px">
               <div style="display:flex;align-items:center;gap:8px">
                 <span class="sev-badge sev-${sev}" style="flex-shrink:0">${SEV_LABEL[sev]}</span>
-                <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--text3);flex-shrink:0">${num}</span>
+                <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--t3);flex-shrink:0">${num}</span>
                 <div class="rpt-vuln-name">${esc(v.name)}</div>
               </div>
               ${_meta ? `<div style="padding-left:2px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">${_meta}</div>` : ''}
             </div><div>`;
           if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Descripción</div><div class="rpt-field-val">${isRich && edit.description ? edit.description : renderMd(desc)}</div></div>`;
           if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div>${v.payloads.map(p=>`<div class="rpt-code" style="margin-bottom:4px">${esc(p)}</div>`).join('')}</div>`;
-          if ((v.items||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Lista de verificación</div><div>${v.items.map((item,i)=>`<div style="font-size:12px;color:var(--text2);padding:2px 0">${v.checked_items?.[i]?'[x]':'[ ]'} ${esc(item)}</div>`).join('')}</div></div>`;
+          if ((v.items||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Lista de verificación</div><div>${v.items.map((item,i)=>`<div style="font-size:12px;color:var(--t2);padding:2px 0">${v.checked_items?.[i]?'[x]':'[ ]'} ${esc(item)}</div>`).join('')}</div></div>`;
           if (showNotes && notesVal) html += `<div class="rpt-field"><div class="rpt-field-label">Notas</div><div class="rpt-field-val">${esc(notesVal)}</div></div>`;
           if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediación</div><div class="rpt-field-rem">${isRich && edit.remediation ? edit.remediation : renderMd(rem)}</div></div>`;
           if (showEvid && evid.length) {
@@ -3166,14 +3174,14 @@ function buildReport() {
 
       _tocPush(sec, `rpt-sec-${sec.id}`);
       html += `<h2 id="rpt-sec-${sec.id}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}`;
-      html += `<p style="font-size:12px;color:var(--text2);margin:0 0 20px">Se identificaron <strong>${totalV}</strong> hallazgo${totalV!==1?'s':''} representados en la matriz según probabilidad e impacto.</p>`;
+      html += `<p style="font-size:12px;color:var(--t2);margin:0 0 20px">Se identificaron <strong>${totalV}</strong> hallazgo${totalV!==1?'s':''} representados en la matriz según probabilidad e impacto.</p>`;
 
       // Matrix table
-      const LB = '1px solid var(--border)'; // light border
+      const LB = '1px solid var(--b1)'; // light border
       html += `<div style="display:flex;align-items:stretch;gap:0;margin-bottom:24px;max-width:600px">`;
       // Vertical "Impacto" label
       html += `<div style="display:flex;align-items:center;justify-content:center;width:24px;flex-shrink:0;background:var(--bg2);border:${LB};border-right:none">
-        <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;font-weight:700;color:var(--text);letter-spacing:.1em">IMPACTO</span></div>`;
+        <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;font-weight:700;color:var(--t1);letter-spacing:.1em">IMPACTO</span></div>`;
       html += `<table style="border-collapse:collapse;flex:1">`;
 
       // Rows: Crítico(4), Alto(3), Medio(2), Bajo(1)
@@ -3182,9 +3190,9 @@ function buildReport() {
         const rowVulns   = matrixVulns.filter(v => IMPACT_MAP[v.severity||'medium'] === impact);
         html += `<tr style="height:52px">`;
         // Impact label cell
-        html += `<td style="border:${LB};padding:4px 10px;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;width:64px;text-align:center;background:var(--bg2);vertical-align:middle">${impactName}</td>`;
+        html += `<td style="border:${LB};padding:4px 10px;font-size:11px;font-weight:700;color:var(--t1);white-space:nowrap;width:64px;text-align:center;background:var(--bg2);vertical-align:middle">${impactName}</td>`;
         // Count cell
-        html += `<td style="border:${LB};padding:4px 8px;font-family:monospace;font-size:13px;font-weight:700;color:var(--text2);text-align:center;width:28px;background:var(--bg3);vertical-align:middle">${rowVulns.length||''}</td>`;
+        html += `<td style="border:${LB};padding:4px 8px;font-family:monospace;font-size:13px;font-weight:700;color:var(--t2);text-align:center;width:28px;background:var(--bg3);vertical-align:middle">${rowVulns.length||''}</td>`;
         // 5 probability cells — ALL colored, text only when vulns present
         for (let prob = 1; prob <= 5; prob++) {
           const risk  = RISK_CELL[impact-1][prob-1];
@@ -3202,22 +3210,22 @@ function buildReport() {
 
       // Probability number row
       html += `<tr><td colspan="2" style="border:none;background:var(--bg)"></td>`;
-      for (let i=1;i<=5;i++) html += `<td style="border:${LB};padding:4px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:700;color:var(--text);background:var(--bg2)">${i}</td>`;
+      for (let i=1;i<=5;i++) html += `<td style="border:${LB};padding:4px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:700;color:var(--t1);background:var(--bg2)">${i}</td>`;
       html += `<td style="border:none"></td></tr>`;
       // Probability label row
       html += `<tr><td colspan="2" style="border:none;background:var(--bg)"></td>`;
-      PROB_LABELS.forEach(l => html += `<td style="border:${LB};padding:4px 6px;text-align:center;font-size:10px;color:var(--text2);background:var(--bg3)">${l}</td>`);
+      PROB_LABELS.forEach(l => html += `<td style="border:${LB};padding:4px 6px;text-align:center;font-size:10px;color:var(--t2);background:var(--bg3)">${l}</td>`);
       html += `<td style="border:none"></td></tr>`;
       // "Probabilidad" header row
       html += `<tr><td colspan="2" style="border:none;background:var(--bg)"></td>`;
-      html += `<td colspan="5" style="border:${LB};padding:5px;text-align:center;font-size:11px;font-weight:700;color:var(--text);background:var(--bg2);letter-spacing:.06em">PROBABILIDAD</td>`;
+      html += `<td colspan="5" style="border:${LB};padding:5px;text-align:center;font-size:11px;font-weight:700;color:var(--t1);background:var(--bg2);letter-spacing:.06em">PROBABILIDAD</td>`;
       html += `<td style="border:none"></td></tr>`;
       html += `</table></div>`;
 
       // Summary table
       html += `<table style="border-collapse:collapse;font-size:12px;margin-top:8px">
         <thead>
-          <tr><th colspan="4" style="border:${LB};padding:7px 12px;text-align:left;background:var(--bg2);color:var(--text);font-weight:700;font-size:12px">Hallazgos por Valoración de Riesgo</th></tr>
+          <tr><th colspan="4" style="border:${LB};padding:7px 12px;text-align:left;background:var(--bg2);color:var(--t1);font-weight:700;font-size:12px">Hallazgos por Valoración de Riesgo</th></tr>
           <tr>${['bajo','medio','alto','critico'].map(r=>`<th style="border:${LB};padding:6px 20px;background:${RISK_COLORS[r]};color:#fff;font-weight:700;text-align:center">${RISK_LABELS[r]}</th>`).join('')}</tr>
         </thead>
         <tbody>
@@ -3249,9 +3257,9 @@ function buildReport() {
         state.targets.forEach(t => {
           html += `<tr>
             <td style="font-family:var(--mono);font-weight:600"><div class="rpt-cell">${esc(t.host)}</div></td>
-            <td style="font-family:var(--mono);font-size:11px;color:var(--text3)"><div class="rpt-cell">${esc(t.type||'—')}</div></td>
+            <td style="font-family:var(--mono);font-size:11px;color:var(--t3)"><div class="rpt-cell">${esc(t.type||'—')}</div></td>
             <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></div></td>
-            <td style="font-size:12px;color:var(--text3);white-space:pre-wrap"><div class="rpt-cell">${esc(t.notes||'')}</div></td>
+            <td style="font-size:12px;color:var(--t3);white-space:pre-wrap"><div class="rpt-cell">${esc(t.notes||'')}</div></td>
           </tr>`;
         });
         html += '</tbody></table>';
@@ -3262,7 +3270,7 @@ function buildReport() {
           html += `<div class="rpt-vuln" style="margin-bottom:12px">
             <div class="rpt-vuln-header">
               <span style="font-family:var(--mono);font-size:12px;font-weight:700">${esc(t.host)}</span>
-              ${t.type ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(t.type)}</span>` : ''}
+              ${t.type ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(t.type)}</span>` : ''}
               <span style="margin-left:auto"><span class="rpt-vuln-status rpt-status-${t.status||'pending'}">${esc(t.status||'pending')}</span></span>
             </div>`;
           if (t.notes) html += `<div class="rpt-field"><div class="rpt-field-label">Notas</div><div class="rpt-field-val" style="white-space:pre-wrap">${esc(t.notes)}</div></div>`;
@@ -3275,7 +3283,7 @@ function buildReport() {
                 <td style="font-family:var(--mono);font-size:11px">${esc(port.protocol||'tcp')}</td>
                 <td style="font-family:var(--mono);font-size:11px">${esc(port.state||'open')}</td>
                 <td>${esc(port.service||'—')}</td>
-                <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(port.version||'')}</td>
+                <td style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(port.version||'')}</td>
               </tr>`;
             });
             html += '</tbody></table></div>';
@@ -3285,10 +3293,10 @@ function buildReport() {
               <table class="rpt-table" style="margin:6px 0"><thead><tr><th>Método</th><th>Ruta</th><th>Estado</th><th>Notas</th></tr></thead><tbody>`;
             endpoints.forEach(ep => {
               html += `<tr>
-                <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent)">${esc(ep.method||'GET')}</td>
+                <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--a)">${esc(ep.method||'GET')}</td>
                 <td style="font-family:var(--mono);font-size:11px">${esc(ep.path||'')}</td>
-                <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(ep.status_code||'')}</td>
-                <td style="font-size:11px;color:var(--text3);white-space:pre-wrap">${esc(ep.notes||'')}</td>
+                <td style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(ep.status_code||'')}</td>
+                <td style="font-size:11px;color:var(--t3);white-space:pre-wrap">${esc(ep.notes||'')}</td>
               </tr>`;
             });
             html += '</tbody></table></div>';
@@ -3332,22 +3340,22 @@ function buildReport() {
       html += `<h2>Progreso de Metodología</h2>`;
       activeMethods.forEach(([, meth]) => {
         const tests = meth.tests || [];
-        html += `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden">
+        html += `<div style="border:1px solid var(--b1);border-radius:8px;margin-bottom:12px;overflow:hidden">
           <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg2)">
             <div style="font-weight:600;font-size:13px;flex:1">${esc(meth.name)}</div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--green)">${meth.done} completados</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--c-low)">${meth.done} completados</div>
             ${meth.fail ? `<div style="font-family:var(--mono);font-size:11px;color:var(--red)">${meth.fail} fallidos</div>` : ''}
-            <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">${meth.total} total</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${meth.total} total</div>
           </div>
           <div style="padding:10px 14px">
-            <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--border);gap:2px;margin-bottom:8px">
-              ${meth.done ? `<div style="width:${Math.round(meth.done/meth.total*100)}%;background:var(--green);border-radius:2px"></div>` : ''}
+            <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--b1);gap:2px;margin-bottom:8px">
+              ${meth.done ? `<div style="width:${Math.round(meth.done/meth.total*100)}%;background:var(--c-low);border-radius:2px"></div>` : ''}
               ${meth.fail ? `<div style="width:${Math.round(meth.fail/meth.total*100)}%;background:var(--red);border-radius:2px"></div>` : ''}
             </div>
             ${tests.filter(t => t.status === 'fail').length ? `
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Verificaciones fallidas (${tests.filter(t=>t.status==='fail').length})</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Verificaciones fallidas (${tests.filter(t=>t.status==='fail').length})</div>
               <div style="display:flex;flex-wrap:wrap;gap:4px">
-                ${tests.map((t,i) => t.status==='fail' ? `<span style="font-family:var(--mono);font-size:10px;background:var(--red)18;border:1px solid var(--red)30;color:var(--red);border-radius:3px;padding:2px 6px">#${i+1}</span>` : '').filter(Boolean).join('')}
+                ${tests.map((t,i) => t.status==='fail' ? `<span style="font-family:var(--mono);font-size:10px;background:var(--c-crit)18;border:1px solid var(--c-crit)30;color:var(--red);border-radius:3px;padding:2px 6px">#${i+1}</span>` : '').filter(Boolean).join('')}
               </div>` : ''}
           </div>
         </div>`;
@@ -3361,14 +3369,52 @@ function buildReport() {
   document.getElementById('report-preview').dataset.rendered = 'true';
 }
 
+// Print layout helpers — flag prevents double-execution when both manual call and beforeprint fire
+const _printSaved = [];
+let _printActive = false;
+
+function _prepareForPrint() {
+  if (_printActive) return;
+  _printActive = true;
+  _printSaved.length = 0;
+  ['.sidenav','#sidenav','.topbar','#topbar','.exp-editor','.export-controls','.no-print','.toast-container','#loading-overlay']
+    .forEach(sel => document.querySelectorAll(sel).forEach(el => {
+      _printSaved.push([el, el.getAttribute('style') || '']);
+      el.style.setProperty('display', 'none', 'important');
+    }));
+  _printSaved.push([document.body, document.body.getAttribute('style') || '']);
+  ['display','margin','padding','overflow'].forEach(p =>
+    document.body.style.setProperty(p, p==='display'?'block':p==='overflow'?'visible':'0', 'important'));
+  ['.app-main','.exp-outer','.exp-inner','.exp-layout'].forEach(sel => {
+    const el = document.querySelector(sel); if (!el) return;
+    _printSaved.push([el, el.getAttribute('style') || '']);
+    ['display','margin','padding','overflow','height'].forEach(p =>
+      el.style.setProperty(p, p==='display'?'block':p==='overflow'?'visible':p==='height'?'auto':'0', 'important'));
+    el.style.setProperty('width', '100%', 'important');
+  });
+  const prev = document.querySelector('.exp-preview');
+  if (prev) {
+    _printSaved.push([prev, prev.getAttribute('style') || '']);
+    ['display','padding','overflow','height'].forEach(p =>
+      prev.style.setProperty(p, p==='display'?'block':p==='overflow'?'visible':p==='height'?'auto':'0', 'important'));
+    prev.style.setProperty('width', '100%', 'important');
+  }
+}
+
+function _restoreAfterPrint() {
+  if (!_printActive) return;
+  _printActive = false;
+  _printSaved.forEach(([el, style]) => el.setAttribute('style', style));
+  _printSaved.length = 0;
+}
+
+// Ctrl+P fallback
+window.addEventListener('beforeprint', _prepareForPrint);
+window.addEventListener('afterprint', _restoreAfterPrint);
+
 async function exportPdf() {
   const m = getReportData().meta;
   const password = m.pdfPassword?.trim();
-
-  if (!password) {
-    window.print();
-    return;
-  }
 
   const btn = document.querySelector('[onclick="exportPdf()"]');
   const origText = btn.textContent;
@@ -3405,6 +3451,45 @@ async function exportPdf() {
     showToast('PDF downloaded', 'success');
   } catch (e) {
     showToast('PDF generation failed: ' + e.message, 'error');
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
+async function exportDocx() {
+  const btn = document.querySelector('[onclick="exportDocx()"]');
+  const origText = btn.textContent;
+  btn.textContent = 'Generating…';
+  btn.disabled = true;
+  try {
+    const token    = localStorage.getItem('fd_access');
+    const pid      = state.currentProject?.id;
+    if (!pid) { showToast('No project loaded', 'error'); return; }
+    const rptKey   = `fd_rpt_${pid}`;
+    const rptData  = localStorage.getItem(rptKey);
+    const meta     = getReportData().meta;
+    const filename = meta.coverTitle || state.currentProject?.name || 'report';
+
+    const type = document.getElementById('report-type')?.value || 'technical';
+    const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/docx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ projectId: pid, type, rptData, filename }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'DOCX generation failed', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `${filename}.docx`; a.click();
+    URL.revokeObjectURL(url);
+    showToast('DOCX downloaded', 'success');
+  } catch (e) {
+    showToast('DOCX generation failed: ' + e.message, 'error');
   } finally {
     btn.textContent = origText;
     btn.disabled = false;

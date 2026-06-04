@@ -306,6 +306,26 @@ const migrations = [
       CREATE TRIGGER trg_tickets_updated_at BEFORE UPDATE ON tickets FOR EACH ROW EXECUTE FUNCTION update_updated_at();
     END IF;
   END $$`,
+
+  // ── TIMELINE + MEMBER LABELS (Fase — dates & invite labels) ─────────
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS date_start  DATE`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS date_end    DATE`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS date_report DATE`,
+  `ALTER TABLE project_members ADD COLUMN IF NOT EXISTS label VARCHAR(100)`,
+  `ALTER TABLE project_invites  ADD COLUMN IF NOT EXISTS label VARCHAR(100)`,
+
+  // ── PORTAL TOKEN AUTH ────────────────────────────────────────────────
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS portal_token            TEXT UNIQUE`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS portal_password_hash    TEXT`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS portal_require_password BOOLEAN NOT NULL DEFAULT false`,
+
+  // ── PORTAL TICKET SUPPORT ─────────────────────────────────────────────
+  // Allow portal (non-user) ticket creation: opened_by and author_id become nullable
+  `ALTER TABLE tickets ALTER COLUMN opened_by DROP NOT NULL`,
+  `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS client_name  VARCHAR(200)`,
+  `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS client_email VARCHAR(255)`,
+  `ALTER TABLE ticket_replies ALTER COLUMN author_id DROP NOT NULL`,
+  `ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS client_name VARCHAR(200)`,
 ];
 
 async function migrate() {
