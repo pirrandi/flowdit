@@ -5,6 +5,8 @@ const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
 const { requireAuth: auth, requireUser } = require('../middleware/auth');
+const db   = require('../db');
+const { generateDocx } = require('../services/docxExport');
 
 const router = express.Router();
 
@@ -162,115 +164,81 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
 
 
 // POST /api/export/docx
-// Body: { pageUrl, token, rptKey, rptData, filename? }
+// Body: { projectId, type, rptData, filename? }
 router.post('/docx', auth, requireUser, async (req, res) => {
-  const { pageUrl, token, rptKey, rptData, filename: rawFilename } = req.body;
-  if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
+  const { projectId, type = 'technical', rptData, filename: rawFilename } = req.body;
+  if (!projectId) return res.status(400).json({ error: 'projectId required' });
 
-  if (!findSoffice()) return res.status(500).json({ error: 'LibreOffice not installed on server' });
-
-  const executablePath = findChrome();
-  if (!executablePath) return res.status(500).json({ error: 'No Chromium/Chrome found on server' });
-
-  const tmpId   = `rpt_${Date.now()}`;
-  const tmpHtml = path.join(os.tmpdir(), `${tmpId}.html`);
-  const tmpDir  = os.tmpdir();
-  const tmpDocx = path.join(os.tmpdir(), `${tmpId}.docx`);
-
-  let browser;
   try {
-    browser = await puppeteer.launch({
-      executablePath,
-      headless: true,
-      args: [
-        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-        '--disable-gpu', '--single-process', '--no-zygote',
-        '--force-device-scale-factor=1',
-      ],
-    });
+    // Verify project access
+    const { rows: projRows } = await db.query(
+      `SELECT p.* FROM projects p
+       JOIN project_members pm ON pm.project_id = p.id
+       WHERE p.id = $1 AND pm.user_id = $2`,
+      [projectId, req.user.id]
+    );
+    if (!projRows.length) return res.status(404).json({ error: 'Project not found' });
+    const project = projRows[0];
 
-    const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    // Parse report metadata + sections from localStorage snapshot
+    let meta = {}, sections = [];
+    try {
+      const parsed = JSON.parse(rptData || '{}');
+      meta     = parsed.meta     || {};
+      sections = parsed.sections || [];
+    } catch {}
 
-    await page.evaluateOnNewDocument((t, key, data) => {
-      if (t)           localStorage.setItem('fd_access', t);
-      if (key && data) localStorage.setItem(key, data);
-    }, token || '', rptKey || '', rptData || '');
-
-    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-    await page.evaluateHandle('document.fonts.ready');
-    await page.waitForFunction(
-      () => document.getElementById('report-preview')?.children.length > 0,
-      { timeout: 15000 }
+    // Fetch vulns (ordered by severity)
+    const { rows: vulns } = await db.query(
+      `SELECT cv.*, t.host AS target_host
+       FROM custom_vulns cv
+       LEFT JOIN targets t ON t.id = cv.target_id
+       WHERE cv.project_id = $1
+       ORDER BY
+         CASE cv.severity
+           WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3
+           WHEN 'low' THEN 4 WHEN 'info' THEN 5 ELSE 6
+         END, cv.created_at`,
+      [projectId]
     );
 
-    // Apply print CSS (light theme / black text) before extracting HTML
-    await page.emulateMediaType('print');
+    // Fetch targets
+    const { rows: targets } = await db.query(
+      `SELECT * FROM targets WHERE project_id = $1 ORDER BY created_at`,
+      [projectId]
+    );
 
-    // Extract the full rendered HTML of the report preview with all styles resolved
-    const html = await page.evaluate(() => {
-      const preview = document.getElementById('report-preview');
-      if (!preview) return '';
+    // Fetch ports for all targets
+    const { rows: ports } = await db.query(
+      `SELECT tp.* FROM target_ports tp
+       JOIN targets t ON t.id = tp.target_id
+       WHERE t.project_id = $1
+       ORDER BY t.host, tp.port`,
+      [projectId]
+    );
 
-      // Collect all resolved CSS rules (only those that apply to .rpt* classes)
-      // Avoid @-rules that contain CSS vars — LibreOffice handles plain CSS fine
-      const safeStyles = [];
-      for (const sheet of document.styleSheets) {
-        try {
-          for (const rule of sheet.cssRules) {
-            // Skip @media, @keyframes, @font-face — LO doesn't need them
-            if (rule.type !== CSSRule.STYLE_RULE) continue;
-            // Only keep rules that could affect report elements
-            safeStyles.push(rule.cssText);
-          }
-        } catch {}
-      }
+    // Fetch WSTG progress (only rows with a status)
+    const { rows: wstgProgress } = await db.query(
+      `SELECT * FROM wstg_progress WHERE project_id = $1 AND status IS NOT NULL ORDER BY test_id`,
+      [projectId]
+    );
 
-      const styleBlock = safeStyles.join('\n');
-      return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111; background: #fff; margin: 2cm; }
-h1 { font-size: 22pt; font-weight: bold; color: #111; }
-h2 { font-size: 14pt; font-weight: bold; color: #222; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 24pt; }
-h3 { font-size: 12pt; font-weight: bold; color: #222; margin-top: 16pt; }
-p, li { font-size: 11pt; color: #333; line-height: 1.6; }
-table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
-th { background: #f3f4f6; font-weight: bold; font-size: 10pt; padding: 6pt 8pt; border: 1px solid #e5e7eb; text-align: left; }
-td { font-size: 10pt; padding: 6pt 8pt; border: 1px solid #e5e7eb; vertical-align: top; color: #333; }
-${styleBlock}
-</style>
-</head>
-<body>${preview.innerHTML}</body>
-</html>`;
+    const buffer = await generateDocx({
+      project, vulns, targets, ports, wstgProgress,
+      meta, type, sections,
     });
 
-    await browser.close();
-    browser = null;
-
-    // Write HTML to temp file and convert with LibreOffice
-    fs.writeFileSync(tmpHtml, html, 'utf8');
-    await convertHtmlToDocx(tmpHtml, tmpDir);
-
-    const docxBytes = fs.readFileSync(tmpDocx);
-    const filename  = (rawFilename || 'report').replace(/[^a-z0-9_\-. ]/gi, '_');
-
+    const filename = (rawFilename || project.name || 'report').replace(/[^a-z0-9_\-. ]/gi, '_');
     res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Type':        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `attachment; filename="${filename}.docx"`,
-      'Content-Length': docxBytes.length,
+      'Content-Length':      buffer.length,
     });
-    res.end(docxBytes);
+    res.end(buffer);
 
   } catch (err) {
-    if (browser) await browser.close().catch(() => {});
     console.error('DOCX export error:', err);
     res.status(500).json({ error: 'DOCX generation failed: ' + err.message });
-  } finally {
-    try { fs.unlinkSync(tmpHtml); } catch {}
-    try { fs.unlinkSync(tmpDocx); } catch {}
   }
 });
 
