@@ -94,6 +94,60 @@ Respond with this exact JSON schema:
   "cwe_name": "..."
 }`;
 
+  } else if (type === 'severity-suggest') {
+    userPrompt = `Classify the severity of the following penetration test finding based solely on its name and category.
+
+Finding name: ${c.name || 'Unknown'}
+${c.category ? `Category: ${c.category}` : ''}
+
+Instrucciones:
+- Elige UNA de estas opciones exactas: critical, high, medium, low, info
+- Basa la decisión en el riesgo real típico de este tipo de vulnerabilidad
+- "info" solo para hallazgos informativos sin impacto directo en seguridad
+- "critical" para RCE, SQLi sin restricciones, auth bypass total, etc.
+
+Respond with this exact JSON schema:
+{
+  "severity": "high",
+  "reason": "one short sentence explaining why"
+}`;
+
+  } else if (type === 'exec-summary') {
+    const sevLines = Object.entries(c.bySeverity || {})
+      .filter(([,n]) => n > 0)
+      .map(([sev, n]) => `  ${sev}: ${n}`)
+      .join('\n');
+
+    const highlights = (c.highlights || []).slice(0, 8)
+      .map(v => `  - [${v.severity}] ${v.name}${v.target_host ? ' @ ' + v.target_host : ''}`)
+      .join('\n');
+
+    userPrompt = `Write a professional executive summary for a penetration test report. Use ONLY the data provided below.
+
+Project: ${c.projectName || 'Undisclosed'}
+${c.scope ? `Scope / description: ${c.scope}` : ''}
+${c.testedAt ? `Test period: ${c.testedAt}` : ''}
+Targets in scope: ${(c.targets || []).join(', ') || 'not specified'}
+
+Total findings: ${c.totalVulns || 0}
+${sevLines ? 'By severity:\n' + sevLines : ''}
+${highlights ? 'Key findings:\n' + highlights : ''}
+${c.wstg ? `WSTG coverage: ${c.wstg.pct}% (${c.wstg.done} passed, ${c.wstg.fail} vuln found, ${c.wstg.pending} pending)` : ''}
+
+Instrucciones:
+- Todo el contenido en español, tercera persona impersonal
+- 2-3 párrafos en markdown
+- Párrafo 1: contexto del engagement (tipo de prueba, alcance, período si está disponible)
+- Párrafo 2: resumen cuantitativo de hallazgos — menciona los más críticos por nombre si los hay
+- Párrafo 3: conclusión sobre la postura de seguridad general y recomendación de prioridad
+- No uses frases genéricas como "se realizó una evaluación exhaustiva" — sé específico con los datos
+- Usa **negritas** para hallazgos críticos o altos, y para métricas clave
+
+Respond with this exact JSON schema:
+{
+  "description": "..."
+}`;
+
   } else {
     return res.status(400).json({ error: 'Unknown type' });
   }

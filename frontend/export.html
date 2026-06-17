@@ -1975,7 +1975,10 @@ function buildSecItem(sec) {
     html += `<div class="rich-editor" contenteditable="true" id="rich-${sec.id}"
       oninput="secUpdateContent('${sec.id}',this.innerHTML)">${_secContentHtml(sec.content)}</div>`;
   } else {
-    html += `<div class="exp-field-label" style="margin-bottom:4px">Intro text</div>`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="exp-field-label" style="margin:0">Intro text</div>
+      ${sec.type === 'exec-summary' ? `<button class="ai-btn" id="ai-exec-btn" onclick="aiExecSummary('${sec.id}')" title="Generate executive summary from findings">✦ Generate</button>` : ''}
+    </div>`;
     html += _richToolbar('desc-'+sec.id, 'desc-'+sec.id);
     html += `<div class="rich-editor" contenteditable="true" id="rich-desc-${sec.id}"
       oninput="secUpdateDesc('${sec.id}',this.innerHTML)">${_secContentHtml(sec.description)}</div>`;
@@ -2570,6 +2573,69 @@ function uploadCoverLogo(input) {
   const reader = new FileReader();
   reader.onload = e => { setRptMeta('coverLogoBase64', e.target.result); buildEditor(); };
   reader.readAsDataURL(file);
+}
+
+// ── AI: Executive Summary ─────────────────────────────────────────
+async function aiExecSummary(secId) {
+  const btn = document.getElementById('ai-exec-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const vulns = state.customVulns || [];
+    const bySeverity = {};
+    ['critical','high','medium','low','info'].forEach(s => {
+      const n = vulns.filter(v => (v.severity || 'medium') === s).length;
+      if (n) bySeverity[s] = n;
+    });
+    const highlights = vulns
+      .filter(v => v.severity === 'critical' || v.severity === 'high')
+      .slice(0, 8)
+      .map(v => ({ name: v.name, severity: v.severity, target_host: v.target_host || '' }));
+
+    const proj    = state.currentProject || {};
+    const targets = (state.targets || []).filter(t => t.scope === 'in').map(t => t.host);
+    const wstgMap = state.wstgProgress || {};
+    const done    = Object.values(wstgMap).filter(t => t.status === 'pass').length;
+    const fail    = Object.values(wstgMap).filter(t => t.status === 'fail').length;
+    const total   = Object.keys(wstgMap).length;
+    const pct     = total ? Math.round((done + fail) / total * 100) : 0;
+
+    const context = {
+      projectName: proj.name || '',
+      scope:       proj.description || '',
+      targets,
+      totalVulns:  vulns.length,
+      bySeverity,
+      highlights,
+      wstg: total ? { done, fail, pending: total - done - fail, pct } : null,
+    };
+
+    const apiBase = window.FLOWDIT_API || 'http://localhost:4000/api';
+    const res = await fetch(`${apiBase}/ai/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokens.access}`,
+      },
+      body: JSON.stringify({ type: 'exec-summary', context }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'AI error');
+    const result = await res.json();
+
+    if (result.description) {
+      const d = getReportData();
+      const sec = d.sections.find(s => s.id === secId);
+      if (sec) {
+        sec.description = result.description;
+        saveReportData(d, true);
+        const el = document.getElementById(`rich-desc-${secId}`);
+        if (el) el.innerHTML = _secContentHtml(result.description);
+      }
+    }
+  } catch(e) {
+    alert('AI error: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate'; }
+  }
 }
 
 // ── Build editor panel ────────────────────────────────────────────

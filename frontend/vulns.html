@@ -54,7 +54,10 @@
         <input type="text" class="form-input" id="modal-vuln-name" placeholder="e.g. GraphQL Introspection Enabled">
       </div>
       <div class="form-group" style="margin:0">
-        <label class="form-label">Severity</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <label class="form-label" style="margin:0">Severity</label>
+          <button type="button" class="ai-btn" id="ai-sev-btn" onclick="aiSeverity()" title="Suggest severity from name">✦ Suggest</button>
+        </div>
         <select class="form-input" id="modal-vuln-sev" style="cursor:pointer">
           <option value="critical">Critical</option>
           <option value="high">High</option>

@@ -455,6 +455,18 @@ async function aiRemediation() {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+async function aiSeverity() {
+  const ctx = _collectVulnContext();
+  if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
+  try {
+    const result = await _aiGenerate('severity-suggest', { name: ctx.name, category: ctx.category }, 'ai-sev-btn', '✦ Suggest');
+    if (result.severity) {
+      document.getElementById('modal-vuln-sev').value = result.severity;
+      showToast(`✦ ${result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}${result.reason ? ' — ' + result.reason : ''}`, 'success');
+    }
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function aiCWE() {
   const ctx = _collectVulnContext();
   if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
@@ -578,6 +590,7 @@ window.SEVERITY_LABELS    = SEVERITY_LABELS;
 window.aiDraft            = aiDraft;
 window.aiRemediation      = aiRemediation;
 window.aiCWE              = aiCWE;
+window.aiSeverity         = aiSeverity;
 window.openImportModal    = openImportModal;
 window.closeImportModal   = closeImportModal;
 window.handleImportFile   = handleImportFile;
