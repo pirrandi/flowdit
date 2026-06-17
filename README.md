@@ -3,12 +3,13 @@
 </p>
 
 <p align="center">
-  Pentest engagement management platform with real-time client portal, vulnerability tracking, and professional PDF reporting.
+  Self-hosted pentest engagement management platform — findings, targets, methodologies, client portal, and professional reports in one place.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/stack-Node.js%20%2F%20PostgreSQL%20%2F%20Nginx-informational?style=flat-square" alt="Stack">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/self--hosted-yes-blue?style=flat-square" alt="Self-hosted">
 </p>
 
 ---
@@ -23,30 +24,58 @@ No more delivering a PDF at the end and hoping the client trusts the process. Wi
 
 ## Features
 
-- **Project management** — create engagements, assign team members, track status
-- **Vulnerability tracking** — custom vuln library with severity, CVSS v3.1 scoring, checklist items, payloads, and notes
-- **CVSS v3.1 calculator** — built-in interactive calculator with vector string generation
-- **Targets** — track hosts, IPs, and endpoints per project
-- **Methodologies** — custom test libraries (WSTG, PortSwigger, or your own)
-- **Client portal** — read-only view for clients with configurable visibility per section
-- **Real-time activity** — WebSocket-powered live feed of team actions
-- **PDF export** — professional report generation with findings, executive summary, and risk breakdown
-- **Project branding** — upload project logo with light/dark background support
-- **Team management** — invite members, assign roles (owner / member)
+**Findings & Vulnerability Tracking**
+- Custom vulnerability library with severity, CVSS v3.1 scoring, CWE, checklist items, payloads, and notes
+- Built-in interactive CVSS v3.1 calculator with vector string generation
+- Evidence attachments (screenshots) per finding
+- HTTP Proofs — import request/response pairs from Burp Suite, annotate with markdown, include selectively in reports
+- Burp Suite XML import
+
+**Targets & Scope**
+- Track hosts, IPs, CIDRs, URLs with in/out-of-scope status
+- Port and service inventory per target
+- Endpoint tracking with HTTP method, status code, and notes
+
+**Methodologies**
+- Full OWASP WSTG checklist with per-test notes and status
+- PortSwigger Web Security Academy lab tracker
+- Custom methodology builder — create reusable test libraries for your team
+
+**Reporting**
+- PDF export — professional report with executive summary, findings, risk breakdown, evidence, HTTP proofs, WSTG results, and targets table. Configurable sections, fonts, accent color, watermark, page header/footer, and password encryption
+- DOCX export — full Word document generated server-side, no LibreOffice required
+
+**Client Portal**
+- Read-only view for clients, accessible via invite link
+- Configurable visibility: findings, WSTG progress, targets, activity feed
+- Ticket system — clients can open queries linked to specific findings; team responds in thread
+
+**Collaboration**
+- Team members with roles: owner, editor, viewer
+- Real-time activity feed via WebSockets
+- Collaborative whiteboard per project
+- AI assistant for remediation suggestions and report text
+
+**Platform**
+- Project branding — upload logo per engagement
+- Timeline tracking with start, end, and report dates
+- Dark and light theme, compact density mode
 
 ---
 
 ## Stack
 
-| Layer     | Technology                        |
-|-----------|-----------------------------------|
-| Backend   | Node.js + Express                 |
-| Database  | PostgreSQL                        |
-| Auth      | JWT (access + refresh tokens)     |
-| Realtime  | WebSockets (ws)                   |
-| Frontend  | Vanilla JS, HTML, CSS             |
+| Layer         | Technology                    |
+|---------------|-------------------------------|
+| Backend       | Node.js + Express             |
+| Database      | PostgreSQL 15+                |
+| Auth          | JWT (access + refresh tokens) |
+| Realtime      | WebSockets                    |
+| Frontend      | Vanilla JS, HTML, CSS         |
 | Reverse proxy | Nginx                         |
-| Process   | PM2                               |
+| Process       | PM2                           |
+| PDF export    | Puppeteer (Chromium headless) |
+| DOCX export   | docx (native, no LibreOffice) |
 
 ---
 
@@ -54,12 +83,15 @@ No more delivering a PDF at the end and hoping the client trusts the process. Wi
 
 ### Requirements
 
+- Ubuntu 22.04 LTS (or similar)
 - Node.js 18+
-- PostgreSQL 14+
+- PostgreSQL 15+
 - Nginx
-- PM2
+- PM2 (`npm install -g pm2`)
+- A domain with DNS pointed to your server
+- Chromium or Google Chrome (for PDF export)
 
-### Setup
+### Quick setup
 
 ```bash
 # 1. Clone the repo
@@ -68,34 +100,42 @@ cd flowdit
 
 # 2. Configure environment
 cp .env.example .env
-cp backend/.env.example backend/.env
-# Edit both .env files with your values
+# Edit .env with your values (DB credentials, JWT secret, domain)
 
 # 3. Install backend dependencies
-cd backend && npm install
+cd backend && npm install && cd ..
 
-# 4. Start the backend (runs migrations automatically on first start)
-pm2 start src/index.js --name flowdit
-pm2 save
+# 4. Run database migrations
+cd backend && node src/db/migrate.js && cd ..
 
-# 5. Configure Nginx
-# Point your domain to the frontend/ directory
-# Proxy /api and /ws to the backend port (default: 3000)
-# See DEPLOY.md for full Nginx config
+# 5. Start the backend with PM2
+cd backend && pm2 start src/index.js --name flowdit-backend
+pm2 save && pm2 startup
+
+# 6. Configure Nginx
+# Point your domain root to frontend/
+# Proxy /api and /ws to the backend port (default: 4000)
+# See DEPLOY.md for the full Nginx config and SSL setup
 ```
 
 ### Environment variables
 
-| Variable        | Description                        |
-|-----------------|------------------------------------|
-| `DB_HOST`       | PostgreSQL host                    |
-| `DB_NAME`       | Database name                      |
-| `DB_USER`       | Database user                      |
-| `DB_PASSWORD`   | Database password                  |
-| `JWT_SECRET`    | Secret for JWT signing             |
-| `PORT`          | Backend port (default: 3000)       |
+| Variable        | Description                              | Required |
+|-----------------|------------------------------------------|----------|
+| `PORT`          | Backend port (default: 4000)            | No       |
+| `DB_HOST`       | PostgreSQL host                          | Yes      |
+| `DB_PORT`       | PostgreSQL port (default: 5432)         | No       |
+| `DB_NAME`       | Database name                            | Yes      |
+| `DB_USER`       | Database user                            | Yes      |
+| `DB_PASSWORD`   | Database password                        | Yes      |
+| `JWT_SECRET`    | Secret for JWT signing (min 64 chars)   | Yes      |
+| `CORS_ORIGIN`   | Allowed frontend origin(s)              | Yes      |
+| `FRONTEND_URL`  | Frontend URL, used in email links       | Yes      |
+| `SMTP_HOST`     | SMTP server for email notifications     | No       |
+| `SMTP_USER`     | SMTP username                            | No       |
+| `SMTP_PASS`     | SMTP password                            | No       |
 
-See `.env.example` and `backend/.env.example` for the full list.
+See `.env.example` for the full list with descriptions.
 
 ---
 
@@ -105,32 +145,42 @@ See `.env.example` and `backend/.env.example` for the full list.
 flowdit/
 ├── backend/
 │   └── src/
-│       ├── db/          # PostgreSQL client + migrations
-│       ├── middleware/  # Auth, project access control
-│       ├── routes/      # REST API endpoints
-│       └── services/    # WebSocket, activity log
+│       ├── db/           # PostgreSQL client + migrations (idempotent)
+│       ├── middleware/   # Auth guards, project access control
+│       ├── routes/       # REST API endpoints
+│       └── services/     # WebSocket hub, activity log, DOCX renderer, mailer
 ├── frontend/
-│   ├── css/             # Global styles
+│   ├── css/              # Global styles (Signal design system)
+│   ├── img/              # Logo, favicon
 │   ├── js/
-│   │   ├── views/       # Page-level JS (vulns, targets, dashboard...)
-│   │   ├── services/    # API client, state, WebSocket, utils
-│   │   └── components/  # Shared UI components (activity feed...)
-│   └── *.html           # One HTML file per view
-└── nginx/               # Nginx config example
+│   │   ├── views/        # Page-level JS (dashboard, vulns, targets…)
+│   │   ├── services/     # API client, state, WebSocket client, utils
+│   │   └── components/   # Shared UI (activity feed)
+│   └── *.html            # One HTML file per view
+└── nginx/                # Nginx config reference
 ```
 
 ---
 
 ## Roadmap
 
-- [ ] Public registration + organization/workspace support
-- [ ] Jira / Linear integration for ticket sync
-- [ ] Nessus / Burp XML import
+- [ ] Nessus `.nessus` import
+- [ ] Nmap XML import
+- [ ] Common vulnerability template library
+- [ ] Retest / remediation tracking workflow
+- [ ] Email notifications for ticket replies
+- [ ] CVSS v4.0 support
 - [ ] Two-factor authentication
-- [ ] Audit log export
+- [ ] CSV export for executive summaries
+
+---
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.

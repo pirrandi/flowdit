@@ -4,3 +4,8 @@ backend/.env
 .pm2/
 dist/
 *.log
+
+# Internal / not for public repo
+ideas.md
+handoff/
+Screenshot_*.png

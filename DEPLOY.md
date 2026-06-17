@@ -1,294 +1,267 @@
-# HackList — Guía de Deploy en VPS (DigitalOcean / Hetzner)
+# Flowdit — Self-hosting Guide
 
-## Requisitos mínimos del VPS
-- Ubuntu 22.04 LTS
-- 1 vCPU, 1GB RAM (suficiente para empezar)
-- 20GB disco
-- Dominio configurado apuntando a la IP del VPS
+This guide covers a full production deployment on Ubuntu 22.04 LTS using Node.js, PostgreSQL, Nginx, PM2, and Let's Encrypt.
+
+## Requirements
+
+- Ubuntu 22.04 LTS (or similar Debian-based)
+- 1 vCPU, 1 GB RAM minimum
+- A domain with an A record pointing to your server IP
+- Ports 80 and 443 open
 
 ---
 
-## 1. Preparar el VPS
+## 1. Install dependencies
 
 ```bash
-# Conectar al VPS
-ssh root@TU_IP_VPS
-
-# Actualizar sistema
+# System update
 apt update && apt upgrade -y
 
-# Instalar Docker y Docker Compose
-curl -fsSL https://get.docker.com | sh
-apt install docker-compose-plugin -y
+# Node.js 20 (via NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
 
-# Crear usuario no-root (recomendado)
-adduser hacklist
-usermod -aG docker hacklist
-su - hacklist
+# PostgreSQL 15
+apt install -y postgresql postgresql-contrib
+
+# Nginx
+apt install -y nginx
+
+# PM2 (process manager)
+npm install -g pm2
+
+# Certbot (SSL)
+apt install -y certbot python3-certbot-nginx
+
+# Chromium (for PDF export)
+apt install -y chromium-browser
+# or on some systems:
+# apt install -y chromium
 ```
 
 ---
 
-## 2. Subir el proyecto al VPS
+## 2. Set up PostgreSQL
 
 ```bash
-# Desde tu máquina local
-scp -r hacklist/ hacklist@TU_IP_VPS:~/
+# Switch to postgres user
+sudo -u postgres psql
 
-# O usa git (recomendado para producción):
-# En tu VPS:
-git clone https://github.com/TU_USUARIO/hacklist.git
-cd hacklist
+-- Inside psql:
+CREATE USER flowdit_user WITH PASSWORD 'your_strong_password';
+CREATE DATABASE flowdit OWNER flowdit_user;
+GRANT ALL PRIVILEGES ON DATABASE flowdit TO flowdit_user;
+\q
 ```
 
 ---
 
-## 3. Configurar variables de entorno
+## 3. Clone and configure
 
 ```bash
-cd ~/hacklist
+# Clone the repo
+git clone https://github.com/Pirrandi/flowdit.git /var/www/flowdit
+cd /var/www/flowdit
 
-# Copiar la plantilla
-cp .env.production .env
-
-# Editar con tus valores reales
+# Configure environment
+cp .env.example .env
 nano .env
 ```
 
-**Campos a cambiar obligatoriamente:**
-```
-FRONTEND_DOMAIN=hacklist.tudominio.com
-API_DOMAIN=api.hacklist.tudominio.com
-CORS_ORIGIN=https://hacklist.tudominio.com
-ACME_EMAIL=tu@email.com
-DB_PASSWORD=contraseña_muy_segura_aqui
-JWT_SECRET=genera_uno_con_el_comando_de_abajo
-```
+Fill in all required values in `.env`:
 
-**Generar JWT_SECRET seguro:**
-```bash
-openssl rand -hex 64
+```env
+NODE_ENV=production
+PORT=4000
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=flowdit
+DB_USER=flowdit_user
+DB_PASSWORD=your_strong_password
+
+# Generate with: openssl rand -hex 64
+JWT_SECRET=your_64_char_random_string
+JWT_EXPIRES_IN=7d
+JWT_REFRESH_EXPIRES_IN=30d
+
+CORS_ORIGIN=https://yourdomain.com
+FRONTEND_URL=https://yourdomain.com
+RATE_LIMIT_MAX=200
+
+# Optional SMTP for email notifications
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=Flowdit <no-reply@yourdomain.com>
 ```
 
 ---
 
-## 4. Configurar el frontend para apuntar a la API
-
-Editar `frontend/index.html`, buscar esta línea:
-```javascript
-window.HACKLIST_API = 'http://localhost:4000/api';
-```
-Cambiar a:
-```javascript
-window.HACKLIST_API = 'https://api.hacklist.tudominio.com/api';
-```
-
----
-
-## 5. Configurar DNS
-
-En tu proveedor de DNS, crear dos registros A:
-```
-hacklist.tudominio.com     A    TU_IP_VPS
-api.hacklist.tudominio.com A    TU_IP_VPS
-```
-
-Esperar propagación (5-30 minutos).
-
----
-
-## 6. Desplegar
+## 4. Install backend dependencies and run migrations
 
 ```bash
-cd ~/hacklist
-
-# Construir y arrancar todo
-docker compose --env-file .env up -d --build
-
-# Ver logs en tiempo real
-docker compose logs -f
-
-# Ver estado de los servicios
-docker compose ps
-```
-
-Traefik obtendrá los certificados SSL automáticamente en el primer arranque.
-
----
-
-## 7. Verificar el deploy
-
-```bash
-# API health check
-curl https://api.hacklist.tudominio.com/health
-
-# Respuesta esperada:
-# {"status":"ok","ts":"2025-..."}
-```
-
-Abrir en el navegador: `https://hacklist.tudominio.com`
-
----
-
-## Comandos útiles del día a día
-
-```bash
-# Ver logs del API
-docker compose logs api -f
-
-# Reiniciar solo el API (tras un cambio)
-docker compose restart api
-
-# Rebuild tras cambios en el código
-docker compose up -d --build api
-
-# Entrar al contenedor de la DB
-docker compose exec db psql -U hacklist_user -d hacklist
-
-# Backup de la base de datos
-docker compose exec db pg_dump -U hacklist_user hacklist > backup_$(date +%Y%m%d).sql
-
-# Restaurar backup
-cat backup_FECHA.sql | docker compose exec -T db psql -U hacklist_user -d hacklist
-
-# Parar todo
-docker compose down
-
-# Parar y borrar datos (¡CUIDADO!)
-docker compose down -v
+cd /var/www/flowdit/backend
+npm install
+node src/db/migrate.js
 ```
 
 ---
 
-## Actualizar la aplicación
+## 5. Start with PM2
 
 ```bash
-# Desde tu máquina local, subir cambios
-scp -r frontend/ hacklist@TU_IP_VPS:~/hacklist/
-scp -r backend/src/ hacklist@TU_IP_VPS:~/hacklist/backend/
+cd /var/www/flowdit/backend
+pm2 start src/index.js --name flowdit-backend
+pm2 save
+pm2 startup   # follow the printed command to enable auto-start on reboot
+```
 
-# En el VPS
-cd ~/hacklist
-docker compose up -d --build
+Verify it's running:
+
+```bash
+pm2 status
+curl http://localhost:4000/health
+# Expected: {"status":"ok"}
 ```
 
 ---
 
-## Seguridad adicional (recomendado)
+## 6. Configure Nginx
 
-### Firewall básico
+Create `/etc/nginx/sites-available/flowdit`:
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name yourdomain.com www.yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Serve frontend
+    root /var/www/flowdit/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API
+    location /api {
+        proxy_pass         http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # Allow large request bodies (evidence images)
+        client_max_body_size 50M;
+        proxy_read_timeout   120s;
+    }
+
+    # Proxy WebSocket
+    location /ws {
+        proxy_pass         http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+Enable and test:
+
 ```bash
-ufw allow 22/tcp    # SSH
-ufw allow 80/tcp    # HTTP (Traefik redirect)
-ufw allow 443/tcp   # HTTPS
+ln -s /etc/nginx/sites-available/flowdit /etc/nginx/sites-enabled/
+nginx -t
+systemctl reload nginx
+```
+
+---
+
+## 7. Get SSL certificate
+
+```bash
+certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
+
+Certbot will automatically configure the SSL directives and set up auto-renewal.
+
+---
+
+## 8. Verify
+
+```bash
+# Backend health
+curl https://yourdomain.com/api/health
+
+# Open in browser
+# https://yourdomain.com → should show the Flowdit login page
+```
+
+---
+
+## Day-to-day operations
+
+```bash
+# View backend logs
+pm2 logs flowdit-backend
+
+# Restart backend
+pm2 restart flowdit-backend
+
+# Update to latest version
+cd /var/www/flowdit
+git pull
+cd backend && npm install
+node src/db/migrate.js   # always safe to run (idempotent)
+pm2 restart flowdit-backend
+```
+
+---
+
+## Database backup
+
+```bash
+# Manual backup
+pg_dump -U flowdit_user -h localhost flowdit > backup_$(date +%Y%m%d).sql
+
+# Restore
+psql -U flowdit_user -h localhost flowdit < backup_YYYYMMDD.sql
+```
+
+Automate with cron (`crontab -e`):
+
+```bash
+0 3 * * * pg_dump -U flowdit_user -h localhost flowdit > /var/backups/flowdit_$(date +\%Y\%m\%d).sql
+```
+
+---
+
+## Security hardening (recommended)
+
+```bash
+# Firewall
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
 ufw enable
+
+# Fail2ban for SSH brute force protection
+apt install -y fail2ban
+systemctl enable --now fail2ban
 ```
-
-### Fail2ban para SSH
-```bash
-apt install fail2ban -y
-systemctl enable fail2ban
-```
-
-### Backups automáticos de DB
-Añadir a crontab (`crontab -e`):
-```bash
-0 3 * * * cd ~/hacklist && docker compose exec -T db pg_dump -U hacklist_user hacklist > ~/backups/backup_$(date +\%Y\%m\%d).sql
-```
-
----
-
-## Estructura final del proyecto
-
-```
-hacklist/
-├── backend/
-│   ├── src/
-│   │   ├── db/
-│   │   │   ├── index.js        # Conexión PostgreSQL
-│   │   │   └── migrate.js      # Migraciones (auto-run al arrancar)
-│   │   ├── middleware/
-│   │   │   ├── auth.js         # JWT verification
-│   │   │   └── project.js      # Project access control
-│   │   ├── routes/
-│   │   │   ├── auth.js         # /api/auth/*
-│   │   │   ├── projects.js     # /api/projects/*
-│   │   │   ├── wstg.js         # /api/projects/:id/wstg/*
-│   │   │   ├── ps.js           # /api/projects/:id/ps/*
-│   │   │   └── vulns.js        # /api/projects/:id/vulns/*
-│   │   └── index.js            # Express app entry point
-│   ├── Dockerfile
-│   ├── package.json
-│   └── .env.example
-├── frontend/
-│   ├── index.html              # App principal
-│   ├── api.js                  # Cliente API
-│   └── data.js                 # WSTG + PortSwigger data
-├── nginx/
-│   └── frontend.conf           # Config Nginx para frontend
-├── docker-compose.yml
-└── .env.production             # Plantilla de variables
-```
-
----
-
-## API Reference
-
-```
-POST   /api/auth/register          Crear cuenta
-POST   /api/auth/login             Login
-POST   /api/auth/refresh           Renovar token
-POST   /api/auth/logout            Logout
-GET    /api/auth/me                Perfil del usuario
-
-GET    /api/projects               Listar proyectos del usuario
-POST   /api/projects               Crear proyecto
-GET    /api/projects/:id           Ver proyecto
-PATCH  /api/projects/:id           Editar proyecto
-DELETE /api/projects/:id           Borrar proyecto
-POST   /api/projects/join          Unirse con token de invitación
-
-GET    /api/projects/:id/members           Listar miembros
-PATCH  /api/projects/:id/members/:uid      Cambiar rol
-DELETE /api/projects/:id/members/:uid      Expulsar miembro
-
-POST   /api/projects/:id/invites           Crear invitación
-GET    /api/projects/:id/invites           Listar invitaciones
-DELETE /api/projects/:id/invites/:invId    Cancelar invitación
-
-GET    /api/projects/:id/wstg              Progreso WSTG
-PATCH  /api/projects/:id/wstg/:testId/status    Estado test
-PATCH  /api/projects/:id/wstg/:testId/note      Notas del test
-PATCH  /api/projects/:id/wstg/:testId/items/:i  Check item
-
-GET    /api/projects/:id/ps                     Progreso PortSwigger
-PATCH  /api/projects/:id/ps/:catId/:labIdx      Toggle lab
-
-GET    /api/projects/:id/vulns             Custom vulns
-POST   /api/projects/:id/vulns             Crear vuln
-PATCH  /api/projects/:id/vulns/:vulnId     Editar vuln
-DELETE /api/projects/:id/vulns/:vulnId     Borrar vuln
-```
-
----
-
-## Roadmap para monetización
-
-### Tier Free
-- 1 proyecto
-- Acceso completo WSTG + PortSwigger
-- 3 custom vulns
-
-### Tier Pro ($8/mes)
-- Proyectos ilimitados
-- Custom vulns ilimitadas
-- Exportar reporte PDF
-- Historial de cambios
-
-### Tier Teams ($20/mes por equipo)
-- Todo lo de Pro
-- Colaboración en equipo
-- Roles (owner/editor/viewer)
-- Dashboard compartido
-
-**Para implementar pagos:** Stripe + webhook que actualiza un campo `plan` en la tabla `users`.
