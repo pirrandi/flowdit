@@ -223,6 +223,23 @@ function buildVulnCard(v) {
       `<img src="${img.data}" class="evidence-thumb" alt="${esc(img.name||'')}" onclick="openEvidenceViewer('${v.id}',${i})">`
     ).join('')}</div></div>` : '';
 
+  const proofs = (v.http_proofs || []);
+  const httpH = proofs.length ? `<div class="items-section">
+    <div class="items-label">HTTP Proofs (${proofs.length})</div>
+    ${proofs.map((pr, i) => `
+      <div class="http-proof">
+        <div class="http-proof-head" onclick="this.nextElementSibling.classList.toggle('open')">
+          <span class="http-proof-method">${esc(pr.method || 'HTTP')}</span>
+          <span class="http-proof-label">Proof #${i+1}</span>
+          <span class="http-proof-toggle">▶</span>
+        </div>
+        <div class="http-proof-body">
+          ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${esc(pr.request)}</pre>` : ''}
+          ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${esc(pr.response)}</pre>` : ''}
+        </div>
+      </div>`).join('')}
+  </div>` : '';
+
   const editorBadge = v.editor_username ? `
     <div class="last-editor" style="margin-left:auto">
       ${avatarHtml(v.editor_username, memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 20, v.editor_avatar_url||null)}
@@ -247,7 +264,7 @@ function buildVulnCard(v) {
         <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">✕</button>
       </div>
     </div>
-    <div class="vuln-body" id="vbody-${v.id}">${descH}${itemsH}${payH}${noteH}${remH}${evidH}</div>`;
+    <div class="vuln-body" id="vbody-${v.id}">${descH}${itemsH}${payH}${noteH}${remH}${evidH}${httpH}</div>`;
   return card;
 }
 

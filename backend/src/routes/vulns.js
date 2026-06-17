@@ -53,12 +53,12 @@ router.post('/', requireEditor, [
 });
 
 router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','status','checked_items','target_id','cvss_vector','cvss_score','cwe'];
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','target_id','cvss_vector','cvss_score','cwe'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
       let val = req.body[f];
-      if (['items','payloads','checked_items','evidence'].includes(f)) val = JSON.stringify(val);
+      if (['items','payloads','checked_items','evidence','http_proofs'].includes(f)) val = JSON.stringify(val);
       updates.push(`${f}=$${values.length+1}`);
       values.push(val);
     }

@@ -616,6 +616,25 @@ function buildDetailedFindings(vulns, sec) {
       out.push(spacer(80));
     }
 
+    // HTTP Proofs (request/response from scanner imports)
+    const httpProofs = Array.isArray(v.http_proofs) ? v.http_proofs : [];
+    if (httpProofs.length) {
+      out.push(labelText(`HTTP Proofs (${httpProofs.length})`));
+      httpProofs.forEach((proof, idx) => {
+        const label = proof.method ? `${proof.method} — Proof #${idx + 1}` : `Proof #${idx + 1}`;
+        out.push(p(label, { bold: true, size: 20, color: TEXT_MUTE }));
+        if (proof.request?.trim()) {
+          out.push(p('Request', { size: 18, italic: true, color: TEXT_MUTE }));
+          out.push(...codeBlock(proof.request.slice(0, 4000)));
+        }
+        if (proof.response?.trim()) {
+          out.push(p('Response', { size: 18, italic: true, color: TEXT_MUTE }));
+          out.push(...codeBlock(proof.response.slice(0, 4000)));
+        }
+        out.push(spacer(80));
+      });
+    }
+
     out.push(new Paragraph({ spacing: { after: 0 }, border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: 'E5E7EB' } }, children: [] }));
   });
 

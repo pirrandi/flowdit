@@ -327,6 +327,9 @@ const migrations = [
   `ALTER TABLE ticket_replies ALTER COLUMN author_id DROP NOT NULL`,
   `ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS client_name VARCHAR(200)`,
 
+  // ── HTTP PROOFS (request/response from scanner imports) ─────────────
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS http_proofs JSONB NOT NULL DEFAULT '[]'`,
+
   // ── WHITEBOARD ───────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS whiteboard_state (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

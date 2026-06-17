@@ -39,23 +39,33 @@ async function upsertTarget(projectId, host, userId, targetMap) {
   return { id, created: true };
 }
 
-async function insertVuln(projectId, userId, { name, category, severity, description, remediation, notes, targetId }) {
+async function insertVuln(projectId, userId, { name, category, severity, description, remediation, notes, targetId, httpProofs = [] }) {
   await db.query(
     `INSERT INTO custom_vulns
        (project_id, name, category, severity, description, remediation, notes,
-        items, payloads, evidence, target_id, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,'[]','[]','[]',$8,$9,$9)`,
-    [projectId, name, category, severity, description, remediation, notes, targetId, userId]
+        items, payloads, evidence, http_proofs, target_id, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'[]','[]','[]',$8,$9,$10,$10)`,
+    [projectId, name, category, severity, description, remediation, notes, JSON.stringify(httpProofs), targetId, userId]
   );
 }
 
 // ── Burp Suite parser ───────────────────────────────────────────────────
 const BURP_SEV = { high:'high', medium:'medium', low:'low', information:'info', informational:'info', 'false positive':'info', info:'info' };
 
+function decodeBurpField(field, isBase64) {
+  if (field == null) return null;
+  const raw = typeof field === 'object' ? (field['#text'] || '') : String(field);
+  if (!raw.trim()) return null;
+  if (isBase64) {
+    try { return Buffer.from(raw.trim(), 'base64').toString('utf8'); } catch { return raw; }
+  }
+  return raw;
+}
+
 async function parseBurp(xml, projectId, userId, targetMap) {
   const parser = new XMLParser({
     ignoreAttributes: false, attributeNamePrefix: '@_',
-    isArray: n => n === 'issue',
+    isArray: n => ['issue', 'requestresponse'].includes(n),
   });
   const root = parser.parse(xml)?.issues;
   if (!root) throw new Error('Invalid Burp XML — missing <issues> root');
@@ -66,8 +76,21 @@ async function parseBurp(xml, projectId, userId, targetMap) {
   for (const issue of issues) {
     const hostRaw = issue.host;
     const host    = hostRaw ? extractHostname(typeof hostRaw === 'object' ? (hostRaw['#text'] || hostRaw['@_ip'] || '') : hostRaw) : null;
-    const target = await upsertTarget(projectId, host, userId, targetMap);
+    const target  = await upsertTarget(projectId, host, userId, targetMap);
     if (target?.created) targetsCreated++;
+
+    // Extract request/response pairs
+    const httpProofs = [].concat(issue.requestresponse || []).map(rr => {
+      const reqField  = rr.request;
+      const respField = rr.response;
+      const reqB64    = reqField?.['@_base64'] === 'true';
+      const respB64   = respField?.['@_base64'] === 'true';
+      const method    = reqField?.['@_method'] || null;
+      const request   = decodeBurpField(reqField, reqB64);
+      const response  = decodeBurpField(respField, respB64);
+      if (!request && !response) return null;
+      return { method, request, response };
+    }).filter(Boolean);
 
     await insertVuln(projectId, userId, {
       name:        stripHtml(issue.name) || 'Unnamed Finding',
@@ -77,6 +100,7 @@ async function parseBurp(xml, projectId, userId, targetMap) {
       remediation: [stripHtml(issue.remediationBackground), stripHtml(issue.remediationDetail)].filter(Boolean).join('\n\n'),
       notes:       [issue.location && `Location: ${stripHtml(issue.location)}`, issue.confidence && `Confidence: ${stripHtml(issue.confidence)}`].filter(Boolean).join('\n'),
       targetId:    target?.id || null,
+      httpProofs,
     });
     imported++;
   }

@@ -1354,6 +1354,21 @@ body {
 .evidence-preview-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--bg3); border-radius: var(--r-sm); border: 1px solid var(--b1); margin-bottom: 4px; }
 .evidence-name { flex: 1; font-size: 10px; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* HTTP Proofs */
+.http-proof { border: 1px solid var(--b1); border-radius: var(--r-sm); margin-bottom: 6px; overflow: hidden; }
+.http-proof-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg2); cursor: pointer; user-select: none; }
+.http-proof-head:hover { background: var(--bg3); }
+.http-proof-method { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--a); background: var(--a)15; border: 1px solid var(--a)33; border-radius: 3px; padding: 1px 6px; flex-shrink: 0; }
+.http-proof-label { font-size: 11px; color: var(--t2); flex: 1; }
+.http-proof-toggle { font-size: 9px; color: var(--t3); transition: transform .15s; }
+.http-proof-body { display: none; padding: 8px 10px; background: var(--bg); border-top: 1px solid var(--b1); }
+.http-proof-body.open { display: block; }
+.http-proof-body.open ~ .http-proof-head .http-proof-toggle,
+.http-proof-head:has(+ .http-proof-body.open) .http-proof-toggle { transform: rotate(90deg); }
+.http-proof-section-label { font-size: 9px; color: var(--t3); text-transform: uppercase; letter-spacing: .08em; margin: 8px 0 4px; }
+.http-proof-section-label:first-child { margin-top: 0; }
+.http-proof-code { margin: 0; font-family: var(--mono); font-size: 10px; color: var(--t2); background: var(--bg1); border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 8px 10px; white-space: pre; overflow-x: auto; max-height: 300px; overflow-y: auto; line-height: 1.5; }
+
 /* ── LOGO IMAGES ─────────────────────────────────────────────────── */
 .topbar-logo-img { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
 .login-logo-img  { width: 48px; height: 48px; object-fit: contain; }
