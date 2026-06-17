@@ -134,6 +134,17 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
       if (prev) prev.style.cssText = 'display:block!important;padding:0!important;width:100%!important;overflow:visible!important;height:auto!important;';
     });
 
+    // Wait for all evidence images (base64 data URLs) to fully decode before PDF capture.
+    // img.complete is true immediately for data URLs, but decode() resolves only after
+    // the image has been decoded and is ready to paint.
+    await page.evaluate(() => Promise.all(
+      Array.from(document.images).map(img =>
+        img.decode ? img.decode().catch(() => {}) : Promise.resolve()
+      )
+    ));
+    // Force a layout reflow to flush paint before PDF capture
+    await page.evaluate(() => void document.body.getBoundingClientRect());
+
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
