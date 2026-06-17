@@ -181,7 +181,7 @@ function _buildNode(nodeData, target) {
   const statusDot = { active: '#4caf50', completed: '#2196f3', 'out-of-scope': '#9e9e9e' }[target.status] || '#9e9e9e';
 
   const el = document.createElement('div');
-  el.className = 'wb-node' + (nodeData.collapsed ? ' collapsed' : '');
+  el.className = 'wb-node' + (nodeData.collapsed ? ' collapsed' : '') + (nodeData.h ? ' wb-node--sized' : '');
   el.dataset.nodeId = nodeData.id;
   el.style.left  = nodeData.x + 'px';
   el.style.top   = nodeData.y + 'px';
@@ -189,27 +189,25 @@ function _buildNode(nodeData, target) {
   if (nodeData.h) el.style.height = nodeData.h + 'px';
 
   const vulnRows = vulns.length
-    ? vulns.slice(0, 8).map(v => `
+    ? vulns.map(v => `
         <div class="wb-vuln-row" style="border-left-color:${SEV_COLOR[v.severity]||'#666'}">
           <span class="wb-vuln-sev" style="color:${SEV_COLOR[v.severity]||'#666'}">${v.severity.slice(0,4).toUpperCase()}</span>
           <span class="wb-vuln-name" title="${esc(v.name)}">${esc(v.name)}</span>
         </div>`).join('')
-      + (vulns.length > 8 ? `<div class="wb-item-more">+${vulns.length - 8} more</div>` : '')
     : '<div class="wb-empty-section">No findings yet</div>';
 
   const portChips = ports.length
     ? `<div class="wb-ports-wrap">`
-      + ports.slice(0, 10).map(p =>
+      + ports.map(p =>
           `<span class="wb-port-chip ${p.state === 'open' ? 'open' : 'closed'}">
              <span class="wb-port-num">${p.port}</span>${p.protocol !== 'tcp' ? `<span class="wb-port-svc">/${esc(p.protocol)}</span>` : ''}${p.service ? `<span class="wb-port-svc"> ${esc(p.service)}</span>` : ''}
            </span>`
         ).join('')
-      + (ports.length > 10 ? `<span class="wb-item-more">+${ports.length - 10}</span>` : '')
       + `</div>`
     : '<div class="wb-empty-section">No ports</div>';
 
   const epRows = endpoints.length
-    ? endpoints.slice(0, 8).map(e =>
+    ? endpoints.map(e =>
         `<div class="wb-ep-row" data-ep-host="${esc(target.host)}" data-ep-path="${esc(e.path)}">
            <span class="wb-ep-method" style="color:${METHOD_COLOR[e.method]||'#aaa'}">${esc(e.method)}</span>
            <span class="wb-ep-path" title="${esc(e.path)}">${esc(e.path)}</span>
@@ -217,7 +215,6 @@ function _buildNode(nodeData, target) {
            <span class="wb-ep-copy">copy</span>
          </div>`
       ).join('')
-      + (endpoints.length > 8 ? `<div class="wb-item-more">+${endpoints.length - 8} more</div>` : '')
     : '<div class="wb-empty-section">No endpoints</div>';
 
   el.innerHTML = `
@@ -503,6 +500,7 @@ function _makeResizable(el, data, minW, minH, type) {
       data.h = Math.round(Math.max(minH, startH + (e.clientY - startY) / z));
       el.style.width  = data.w + 'px';
       el.style.height = data.h + 'px';
+      if (type === 'node') el.classList.add('wb-node--sized');
       _updateAllEdges();
     }
     function onUp() {

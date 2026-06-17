@@ -119,7 +119,9 @@
   .wb-node-remove   { font-size: 11px; color: var(--t4); cursor: pointer; flex-shrink: 0;
                       padding: 1px 4px; border-radius: 3px; }
   .wb-node-remove:hover { background: rgba(255,60,60,.15); color: #ff4040; }
-  .wb-node-body     { padding: 6px 10px 10px; flex: 1; min-height: 0; overflow-y: auto; }
+  .wb-node-body     { padding: 6px 10px 10px; flex: 1; min-height: 0; overflow-y: auto;
+                      max-height: 380px; }
+  .wb-node--sized .wb-node-body { max-height: none; }
   .wb-node.collapsed .wb-node-body { display: none; }
   .wb-node-footer   { font-size: 10px; color: var(--t4); text-align: right; margin-top: 6px; }
   .wb-node-footer a { color: var(--a); text-decoration: none; }
