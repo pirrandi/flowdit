@@ -3215,6 +3215,7 @@ function buildReport() {
                 <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--t3);margin-bottom:4px">${label}</div>`;
               if (proof.request?.trim()) html += `<div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Request</div><pre class="rpt-code" style="white-space:pre-wrap;word-break:break-all;font-size:10px;line-height:1.5">${esc(proof.request)}</pre>`;
               if (proof.response?.trim()) html += `<div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin:6px 0 3px">Response</div><pre class="rpt-code" style="white-space:pre-wrap;word-break:break-all;font-size:10px;line-height:1.5">${esc(proof.response)}</pre>`;
+              if (proof.annotation?.trim()) html += `<div style="margin-top:8px;padding:6px 10px;background:rgba(124,58,237,.06);border-left:2px solid var(--a);border-radius:0 4px 4px 0;font-size:11px;line-height:1.6">${renderMd(proof.annotation)}</div>`;
               html += `</div>`;
             });
             html += '</div>';

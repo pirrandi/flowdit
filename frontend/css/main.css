@@ -1370,6 +1370,10 @@ body {
 .http-proof-section-label { font-size: 9px; color: var(--t3); text-transform: uppercase; letter-spacing: .08em; margin: 8px 0 4px; }
 .http-proof-section-label:first-child { margin-top: 0; }
 .http-proof-code { margin: 0; font-family: var(--mono); font-size: 10px; color: var(--t2); background: var(--bg1); border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 8px 10px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; line-height: 1.5; }
+.http-proof-annotation { background: var(--a)08; border-left: 2px solid var(--a); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 6px 10px; font-size: 11px; color: var(--t1); line-height: 1.6; }
+.http-proof-annotation p { margin: 0 0 4px; }
+.http-proof-annotation p:last-child { margin: 0; }
+.http-proof-annotation code { font-family: var(--mono); font-size: 10px; background: var(--a)15; color: var(--a); border-radius: 3px; padding: 1px 4px; }
 
 /* ── LOGO IMAGES ─────────────────────────────────────────────────── */
 .topbar-logo-img { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }

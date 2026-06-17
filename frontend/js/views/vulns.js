@@ -243,6 +243,7 @@ function buildVulnCard(v) {
         <div class="http-proof-body">
           ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${esc(pr.request)}</pre>` : ''}
           ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${esc(pr.response)}</pre>` : ''}
+          ${pr.annotation ? `<div class="http-proof-section-label" style="margin-top:10px">Anotación</div><div class="http-proof-annotation md-body">${renderMd(pr.annotation)}</div>` : ''}
         </div>
       </div>`;
     }).join('')}
@@ -613,20 +614,27 @@ function editHttpProof(vulnId, idx) {
   const modal = document.createElement('div');
   modal.style.cssText = 'background:var(--bg2);border:1px solid var(--b2);border-radius:10px;padding:20px;width:700px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;gap:12px';
 
+  const taStyle = 'width:100%;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;color:var(--t1);padding:8px;resize:vertical;line-height:1.5;box-sizing:border-box';
+
   const reqTA = document.createElement('textarea');
-  reqTA.style.cssText = 'width:100%;height:200px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;color:var(--t1);padding:8px;resize:vertical;line-height:1.5;box-sizing:border-box';
+  reqTA.style.cssText = taStyle; reqTA.style.height = '180px';
   reqTA.value = proof.request || '';
 
   const resTA = document.createElement('textarea');
-  resTA.style.cssText = reqTA.style.cssText;
+  resTA.style.cssText = taStyle; resTA.style.height = '180px';
   resTA.value = proof.response || '';
+
+  const annTA = document.createElement('textarea');
+  annTA.style.cssText = taStyle; annTA.style.height = '80px'; annTA.style.fontFamily = 'inherit';
+  annTA.placeholder = 'Ej: El parámetro `name` en la línea 3 se refleja sin sanitizar. Payload: `<script>alert(1)</script>`';
+  annTA.value = proof.annotation || '';
 
   modal.innerHTML = `
     <div style="font-size:13px;font-weight:600;color:var(--t1)">
       Editar HTTP Proof #${idx+1}
       <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:8px">${esc(proof.method||'HTTP')}</span>
     </div>
-    <div style="overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+    <div style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;min-height:0">
       <div>
         <div class="http-proof-section-label" style="margin-bottom:4px">Request</div>
         <div id="hp-req-slot"></div>
@@ -635,14 +643,19 @@ function editHttpProof(vulnId, idx) {
         <div class="http-proof-section-label" style="margin-bottom:4px">Response</div>
         <div id="hp-res-slot"></div>
       </div>
+      <div>
+        <div class="http-proof-section-label" style="margin-bottom:4px">Anotación <span style="text-transform:none;letter-spacing:0;font-size:9px;color:var(--t3)">(markdown)</span></div>
+        <div id="hp-ann-slot"></div>
+      </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
       <button id="hp-cancel" style="padding:6px 14px;background:var(--bg3);border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:12px;cursor:pointer">Cancelar</button>
       <button id="hp-save"   style="padding:6px 14px;background:var(--a);border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-weight:600">Guardar</button>
     </div>`;
 
   modal.querySelector('#hp-req-slot').appendChild(reqTA);
   modal.querySelector('#hp-res-slot').appendChild(resTA);
+  modal.querySelector('#hp-ann-slot').appendChild(annTA);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
@@ -651,7 +664,7 @@ function editHttpProof(vulnId, idx) {
 
   modal.querySelector('#hp-save').onclick = async () => {
     const proofs = (v.http_proofs || []).map((p, i) =>
-      i === idx ? { ...p, request: reqTA.value, response: resTA.value } : p
+      i === idx ? { ...p, request: reqTA.value, response: resTA.value, annotation: annTA.value } : p
     );
     v.http_proofs = proofs;
     await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });

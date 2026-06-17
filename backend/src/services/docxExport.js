@@ -631,6 +631,15 @@ function buildDetailedFindings(vulns, sec) {
           out.push(p('Response', { size: 18, italic: true, color: TEXT_MUTE }));
           out.push(...codeBlock(proof.response.slice(0, 4000)));
         }
+        if (proof.annotation?.trim()) {
+          out.push(new Paragraph({
+            spacing: { before: 80, after: 0 },
+            border: { left: { style: BorderStyle.SINGLE, size: 6, color: 'F59E0B' } },
+            indent: { left: 160 },
+            children: [new TextRun({ text: 'Anotación: ', bold: true, size: 20, color: '92400E' }),
+                       new TextRun({ text: proof.annotation.replace(/`([^`]+)`/g, '$1'), size: 20, color: '92400E' })],
+          }));
+        }
         out.push(spacer(80));
       });
     }
