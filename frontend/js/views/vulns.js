@@ -540,7 +540,7 @@ function handleImportDrop(e) {
 
 async function submitImport() {
   if (!_importFile) return;
-  const pid = state.projectId;
+  const pid = state.currentProject?.id;
   document.getElementById('import-idle').style.display       = 'none';
   document.getElementById('import-loading').style.display    = '';
   document.getElementById('import-submit-btn').style.display = 'none';
