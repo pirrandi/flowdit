@@ -13,8 +13,9 @@ let _activeStrokeEl = null;
 let _portsMap = {};
 let _endpointsMap = {};
 
-// Undo stack (strokes only, local per session)
+// Undo / redo stacks (strokes only, local per session)
 let _undoStack = [];
+let _redoStack = [];
 
 // Eraser ring DOM element
 let _eraserRing;
@@ -253,19 +254,26 @@ function _makeNodeDraggable(el, nodeData) {
 
     const startX = e.clientX, startY = e.clientY;
     const origX = nodeData.x, origY = nodeData.y;
-    el.classList.add('dragging');
-    head.setPointerCapture(e.pointerId);
+    let dragging = false;
 
     function onMove(e) {
-      nodeData.x = origX + (e.clientX - startX) / wbData.view.zoom;
-      nodeData.y = origY + (e.clientY - startY) / wbData.view.zoom;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!dragging) {
+        if (dx * dx + dy * dy < 25) return;
+        dragging = true;
+        el.classList.add('dragging');
+        head.setPointerCapture(e.pointerId);
+      }
+      nodeData.x = origX + dx / wbData.view.zoom;
+      nodeData.y = origY + dy / wbData.view.zoom;
       el.style.left = nodeData.x + 'px';
       el.style.top  = nodeData.y + 'px';
       _updateAllEdges();
     }
     function onUp() {
-      el.classList.remove('dragging');
       head.removeEventListener('pointermove', onMove);
+      if (!dragging) return;
+      el.classList.remove('dragging');
       _broadcast({ op: 'node_move', nodeId: nodeData.id, x: nodeData.x, y: nodeData.y });
       scheduleSave();
     }
@@ -318,6 +326,11 @@ function _buildCard(cardData) {
 
   el.innerHTML = `
     <div class="wb-card-head" data-drag-handle style="background:${cardData.color || CARD_COLORS[0]}">
+      <svg class="wb-card-grip" width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
+        <circle cx="2" cy="2"  r="1.2"/><circle cx="6" cy="2"  r="1.2"/>
+        <circle cx="2" cy="6"  r="1.2"/><circle cx="6" cy="6"  r="1.2"/>
+        <circle cx="2" cy="10" r="1.2"/><circle cx="6" cy="10" r="1.2"/>
+      </svg>
       <span class="wb-card-title" data-title contenteditable="false">${esc(cardData.title || '')}</span>
       <div class="wb-card-colors">${colorDots}</div>
       <span class="wb-card-rm">×</span>
@@ -394,26 +407,35 @@ function _makeCardDraggable(el, cardData) {
   const head = el.querySelector('[data-drag-handle]');
   head.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
-    if (e.target.closest('.wb-card-rm, .wb-card-col, [data-title]')) return;
+    if (e.target.closest('.wb-card-rm, .wb-card-col')) return;
     if (_mode !== 'select') return;
     e.stopPropagation();
-    e.preventDefault();
+    // No preventDefault — allows dblclick editing to work normally
 
     const startX = e.clientX, startY = e.clientY;
     const origX  = cardData.x, origY = cardData.y;
-    el.classList.add('dragging');
-    head.setPointerCapture(e.pointerId);
+    let dragging = false;
 
     function onMove(e) {
-      cardData.x = origX + (e.clientX - startX) / wbData.view.zoom;
-      cardData.y = origY + (e.clientY - startY) / wbData.view.zoom;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!dragging) {
+        if (dx * dx + dy * dy < 25) return; // 5px threshold before committing to drag
+        dragging = true;
+        el.classList.add('dragging');
+        head.setPointerCapture(e.pointerId);
+        // Dismiss any open contenteditable inside the card
+        el.querySelectorAll('[contenteditable="true"]').forEach(ce => ce.blur());
+      }
+      cardData.x = origX + dx / wbData.view.zoom;
+      cardData.y = origY + dy / wbData.view.zoom;
       el.style.left = cardData.x + 'px';
       el.style.top  = cardData.y + 'px';
       _updateAllEdges();
     }
     function onUp() {
-      el.classList.remove('dragging');
       head.removeEventListener('pointermove', onMove);
+      if (!dragging) return;
+      el.classList.remove('dragging');
       _broadcast({ op: 'card_update', cardId: cardData.id, changes: { x: cardData.x, y: cardData.y } });
       scheduleSave();
     }
@@ -500,10 +522,21 @@ function _edgeEndpoints(edge) {
 }
 
 function _edgeCubic(pts) {
-  const dx   = pts.ex - pts.sx;
-  const bend = Math.max(80, Math.abs(dx) * 0.45);
-  const sign = dx >= 0 ? 1 : -1;
-  return `M${pts.sx.toFixed(1)},${pts.sy.toFixed(1)} C${(pts.sx + sign*bend).toFixed(1)},${pts.sy.toFixed(1)} ${(pts.ex - sign*bend).toFixed(1)},${pts.ey.toFixed(1)} ${pts.ex.toFixed(1)},${pts.ey.toFixed(1)}`;
+  const dx    = pts.ex - pts.sx;
+  const dy    = pts.ey - pts.sy;
+  const adx   = Math.abs(dx), ady = Math.abs(dy);
+  const total = adx + ady || 1;
+
+  // Each axis contributes bend proportional to how dominant it is in the direction
+  const bendX = (adx / total) * Math.max(50, adx * 0.5);
+  const bendY = (ady / total) * Math.max(50, ady * 0.5);
+  const signX = dx >= 0 ? 1 : -1;
+  const signY = dy >= 0 ? 1 : -1;
+
+  const cp1x = pts.sx + signX * bendX, cp1y = pts.sy + signY * bendY;
+  const cp2x = pts.ex - signX * bendX, cp2y = pts.ey - signY * bendY;
+
+  return `M${pts.sx.toFixed(1)},${pts.sy.toFixed(1)} C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${pts.ex.toFixed(1)},${pts.ey.toFixed(1)}`;
 }
 
 function _renderEdge(edge) {
@@ -668,6 +701,7 @@ function clearDrawing() {
   if (!confirm('Clear all drawing strokes?')) return;
   wbData.strokes = [];
   _undoStack = [];
+  _redoStack = [];
   _svg.querySelectorAll('path[data-stroke]').forEach(p => p.remove());
   _broadcast({ op: 'strokes_clear' });
   scheduleSave();
@@ -740,16 +774,23 @@ function _makeNoteDraggable(el, noteData) {
 
     const startX = e.clientX, startY = e.clientY;
     const origX = noteData.x, origY = noteData.y;
-    head.setPointerCapture(e.pointerId);
+    let dragging = false;
 
     function onMove(e) {
-      noteData.x = origX + (e.clientX - startX) / wbData.view.zoom;
-      noteData.y = origY + (e.clientY - startY) / wbData.view.zoom;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!dragging) {
+        if (dx * dx + dy * dy < 25) return;
+        dragging = true;
+        head.setPointerCapture(e.pointerId);
+      }
+      noteData.x = origX + dx / wbData.view.zoom;
+      noteData.y = origY + dy / wbData.view.zoom;
       el.style.left = noteData.x + 'px';
       el.style.top  = noteData.y + 'px';
     }
     function onUp() {
       head.removeEventListener('pointermove', onMove);
+      if (!dragging) return;
       _broadcast({ op: 'note_update', noteId: noteData.id, changes: { x: noteData.x, y: noteData.y } });
       scheduleSave();
     }
@@ -863,6 +904,7 @@ function _startDraw(e) {
       _undoStack.push({ type: 'add', id });
       _activeStrokeEl.dataset.stroke  = id;
       _activeStrokeEl.dataset.strokeW = String(_drawWidth);
+      _redoStack = [];
       _broadcast({ op: 'stroke_add', stroke });
       scheduleSave();
     } else {
@@ -880,9 +922,11 @@ function undoStroke() {
   if (!_undoStack.length) return;
   const op = _undoStack.pop();
   if (op.type === 'add') {
+    const stroke = wbData.strokes.find(s => s.id === op.id);
     wbData.strokes = wbData.strokes.filter(s => s.id !== op.id);
     _svg.querySelector(`path[data-stroke="${op.id}"]`)?.remove();
     _broadcast({ op: 'stroke_remove', strokeId: op.id });
+    if (stroke) _redoStack.push({ type: 'add', stroke });
   } else if (op.type === 'erase') {
     op.strokes.forEach(stroke => {
       if (!wbData.strokes.find(s => s.id === stroke.id)) {
@@ -891,6 +935,32 @@ function undoStroke() {
         _broadcast({ op: 'stroke_add', stroke });
       }
     });
+    _redoStack.push({ type: 'erase', strokeIds: op.strokes.map(s => s.id) });
+  }
+  scheduleSave();
+}
+
+function redoStroke() {
+  if (!_redoStack.length) return;
+  const op = _redoStack.pop();
+  if (op.type === 'add') {
+    if (!wbData.strokes.find(s => s.id === op.stroke.id)) {
+      wbData.strokes.push(op.stroke);
+      _renderStroke(op.stroke);
+      _broadcast({ op: 'stroke_add', stroke: op.stroke });
+    }
+    _undoStack.push({ type: 'add', id: op.stroke.id });
+  } else if (op.type === 'erase') {
+    const erased = [];
+    op.strokeIds.forEach(id => {
+      const stroke = wbData.strokes.find(s => s.id === id);
+      if (!stroke) return;
+      erased.push(stroke);
+      wbData.strokes = wbData.strokes.filter(s => s.id !== id);
+      _svg.querySelector(`path[data-stroke="${id}"]`)?.remove();
+      _broadcast({ op: 'stroke_remove', strokeId: id });
+    });
+    if (erased.length) _undoStack.push({ type: 'erase', strokes: erased });
   }
   scheduleSave();
 }
@@ -927,7 +997,10 @@ function _startErase(e) {
   _vp.addEventListener('pointermove', erase);
   _vp.addEventListener('pointerup', () => {
     _vp.removeEventListener('pointermove', erase);
-    if (erasedStrokes.length) _undoStack.push({ type: 'erase', strokes: erasedStrokes });
+    if (erasedStrokes.length) {
+      _undoStack.push({ type: 'erase', strokes: erasedStrokes });
+      _redoStack = [];
+    }
   }, { once: true });
 }
 
@@ -1027,7 +1100,8 @@ function _wireKeyboard() {
     if (e.key === 'f' || e.key === 'F') fitToScreen();
     if (e.key === 'a' || e.key === 'A') setWbMode('card');
     if (e.key === 'c' || e.key === 'C') setWbMode('connect');
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoStroke(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoStroke(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redoStroke(); }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (_selectedEdgeId) _removeEdge(_selectedEdgeId);
     }
@@ -1385,6 +1459,50 @@ function _updateSaveStatus(s) {
   el.textContent = s === 'saving' ? 'Saving…' : s === 'error' ? 'Save failed ✗' : 'Saved ✓';
 }
 
+// ── Export PNG ─────────────────────────────────────────────────────────
+async function exportPng() {
+  const btn = document.getElementById('wb-export-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+
+  try {
+    if (!window.html2canvas) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    // Save current view, then fit to screen for capture
+    const savedView = { ...wbData.view };
+    fitToScreen();
+    // Wait for layout
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const canvas = await html2canvas(_vp, {
+      backgroundColor: '#0f1117',
+      useCORS: true,
+      scale: window.devicePixelRatio || 1,
+      logging: false,
+    });
+
+    // Restore view
+    wbData.view = savedView;
+    _applyTransform();
+
+    const link = document.createElement('a');
+    link.download = `whiteboard-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = ''; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'; }
+  }
+}
+
 // ── Exports ────────────────────────────────────────────────────────────
 window.initWhiteboard   = initWhiteboard;
 window.undoStroke       = undoStroke;
@@ -1402,3 +1520,5 @@ window.wbRemoveCard     = wbRemoveCard;
 window.wbCardColor      = wbCardColor;
 window.wbSearch         = wbSearch;
 window.wbSearchClear    = wbSearchClear;
+window.redoStroke       = redoStroke;
+window.exportPng        = exportPng;

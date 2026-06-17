@@ -173,6 +173,9 @@
   .wb-card.dragging { box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 100; }
   .wb-card-head     { display: flex; align-items: center; gap: 6px; padding: 9px 10px;
                       border-radius: 10px 10px 0 0; cursor: grab; }
+  .wb-card-grip     { color: rgba(255,255,255,.25); flex-shrink: 0; pointer-events: none;
+                      transition: color 0.15s; }
+  .wb-card-head:hover .wb-card-grip { color: rgba(255,255,255,.6); }
   .wb-card-head:active { cursor: grabbing; }
   .wb-card-title    { flex: 1; font-size: 12px; font-weight: 700; color: #fff;
                       outline: none; min-width: 0; word-break: break-word; }
@@ -342,6 +345,29 @@
           <path d="M1 4V1h3M8 1h3v3M11 8v3H8M4 11H1V8" stroke="currentColor" stroke-width="1.2"/>
         </svg>
         Fit
+      </button>
+
+      <div class="wb-tool-sep"></div>
+
+      <!-- Undo / Redo -->
+      <button class="wb-tool-btn" onclick="undoStroke()" title="Undo (Ctrl+Z)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <path d="M3 7a5 5 0 105 5"/>
+          <polyline points="3,4 3,7 6,7"/>
+        </svg>
+      </button>
+      <button class="wb-tool-btn" onclick="redoStroke()" title="Redo (Ctrl+Y)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <path d="M13 7a5 5 0 11-5 5"/>
+          <polyline points="13,4 13,7 10,7"/>
+        </svg>
+      </button>
+      <button class="wb-tool-btn" id="wb-export-btn" onclick="exportPng()" title="Export as PNG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
       </button>
 
       <div class="wb-tool-sep"></div>
