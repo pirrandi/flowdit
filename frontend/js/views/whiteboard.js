@@ -47,8 +47,15 @@ const METHOD_COLOR = {
 const NOTE_COLORS  = ['#ffd96a', '#a8edab', '#a8d8f0', '#f7b8b8', '#e0b8f7'];
 const CARD_COLORS  = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e4a4f'];
 
+function renderMd(text) {
+  if (!text || !text.trim()) return '';
+  if (window.marked) return window.marked.parse(text);
+  return esc(text).replace(/\n/g, '<br>');
+}
+
 // ── Init ───────────────────────────────────────────────────────────────
 async function initWhiteboard() {
+  if (window.marked) window.marked.setOptions({ breaks: true });
   _vp          = document.getElementById('wb-viewport');
   _ws          = document.getElementById('wb-workspace');
   _svg         = document.getElementById('wb-svg');
@@ -124,6 +131,23 @@ function _autoLayout(targets) {
 function _applyTransform() {
   const { panX, panY, zoom } = wbData.view;
   _ws.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`;
+
+  // Two-level dot grid — opacity fades on zoom out to avoid visual noise
+  const cell  = 20;
+  const sz    = cell * zoom;
+  const szMaj = sz * 5;
+  const ox    = ((panX % szMaj) + szMaj) % szMaj;
+  const oy    = ((panY % szMaj) + szMaj) % szMaj;
+  const oxMin = ((panX % sz)    + sz)    % sz;
+  const oyMin = ((panY % sz)    + sz)    % sz;
+
+  const majA  = (Math.min(0.12, Math.max(0.03, 0.09 * zoom + 0.03))).toFixed(3);
+  const minA  = zoom > 0.45 ? (Math.min(0.05, 0.04 * zoom)).toFixed(3) : '0';
+
+  _vp.style.backgroundImage    = `radial-gradient(circle,rgba(255,255,255,${majA}) 1.2px,transparent 1.2px),radial-gradient(circle,rgba(255,255,255,${minA}) 0.8px,transparent 0.8px)`;
+  _vp.style.backgroundSize     = `${szMaj}px ${szMaj}px, ${sz}px ${sz}px`;
+  _vp.style.backgroundPosition = `${ox}px ${oy}px, ${oxMin}px ${oyMin}px`;
+
   _updateStrokeWidths();
   _refreshCursorPositions();
 }
@@ -159,8 +183,10 @@ function _buildNode(nodeData, target) {
   const el = document.createElement('div');
   el.className = 'wb-node' + (nodeData.collapsed ? ' collapsed' : '');
   el.dataset.nodeId = nodeData.id;
-  el.style.left = nodeData.x + 'px';
-  el.style.top  = nodeData.y + 'px';
+  el.style.left  = nodeData.x + 'px';
+  el.style.top   = nodeData.y + 'px';
+  el.style.width = (nodeData.w || 290) + 'px';
+  if (nodeData.h) el.style.height = nodeData.h + 'px';
 
   const vulnRows = vulns.length
     ? vulns.slice(0, 8).map(v => `
@@ -242,6 +268,7 @@ function _buildNode(nodeData, target) {
   });
 
   _makeNodeDraggable(el, nodeData);
+  _makeResizable(el, nodeData, 200, 120, 'node');
   return el;
 }
 
@@ -317,8 +344,10 @@ function _buildCard(cardData) {
   const el = document.createElement('div');
   el.className = 'wb-card';
   el.dataset.nodeId = cardData.id; // same attr as target nodes → arrows work
-  el.style.left = cardData.x + 'px';
-  el.style.top  = cardData.y + 'px';
+  el.style.left  = cardData.x + 'px';
+  el.style.top   = cardData.y + 'px';
+  el.style.width = (cardData.w || 240) + 'px';
+  if (cardData.h) el.style.height = cardData.h + 'px';
 
   const colorDots = CARD_COLORS.map(c =>
     `<span class="wb-card-col" style="background:${c}" data-color="${c}"></span>`
@@ -337,7 +366,7 @@ function _buildCard(cardData) {
     </div>
     <div class="wb-card-body">
       <div class="wb-card-text" data-text contenteditable="false"
-           data-placeholder="Double-click to add notes…">${esc(cardData.body || '')}</div>
+           data-placeholder="Double-click to add notes…">${renderMd(cardData.body)}</div>
       <div class="wb-card-hint">dbl-click to edit · drag header to move</div>
     </div>`;
 
@@ -370,13 +399,22 @@ function _buildCard(cardData) {
   // Body editing (double-click)
   textEl.addEventListener('dblclick', e => {
     e.stopPropagation();
-    textEl.contentEditable = 'true';
+    textEl.contentEditable = 'true'; // set first so pre-wrap CSS applies before textContent
+    textEl.textContent = cardData.body || '';
     textEl.focus();
+    // move cursor to end
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+    range.collapse(false);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
   });
   textEl.addEventListener('blur', () => {
+    const raw = textEl.innerText.replace(/\n$/, ''); // drop single trailing newline browsers add
     textEl.contentEditable = 'false';
-    cardData.body = textEl.innerText.trim();
-    _broadcast({ op: 'card_update', cardId: cardData.id, changes: { body: cardData.body } });
+    cardData.body = raw;
+    textEl.innerHTML = renderMd(raw);
+    _broadcast({ op: 'card_update', cardId: cardData.id, changes: { body: raw } });
     scheduleSave();
   });
   textEl.addEventListener('keydown', e => {
@@ -400,6 +438,7 @@ function _buildCard(cardData) {
   });
 
   _makeCardDraggable(el, cardData);
+  _makeResizable(el, cardData, 160, 80, 'card');
   return el;
 }
 
@@ -441,6 +480,42 @@ function _makeCardDraggable(el, cardData) {
     }
     head.addEventListener('pointermove', onMove);
     head.addEventListener('pointerup', onUp, { once: true });
+  });
+}
+
+function _makeResizable(el, data, minW, minH, type) {
+  const handle = document.createElement('div');
+  handle.className = 'wb-resize-handle';
+  el.appendChild(handle);
+
+  handle.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+
+    const startX = e.clientX, startY = e.clientY;
+    const startW = el.offsetWidth,  startH = el.offsetHeight;
+
+    function onMove(e) {
+      const z = wbData.view.zoom;
+      data.w = Math.round(Math.max(minW, startW + (e.clientX - startX) / z));
+      data.h = Math.round(Math.max(minH, startH + (e.clientY - startY) / z));
+      el.style.width  = data.w + 'px';
+      el.style.height = data.h + 'px';
+      _updateAllEdges();
+    }
+    function onUp() {
+      handle.removeEventListener('pointermove', onMove);
+      if (type === 'card') {
+        _broadcast({ op: 'card_update', cardId: data.id, changes: { w: data.w, h: data.h } });
+      } else {
+        _broadcast({ op: 'node_resize', nodeId: data.id, w: data.w, h: data.h });
+      }
+      scheduleSave();
+    }
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp, { once: true });
   });
 }
 
@@ -495,7 +570,7 @@ function _nodeInfo(nodeId) {
   if (!src) return null;
   const el  = _nl.querySelector(`[data-node-id="${nodeId}"]`);
   const h   = el ? el.offsetHeight : 40;
-  const w   = nd ? 290 : 240;
+  const w   = el ? el.offsetWidth  : (nd ? (nd.w || 290) : (cd.w || 240));
   return { cx: src.x + w / 2, cy: src.y + h / 2, w, h };
 }
 
@@ -508,17 +583,29 @@ function _edgeEndpoints(edge) {
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const ux = dx / len, uy = dy / len;
 
-  // Exit/entry offsets clipped to node rectangle boundary + small padding
   const fhw = from.w / 2 + 2, fhh = from.h / 2 + 2;
   const ft  = Math.min(fhw / (Math.abs(ux) || 0.001), fhh / (Math.abs(uy) || 0.001));
   const thw = to.w   / 2 + 2, thh = to.h   / 2 + 2;
   const tt  = Math.min(thw / (Math.abs(ux) || 0.001), thh / (Math.abs(uy) || 0.001)) + 8;
 
-  return {
-    sx: from.cx + ux * ft,  sy: from.cy + uy * ft,
-    ex: to.cx   - ux * tt,  ey: to.cy   - uy * tt,
-    mx: (from.cx + to.cx) / 2, my: (from.cy + to.cy) / 2,
-  };
+  const sx = from.cx + ux * ft, sy = from.cy + uy * ft;
+  const ex = to.cx   - ux * tt, ey = to.cy   - uy * tt;
+
+  // Bezier control points (same logic as _edgeCubic uses)
+  const cdx = ex - sx, cdy = ey - sy;
+  const adx = Math.abs(cdx), ady = Math.abs(cdy);
+  const total = adx + ady || 1;
+  const bendX = (adx / total) * Math.max(50, adx * 0.5);
+  const bendY = (ady / total) * Math.max(50, ady * 0.5);
+  const signX = cdx >= 0 ? 1 : -1, signY = cdy >= 0 ? 1 : -1;
+  const cp1x = sx + signX * bendX, cp1y = sy + signY * bendY;
+  const cp2x = ex - signX * bendX, cp2y = ey - signY * bendY;
+
+  // True bezier midpoint at t=0.5
+  const mx = 0.125*sx + 0.375*cp1x + 0.375*cp2x + 0.125*ex;
+  const my = 0.125*sy + 0.375*cp1y + 0.375*cp2y + 0.125*ey;
+
+  return { sx, sy, ex, ey, mx, my };
 }
 
 function _edgeCubic(pts) {
@@ -527,7 +614,6 @@ function _edgeCubic(pts) {
   const adx   = Math.abs(dx), ady = Math.abs(dy);
   const total = adx + ady || 1;
 
-  // Each axis contributes bend proportional to how dominant it is in the direction
   const bendX = (adx / total) * Math.max(50, adx * 0.5);
   const bendY = (ady / total) * Math.max(50, ady * 0.5);
   const signX = dx >= 0 ? 1 : -1;
@@ -551,12 +637,17 @@ function _renderEdge(edge) {
   line.classList.add('wb-edge-line');
   line.setAttribute('marker-end', 'url(#wb-arrowhead)');
 
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.classList.add('wb-edge-dot');
+  dot.setAttribute('r', '4');
+
   const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   label.classList.add('wb-edge-label');
   label.textContent = edge.label || '';
 
   g.appendChild(hit);
   g.appendChild(line);
+  g.appendChild(dot);
   g.appendChild(label);
   _edgeSvg.appendChild(g);
 
@@ -584,6 +675,8 @@ function _updateEdgePath(edge) {
   const d = _edgeCubic(pts);
   g.querySelector('.wb-edge-line').setAttribute('d', d);
   g.querySelector('.wb-edge-hit').setAttribute('d', d);
+  const dot = g.querySelector('.wb-edge-dot');
+  if (dot) { dot.setAttribute('cx', pts.sx.toFixed(1)); dot.setAttribute('cy', pts.sy.toFixed(1)); }
   const lbl = g.querySelector('.wb-edge-label');
   lbl.setAttribute('x', pts.mx.toFixed(1));
   lbl.setAttribute('y', (pts.my - 8).toFixed(1));
@@ -623,13 +716,38 @@ function _selectEdge(edgeId) {
 }
 
 function _editEdgeLabel(edge) {
-  const label = prompt('Connection label (leave blank to clear):', edge.label || '');
-  if (label === null) return;
-  edge.label = label.trim();
-  const textEl = _edgeSvg.querySelector(`[data-edge-id="${edge.id}"] .wb-edge-label`);
-  if (textEl) textEl.textContent = edge.label;
-  _broadcast({ op: 'edge_update', edgeId: edge.id, changes: { label: edge.label } });
-  scheduleSave();
+  const pts = _edgeEndpoints(edge);
+  if (!pts) return;
+
+  const { panX, panY, zoom } = wbData.view;
+  const inp = document.createElement('input');
+  inp.className = 'wb-label-input';
+  inp.type = 'text';
+  inp.value = edge.label || '';
+  inp.placeholder = 'Label…';
+  inp.style.left = (pts.mx * zoom + panX) + 'px';
+  inp.style.top  = ((pts.my - 10) * zoom + panY) + 'px';
+  _vp.appendChild(inp);
+  inp.focus();
+  inp.select();
+
+  let committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    inp.remove();
+    edge.label = inp.value.trim();
+    const textEl = _edgeSvg.querySelector(`[data-edge-id="${edge.id}"] .wb-edge-label`);
+    if (textEl) textEl.textContent = edge.label;
+    _broadcast({ op: 'edge_update', edgeId: edge.id, changes: { label: edge.label } });
+    scheduleSave();
+  }
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') { committed = true; inp.remove(); }
+  });
+  inp.addEventListener('blur', commit);
 }
 
 function _handleConnectClick(e) {
@@ -696,9 +814,31 @@ function _pointsToPath(pts) {
   return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
 }
 
-function clearDrawing() {
+function _showConfirm(title, message) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'wb-modal-overlay';
+    overlay.innerHTML = `
+      <div class="wb-modal">
+        <p class="wb-modal-title">${esc(title)}</p>
+        <p class="wb-modal-msg">${esc(message)}</p>
+        <div class="wb-modal-btns">
+          <button class="wb-modal-btn wb-modal-cancel">Cancel</button>
+          <button class="wb-modal-btn wb-modal-confirm">Confirm</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector('.wb-modal-cancel').addEventListener('click',  () => close(false));
+    overlay.querySelector('.wb-modal-confirm').addEventListener('click', () => close(true));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
+    overlay.querySelector('.wb-modal-confirm').focus();
+  });
+}
+
+async function clearDrawing() {
   if (!wbData.strokes.length) return;
-  if (!confirm('Clear all drawing strokes?')) return;
+  if (!await _showConfirm('Clear strokes', 'This will remove all drawing strokes from the board.')) return;
   wbData.strokes = [];
   _undoStack = [];
   _redoStack = [];
@@ -859,9 +999,9 @@ function _screenToWorld(sx, sy) {
 
 function fitToScreen() {
   const items = [
-    ...wbData.nodes.map(n => ({ x: n.x, y: n.y, w: 290, h: 380 })),
+    ...wbData.nodes.map(n => ({ x: n.x, y: n.y, w: n.w || 290, h: n.h || 380 })),
     ...wbData.notes.map(n => ({ x: n.x, y: n.y, w: 170, h: 100 })),
-    ...wbData.cards.map(c => ({ x: c.x, y: c.y, w: 240, h: 110 })),
+    ...wbData.cards.map(c => ({ x: c.x, y: c.y, w: c.w || 240, h: c.h || 110 })),
   ];
   if (!items.length) return;
   const minX = Math.min(...items.map(i => i.x));
@@ -1205,6 +1345,15 @@ function _handleRemotePatch(msg) {
       _updateAllEdges();
       break;
     }
+    case 'node_resize': {
+      const nd = wbData.nodes.find(n => n.id === msg.nodeId);
+      if (!nd) return;
+      nd.w = msg.w; nd.h = msg.h;
+      const el = _nl.querySelector(`[data-node-id="${msg.nodeId}"]`);
+      if (el) { el.style.width = msg.w + 'px'; el.style.height = msg.h + 'px'; }
+      _updateAllEdges();
+      break;
+    }
     case 'node_remove':
       wbData.nodes = wbData.nodes.filter(n => n.id !== msg.nodeId);
       _nl.querySelector(`[data-node-id="${msg.nodeId}"]`)?.remove();
@@ -1313,8 +1462,10 @@ function _handleRemotePatch(msg) {
       Object.assign(cd, msg.changes);
       const el = _nl.querySelector(`[data-node-id="${msg.cardId}"]`);
       if (!el) return;
-      if (msg.changes.x !== undefined) el.style.left = msg.changes.x + 'px';
-      if (msg.changes.y !== undefined) el.style.top  = msg.changes.y + 'px';
+      if (msg.changes.x !== undefined) el.style.left   = msg.changes.x + 'px';
+      if (msg.changes.y !== undefined) el.style.top    = msg.changes.y + 'px';
+      if (msg.changes.w !== undefined) el.style.width  = msg.changes.w + 'px';
+      if (msg.changes.h !== undefined) el.style.height = msg.changes.h + 'px';
       if (msg.changes.color !== undefined) {
         const head = el.querySelector('.wb-card-head');
         if (head) head.style.background = msg.changes.color;
@@ -1325,9 +1476,9 @@ function _handleRemotePatch(msg) {
       }
       if (msg.changes.body !== undefined) {
         const b = el.querySelector('[data-text]');
-        if (b && b.contentEditable !== 'true') b.textContent = msg.changes.body;
+        if (b && b.contentEditable !== 'true') b.innerHTML = renderMd(msg.changes.body);
       }
-      if (msg.changes.x !== undefined || msg.changes.y !== undefined) _updateAllEdges();
+      if (msg.changes.x !== undefined || msg.changes.y !== undefined || msg.changes.w !== undefined) _updateAllEdges();
       break;
     }
   }
@@ -1497,7 +1648,7 @@ async function exportPng() {
     link.href = canvas.toDataURL('image/png');
     link.click();
   } catch (err) {
-    alert('Export failed: ' + err.message);
+    showToast('Export failed: ' + err.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = ''; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'; }
   }
