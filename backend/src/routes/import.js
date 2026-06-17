@@ -50,11 +50,11 @@ async function insertVuln(projectId, userId, { name, category, severity, descrip
 }
 
 // ── Burp Suite parser ───────────────────────────────────────────────────
-const BURP_SEV = { high:'high', medium:'medium', low:'low', information:'info', informational:'info', 'false positive':'info' };
+const BURP_SEV = { high:'high', medium:'medium', low:'low', information:'info', informational:'info', 'false positive':'info', info:'info' };
 
 async function parseBurp(xml, projectId, userId, targetMap) {
   const parser = new XMLParser({
-    ignoreAttributes: false, attributeNamePrefix: '@_', cdataPropName: '__cdata',
+    ignoreAttributes: false, attributeNamePrefix: '@_',
     isArray: n => n === 'issue',
   });
   const root = parser.parse(xml)?.issues;
@@ -64,7 +64,8 @@ async function parseBurp(xml, projectId, userId, targetMap) {
   let imported = 0, targetsCreated = 0;
 
   for (const issue of issues) {
-    const host   = issue.host ? extractHostname(typeof issue.host === 'object' ? issue.host['#text'] : issue.host) : null;
+    const hostRaw = issue.host;
+    const host    = hostRaw ? extractHostname(typeof hostRaw === 'object' ? (hostRaw['#text'] || hostRaw['@_ip'] || '') : hostRaw) : null;
     const target = await upsertTarget(projectId, host, userId, targetMap);
     if (target?.created) targetsCreated++;
 
