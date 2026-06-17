@@ -23,7 +23,10 @@
         <div class="page-title">My Custom Vulns</div>
         <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--a);text-decoration:none">add descriptions & export →</a></div>
       </div>
-      <button class="btn btn-prim" onclick="openAddVulnModal()">+ Add Vulnerability</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sec" onclick="openImportModal()">↑ Import Burp XML</button>
+        <button class="btn btn-prim" onclick="openAddVulnModal()">+ Add Vulnerability</button>
+      </div>
     </div>
     <div id="custom-content"></div>
   </main>
@@ -193,6 +196,45 @@
         <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
         <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">Import Burp Suite XML</div>
+
+    <div id="import-idle">
+      <p style="font-size:12px;color:var(--t2);margin:0 0 16px">
+        Export your findings from Burp Suite via <strong>Issue activity → Report selected issues → XML</strong>.
+        Hosts will be matched to existing targets, or new targets will be created automatically.
+      </p>
+      <div id="import-drop-zone" style="border:2px dashed var(--br1);border-radius:8px;padding:32px 16px;text-align:center;cursor:pointer;transition:border-color .15s"
+           onclick="document.getElementById('import-file-input').click()"
+           ondragover="event.preventDefault();this.style.borderColor='var(--a)'"
+           ondragleave="this.style.borderColor='var(--br1)'"
+           ondrop="handleImportDrop(event)">
+        <div style="font-size:24px;margin-bottom:8px">📄</div>
+        <div style="font-size:12px;color:var(--t2)">Drop XML file here or click to browse</div>
+        <div id="import-filename" style="font-size:11px;color:var(--a);margin-top:6px"></div>
+      </div>
+      <input type="file" id="import-file-input" accept=".xml,application/xml,text/xml" style="display:none" onchange="handleImportFile(this.files[0])">
+      <div class="form-error" id="import-error" style="margin-top:10px"></div>
+    </div>
+
+    <div id="import-loading" style="display:none;text-align:center;padding:24px 0">
+      <div class="spinner" style="margin:0 auto 10px"></div>
+      <div style="font-size:12px;color:var(--t2)">Parsing and importing…</div>
+    </div>
+
+    <div id="import-result" style="display:none">
+      <div id="import-result-msg" style="font-size:13px;margin-bottom:12px"></div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn btn-sec" onclick="closeImportModal()">Close</button>
+      <button class="btn btn-prim" id="import-submit-btn" onclick="submitImport()" style="display:none">Import</button>
     </div>
   </div>
 </div>

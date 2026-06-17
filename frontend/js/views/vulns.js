@@ -487,6 +487,73 @@ function populateTargetSelect(selectedId) {
     inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${esc(t.host)}</option>`).join('');
 }
 
+// ── Import Burp ────────────────────────────────────────────────────────
+let _importFile = null;
+
+function openImportModal() {
+  _importFile = null;
+  document.getElementById('import-filename').textContent     = '';
+  document.getElementById('import-error').textContent        = '';
+  document.getElementById('import-file-input').value         = '';
+  document.getElementById('import-submit-btn').style.display = 'none';
+  document.getElementById('import-idle').style.display       = '';
+  document.getElementById('import-loading').style.display    = 'none';
+  document.getElementById('import-result').style.display     = 'none';
+  document.getElementById('import-modal').classList.add('open');
+}
+
+function closeImportModal() {
+  document.getElementById('import-modal').classList.remove('open');
+}
+
+function handleImportFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.xml')) {
+    document.getElementById('import-error').textContent = 'Please select an XML file.';
+    return;
+  }
+  _importFile = file;
+  document.getElementById('import-filename').textContent    = file.name;
+  document.getElementById('import-error').textContent       = '';
+  document.getElementById('import-submit-btn').style.display = '';
+}
+
+function handleImportDrop(e) {
+  e.preventDefault();
+  document.getElementById('import-drop-zone').style.borderColor = 'var(--br1)';
+  const file = e.dataTransfer?.files?.[0];
+  if (file) handleImportFile(file);
+}
+
+async function submitImport() {
+  if (!_importFile) return;
+  const pid = state.projectId;
+  document.getElementById('import-idle').style.display       = 'none';
+  document.getElementById('import-loading').style.display    = '';
+  document.getElementById('import-submit-btn').style.display = 'none';
+
+  try {
+    const res = await api.import.burp(pid, _importFile);
+    document.getElementById('import-loading').style.display  = 'none';
+    document.getElementById('import-result').style.display   = '';
+
+    let text = `✓ Imported <strong>${res.imported}</strong> finding${res.imported !== 1 ? 's' : ''}`;
+    if (res.targets_created > 0)
+      text += ` · Created <strong>${res.targets_created}</strong> new target${res.targets_created !== 1 ? 's' : ''}`;
+    document.getElementById('import-result-msg').innerHTML = text;
+
+    const fresh = await api.vulns.list(pid);
+    state.customVulns = fresh.vulns || fresh;
+    renderCustomVulns();
+    showToast(`Imported ${res.imported} findings from Burp Suite`, 'success');
+  } catch (err) {
+    document.getElementById('import-loading').style.display    = 'none';
+    document.getElementById('import-idle').style.display       = '';
+    document.getElementById('import-error').textContent        = err.message || 'Import failed';
+    document.getElementById('import-submit-btn').style.display = '';
+  }
+}
+
 window.setCVSSMetric      = setCVSSMetric;
 window.toggleCVSSSection  = toggleCVSSSection;
 window.copyCVSSVector     = copyCVSSVector;
@@ -509,3 +576,8 @@ window.SEVERITY_LABELS    = SEVERITY_LABELS;
 window.aiDraft            = aiDraft;
 window.aiRemediation      = aiRemediation;
 window.aiCWE              = aiCWE;
+window.openImportModal    = openImportModal;
+window.closeImportModal   = closeImportModal;
+window.handleImportFile   = handleImportFile;
+window.handleImportDrop   = handleImportDrop;
+window.submitImport       = submitImport;

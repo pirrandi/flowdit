@@ -32,6 +32,25 @@ const portalSession = {
 
 let _refreshPromise = null;
 
+async function requestUpload(method, path, formData, retry = true) {
+  const headers = {};
+  if (tokens.access) headers['Authorization'] = `Bearer ${tokens.access}`;
+  const res = await fetch(`${API_BASE}${path}`, { method, headers, body: formData });
+  if (res.status === 401 && retry && tokens.refresh) {
+    if (!_refreshPromise) {
+      _refreshPromise = refreshTokens().finally(() => { _refreshPromise = null; });
+    }
+    const ok = await _refreshPromise;
+    if (ok) return requestUpload(method, path, formData, false);
+    tokens.clear();
+    window.dispatchEvent(new Event('fd:logout'));
+    throw new ApiError(401, 'Session expired');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed');
+  return data;
+}
+
 async function request(method, path, body, retry = true) {
   const headers = { 'Content-Type': 'application/json' };
   // Portal session takes priority over regular user session
@@ -181,6 +200,13 @@ const api = {
   whiteboard: {
     get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),
     save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
+  },
+  import: {
+    burp: (pid, file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return requestUpload('POST', `/projects/${pid}/import/burp`, fd);
+    },
   },
   portal: {
     auth: (token, password) => fetch(`${API_BASE}/portal/auth`, {
