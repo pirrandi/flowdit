@@ -1,6 +1,15 @@
 // ── views/vulns.js ───────────────────────────────────────────────────
 let _editingVulnId = null;
 
+function numberedCode(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const pad = String(lines.length).length;
+  return lines.map((line, i) =>
+    `<span class="code-line"><span class="line-num">${String(i + 1).padStart(pad, ' ')}</span>${esc(line)}</span>`
+  ).join('\n');
+}
+
 // ── CVSS v3.1 ────────────────────────────────────────────────────────
 const _CVSS_W = {
   AV:  { N:0.85, A:0.62, L:0.55, P:0.2  },
@@ -241,8 +250,8 @@ function buildVulnCard(v) {
           <span class="http-proof-toggle" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">▶</span>
         </div>
         <div class="http-proof-body">
-          ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${esc(pr.request)}</pre>` : ''}
-          ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${esc(pr.response)}</pre>` : ''}
+          ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${numberedCode(pr.request)}</pre>` : ''}
+          ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${numberedCode(pr.response)}</pre>` : ''}
           ${pr.annotation ? `<div class="http-proof-section-label" style="margin-top:10px">Anotación</div><div class="http-proof-annotation md-body">${renderMd(pr.annotation)}</div>` : ''}
         </div>
       </div>`;

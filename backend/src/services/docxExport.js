@@ -623,14 +623,14 @@ function buildDetailedFindings(vulns, sec) {
       httpProofs.forEach((proof, idx) => {
         const label = proof.method ? `${proof.method} — Proof #${idx + 1}` : `Proof #${idx + 1}`;
         out.push(p(label, { bold: true, size: 20, color: TEXT_MUTE }));
-        if (proof.request?.trim()) {
-          out.push(p('Request', { size: 18, italic: true, color: TEXT_MUTE }));
-          out.push(...codeBlock(proof.request.slice(0, 4000)));
-        }
-        if (proof.response?.trim()) {
-          out.push(p('Response', { size: 18, italic: true, color: TEXT_MUTE }));
-          out.push(...codeBlock(proof.response.slice(0, 4000)));
-        }
+        const addNumbered = (label, text) => {
+          out.push(p(label, { size: 18, italic: true, color: TEXT_MUTE }));
+          const lines = text.slice(0, 4000).split('\n');
+          const pad = String(lines.length).length;
+          out.push(...codeBlock(lines.map((l, i) => `${String(i+1).padStart(pad,' ')}  ${l}`).join('\n')));
+        };
+        if (proof.request?.trim())  addNumbered('Request',  proof.request);
+        if (proof.response?.trim()) addNumbered('Response', proof.response);
         if (proof.annotation?.trim()) {
           out.push(new Paragraph({
             spacing: { before: 80, after: 0 },

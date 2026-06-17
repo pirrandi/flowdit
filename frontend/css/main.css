@@ -1369,7 +1369,10 @@ body {
 .http-proof-body.open { display: block; }
 .http-proof-section-label { font-size: 9px; color: var(--t3); text-transform: uppercase; letter-spacing: .08em; margin: 8px 0 4px; }
 .http-proof-section-label:first-child { margin-top: 0; }
-.http-proof-code { margin: 0; font-family: var(--mono); font-size: 10px; color: var(--t2); background: var(--bg1); border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 8px 10px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; line-height: 1.5; }
+.http-proof-code { margin: 0; font-family: var(--mono); font-size: 10px; color: var(--t2); background: var(--bg1); border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 8px 0; white-space: pre; overflow-x: auto; max-height: 300px; overflow-y: auto; line-height: 1.6; }
+.http-proof-code .code-line { display: block; padding: 0 10px 0 0; white-space: pre-wrap; word-break: break-all; }
+.http-proof-code .code-line:hover { background: var(--b1); }
+.http-proof-code .line-num { display: inline-block; min-width: 2.8em; padding: 0 8px 0 10px; color: var(--t3); border-right: 1px solid var(--b1); margin-right: 10px; text-align: right; user-select: none; flex-shrink: 0; }
 .http-proof-annotation { background: var(--a)08; border-left: 2px solid var(--a); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 6px 10px; font-size: 11px; color: var(--t1); line-height: 1.6; }
 .http-proof-annotation p { margin: 0 0 4px; }
 .http-proof-annotation p:last-child { margin: 0; }
