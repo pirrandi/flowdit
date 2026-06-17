@@ -39,6 +39,20 @@ function setup(server) {
         ws.send(JSON.stringify({ type: 'auth_ok' }));
         broadcastPresence(projectId);
 
+        // Relay whiteboard messages to other room members
+        ws.on('message', (data) => {
+          try {
+            const msg = JSON.parse(data);
+            if (msg.type !== 'wb:cursor' && msg.type !== 'wb:patch') return;
+            const room = rooms.get(projectId);
+            if (!room) return;
+            const out = JSON.stringify({ ...msg, userId: user.id, username: user.username });
+            room.forEach(other => {
+              if (other !== ws && other.readyState === WebSocket.OPEN) other.send(out);
+            });
+          } catch {}
+        });
+
         ws.on('close', () => {
           room.delete(ws);
           if (room.size === 0) rooms.delete(projectId);

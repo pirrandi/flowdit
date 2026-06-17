@@ -58,6 +58,12 @@ class WSClient {
     this._ws.onerror = () => {};
   }
 
+  send(data) {
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify(data));
+    }
+  }
+
   on(type, fn) {
     if (!this._handlers[type]) this._handlers[type] = [];
     this._handlers[type].push(fn);

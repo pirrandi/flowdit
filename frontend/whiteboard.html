@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Whiteboard</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+<style>
+  /* Whiteboard overrides — full-height canvas layout */
+  .workarea         { overflow: hidden; }
+  .main             { padding: 0 !important; overflow: hidden !important;
+                      display: flex; flex-direction: column; }
+  .wb-toolbar       { display: flex; align-items: center; gap: 6px;
+                      padding: 6px 12px; border-bottom: 1px solid var(--br1);
+                      background: var(--bg1); flex-shrink: 0; }
+  .wb-tool-sep      { width: 1px; height: 20px; background: var(--br1); margin: 0 2px; flex-shrink: 0; }
+
+  /* Icon-only tool buttons */
+  .wb-tool-btn      { display: flex; align-items: center; justify-content: center;
+                      width: 32px; height: 32px; border-radius: 7px;
+                      border: 1px solid transparent; background: transparent;
+                      color: var(--t3); cursor: pointer; transition: background 0.12s, color 0.12s; }
+  .wb-tool-btn:hover  { background: var(--bg3); color: var(--t1); border-color: var(--br1); }
+  .wb-tool-btn.active { background: var(--a); color: #fff; border-color: var(--a); }
+
+  /* Action buttons (keep text, smaller) */
+  .wb-btn           { display: flex; align-items: center; gap: 4px;
+                      padding: 5px 9px; border-radius: 6px; border: 1px solid var(--br1);
+                      background: var(--bg2); color: var(--t2); font-size: 11px;
+                      cursor: pointer; transition: background 0.12s; white-space: nowrap; }
+  .wb-btn:hover     { background: var(--bg3); color: var(--t1); }
+
+  /* Floating draw options panel */
+  .wb-draw-panel    { display: none; position: absolute; top: calc(100% + 6px); left: 0;
+                      background: var(--bg2); border: 1px solid var(--br1); border-radius: 9px;
+                      padding: 8px 10px; align-items: center; gap: 6px;
+                      box-shadow: 0 6px 20px rgba(0,0,0,.28); z-index: 200; white-space: nowrap; }
+  .wb-draw-panel.visible { display: flex; }
+  .wb-draw-panel-label { font-size: 9px; color: var(--t4); text-transform: uppercase;
+                         letter-spacing: 0.5px; font-family: var(--mono); }
+
+  .wb-swatch        { width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
+                      border: 2px solid transparent; flex-shrink: 0; transition: transform 0.1s; }
+  .wb-swatch:hover  { transform: scale(1.2); }
+  .wb-swatch.active { border-color: var(--t1); box-shadow: 0 0 0 1px var(--bg1); }
+
+  .wb-w-btn         { display: flex; align-items: center; justify-content: center;
+                      width: 30px; height: 24px; border-radius: 5px; border: 1px solid var(--br1);
+                      background: var(--bg3); color: var(--t2); cursor: pointer; transition: background 0.1s; }
+  .wb-w-btn:hover   { background: var(--bg4, var(--bg3)); color: var(--t1); }
+  .wb-w-btn.active  { background: var(--a); border-color: var(--a); color: #fff; }
+
+  .wb-save-status   { font-size: 10px; color: var(--t4); margin-left: auto;
+                      font-family: var(--mono); white-space: nowrap; }
+  .wb-save-status.saving { color: var(--t2); }
+  .wb-save-status.error  { color: var(--sev-critical, #ff4040); }
+
+  /* Viewport & workspace */
+  #wb-viewport      { flex: 1; overflow: hidden; position: relative; cursor: default;
+                      background: var(--bg1); }
+  #wb-viewport.mode-pan    { cursor: grab; }
+  #wb-viewport.mode-pan.dragging { cursor: grabbing; }
+  #wb-viewport.mode-draw   { cursor: crosshair; }
+  #wb-viewport.mode-eraser { cursor: none; }
+  #wb-viewport.mode-note    { cursor: cell; }
+  #wb-viewport.mode-card    { cursor: copy; }
+  #wb-viewport.mode-connect { cursor: crosshair; }
+
+  /* Connection edges */
+  .wb-edge-line  { stroke: var(--t3); stroke-width: 1.5; fill: none; pointer-events: none; transition: stroke 0.1s; }
+  .wb-edge-hit   { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; }
+  .wb-edge-group:hover .wb-edge-line,
+  .wb-edge-group.selected .wb-edge-line { stroke: var(--a); }
+  .wb-edge-label { font-size: 10px; fill: var(--t2); font-family: var(--mono);
+                   pointer-events: none; dominant-baseline: middle; }
+  .wb-node.connect-from { outline: 2px solid var(--a); outline-offset: 3px; border-radius: 10px; }
+
+  .wb-eraser-ring { position: absolute; width: 40px; height: 40px; border-radius: 50%;
+                    border: 2px solid rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+                    pointer-events: none; transform: translate(-50%,-50%); display: none; }
+  #wb-workspace     { position: absolute; transform-origin: 0 0; }
+  #wb-svg           { position: absolute; left: 0; top: 0; overflow: visible;
+                      pointer-events: none; }
+  #wb-nodes-layer   { position: absolute; left: 0; top: 0; }
+
+  /* Target nodes */
+  .wb-node          { position: absolute; width: 290px; background: var(--bg2);
+                      border: 1px solid var(--br1); border-radius: 10px;
+                      box-shadow: 0 2px 8px rgba(0,0,0,.18); user-select: none;
+                      transition: box-shadow 0.15s; }
+  .wb-node:hover    { box-shadow: 0 4px 16px rgba(0,0,0,.28); }
+  .wb-node.dragging { box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 100; }
+  .wb-node-head     { display: flex; align-items: center; gap: 6px; padding: 9px 10px 8px;
+                      cursor: grab; border-radius: 10px 10px 0 0; }
+  .wb-node-head:active { cursor: grabbing; }
+  .wb-node.collapsed .wb-node-head { border-radius: 10px; }
+  .wb-node-type     { font-size: 9px; font-family: var(--mono); padding: 2px 5px;
+                      border-radius: 3px; background: var(--bg3); color: var(--t3);
+                      text-transform: uppercase; flex-shrink: 0; }
+  .wb-node-host     { flex: 1; font-size: 12px; font-weight: 600; color: var(--t1);
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                      font-family: var(--mono); }
+  .wb-node-status   { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .wb-node-collapse { font-size: 10px; color: var(--t3); cursor: pointer; flex-shrink: 0;
+                      padding: 1px 3px; border-radius: 3px; }
+  .wb-node-collapse:hover { background: var(--bg3); color: var(--t1); }
+  .wb-node-remove   { font-size: 11px; color: var(--t4); cursor: pointer; flex-shrink: 0;
+                      padding: 1px 4px; border-radius: 3px; }
+  .wb-node-remove:hover { background: rgba(255,60,60,.15); color: #ff4040; }
+  .wb-node-body     { padding: 6px 10px 10px; border-top: 1px solid var(--br1); }
+  .wb-node.collapsed .wb-node-body { display: none; }
+  .wb-node-footer   { font-size: 10px; color: var(--t4); text-align: right; margin-top: 6px; }
+  .wb-node-footer a { color: var(--a); text-decoration: none; }
+  .wb-node-footer a:hover { text-decoration: underline; }
+
+  /* Sections inside node */
+  .wb-section       { margin-bottom: 7px; }
+  .wb-section:last-of-type { margin-bottom: 0; }
+  .wb-section-head  { display: flex; justify-content: space-between; align-items: center;
+                      margin-bottom: 4px; }
+  .wb-section-label { font-size: 9px; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: 0.6px; color: var(--t3); font-family: var(--mono); }
+  .wb-section-count { font-size: 9px; color: var(--t4); background: var(--bg3);
+                      padding: 1px 5px; border-radius: 8px; font-family: var(--mono); }
+  .wb-section-divider { border: none; border-top: 1px solid var(--br1); margin: 7px 0; }
+  .wb-empty-section { font-size: 10px; color: var(--t4); font-style: italic; padding: 1px 0; }
+  .wb-item-more     { font-size: 10px; color: var(--t4); padding: 1px 4px; }
+
+  /* Vuln rows */
+  .wb-vuln-row      { display: flex; align-items: center; gap: 5px; padding: 3px 6px;
+                      border-radius: 5px; background: var(--bg3); margin-bottom: 3px;
+                      border-left: 3px solid transparent; }
+  .wb-vuln-sev      { font-size: 9px; font-family: var(--mono); font-weight: 700;
+                      flex-shrink: 0; width: 30px; }
+  .wb-vuln-name     { font-size: 11px; color: var(--t1); overflow: hidden;
+                      text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+  /* Port chips */
+  .wb-ports-wrap    { display: flex; flex-wrap: wrap; gap: 4px; }
+  .wb-port-chip     { font-size: 10px; font-family: var(--mono); padding: 2px 7px;
+                      border-radius: 4px; display: inline-flex; align-items: center; gap: 3px; }
+  .wb-port-chip.open   { background: rgba(76,175,80,.12); color: #4caf50;
+                          border: 1px solid rgba(76,175,80,.25); }
+  .wb-port-chip.closed { background: var(--bg3); color: var(--t4);
+                          border: 1px solid var(--br1); }
+  .wb-port-num      { font-weight: 700; }
+  .wb-port-svc      { color: inherit; opacity: 0.7; font-size: 9px; }
+
+  /* Endpoint rows */
+  .wb-ep-row        { display: flex; align-items: center; gap: 5px; padding: 3px 6px;
+                      border-radius: 5px; background: var(--bg3); margin-bottom: 3px;
+                      cursor: pointer; transition: background 0.1s; }
+  .wb-ep-row:hover  { background: var(--bg4, color-mix(in srgb, var(--bg3) 70%, var(--a) 30%)); }
+  .wb-ep-row:hover .wb-ep-copy { opacity: 1; }
+  .wb-ep-method     { font-size: 9px; font-family: var(--mono); font-weight: 700;
+                      flex-shrink: 0; width: 36px; }
+  .wb-ep-path       { font-size: 10px; color: var(--t2); font-family: var(--mono);
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .wb-ep-star       { color: #f5a623; font-size: 10px; flex-shrink: 0; }
+  .wb-ep-copy       { font-size: 9px; color: var(--t3); margin-left: auto; opacity: 0;
+                      flex-shrink: 0; transition: opacity 0.1s; }
+
+  /* Custom cards */
+  .wb-card          { position: absolute; width: 240px; background: var(--bg2);
+                      border: 1px solid var(--br1); border-radius: 10px;
+                      box-shadow: 0 2px 8px rgba(0,0,0,.18); user-select: none;
+                      transition: box-shadow 0.15s; }
+  .wb-card:hover    { box-shadow: 0 4px 16px rgba(0,0,0,.28); }
+  .wb-card.dragging { box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 100; }
+  .wb-card-head     { display: flex; align-items: center; gap: 6px; padding: 9px 10px;
+                      border-radius: 10px 10px 0 0; cursor: grab; }
+  .wb-card-head:active { cursor: grabbing; }
+  .wb-card-title    { flex: 1; font-size: 12px; font-weight: 700; color: #fff;
+                      outline: none; min-width: 0; word-break: break-word; }
+  .wb-card-title:empty::before { content: 'Untitled'; opacity: 0.5; }
+  .wb-card-colors   { display: flex; gap: 3px; flex-shrink: 0; }
+  .wb-card-col      { width: 9px; height: 9px; border-radius: 50%; cursor: pointer;
+                      opacity: 0.65; transition: opacity 0.1s, transform 0.1s; }
+  .wb-card-col:hover { opacity: 1; transform: scale(1.25); }
+  .wb-card-rm       { font-size: 12px; color: rgba(255,255,255,.45); cursor: pointer;
+                      flex-shrink: 0; padding: 0 2px; line-height: 1; }
+  .wb-card-rm:hover { color: rgba(255,255,255,.9); }
+  .wb-card-body     { padding: 8px 10px 10px; border-top: 1px solid rgba(255,255,255,.08); }
+  .wb-card-text     { font-size: 12px; color: var(--t1); line-height: 1.55;
+                      outline: none; min-height: 38px; word-break: break-word; }
+  .wb-card-text:empty::before { content: attr(data-placeholder); color: var(--t4); font-style: italic; }
+  .wb-card-hint     { font-size: 9px; color: var(--t4); margin-top: 5px; font-family: var(--mono); }
+
+  /* Sticky notes */
+  .wb-sticky        { position: absolute; background: #ffd96a; border-radius: 7px;
+                      width: 170px; min-height: 80px; padding: 10px; box-shadow: 2px 3px 8px rgba(0,0,0,.2);
+                      user-select: none; }
+  .wb-sticky-head   { display: flex; justify-content: space-between; align-items: center;
+                      margin-bottom: 6px; cursor: grab; }
+  .wb-sticky-head:active { cursor: grabbing; }
+  .wb-sticky-colors { display: flex; gap: 3px; }
+  .wb-sticky-col    { width: 10px; height: 10px; border-radius: 50%; cursor: pointer; }
+  .wb-sticky-rm     { font-size: 11px; color: rgba(0,0,0,.4); cursor: pointer; }
+  .wb-sticky-rm:hover { color: rgba(0,0,0,.8); }
+  .wb-sticky-text   { font-size: 12px; color: #333; line-height: 1.5; outline: none;
+                      min-height: 40px; word-break: break-word; }
+
+  /* Remote cursors */
+  #wb-cursor-layer  { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
+  .wb-cursor        { position: absolute; display: flex; align-items: flex-start; gap: 3px;
+                      pointer-events: none; transform: translate(-2px, -2px); transition: left 0.05s, top 0.05s; }
+  .wb-cursor-label  { font-size: 10px; padding: 1px 6px; border-radius: 3px; color: #fff;
+                      font-family: var(--mono); white-space: nowrap; margin-top: 14px; }
+
+  /* Search */
+  .wb-search-wrap  { display: flex; align-items: center; gap: 5px; padding: 4px 8px;
+                     border: 1px solid var(--br1); border-radius: 6px; background: var(--bg2);
+                     color: var(--t3); transition: border-color 0.15s; }
+  .wb-search-wrap:focus-within { border-color: var(--a); color: var(--a); }
+  .wb-search-wrap input { border: none; background: transparent; color: var(--t1);
+                          font-size: 11px; outline: none; width: 130px; font-family: var(--mono); }
+  .wb-search-wrap input::placeholder { color: var(--t4); font-style: italic; }
+  .wb-search-count { font-size: 10px; color: var(--t3); font-family: var(--mono);
+                     min-width: 30px; text-align: right; }
+  .wb-search-clear { background: none; border: none; color: var(--t3); cursor: pointer;
+                     font-size: 14px; padding: 0; line-height: 1; display: none; }
+  .wb-search-clear.visible { display: block; }
+  /* Node search states */
+  .wb-node.wb-highlight, .wb-card.wb-highlight { outline: 2px solid var(--a); outline-offset: 2px; }
+  .wb-node.wb-dimmed, .wb-card.wb-dimmed, .wb-sticky.wb-dimmed { opacity: 0.18; transition: opacity 0.15s; }
+
+  /* Dot grid background */
+  #wb-viewport::before {
+    content: '';
+    position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(circle, var(--br1) 1px, transparent 1px);
+    background-size: 28px 28px;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
+
+<div class="workarea">
+  <main class="main">
+
+    <!-- Toolbar -->
+    <div class="wb-toolbar">
+
+      <!-- Tool buttons (icon-only) + floating draw panel -->
+      <div style="position:relative;display:flex;gap:2px">
+        <button class="wb-tool-btn active" id="wb-btn-select" onclick="setWbMode('select')" title="Select (V)">
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+            <path d="M2 1l8 5-4.5 1-2 4L2 1z" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="wb-tool-btn" id="wb-btn-pan" onclick="setWbMode('pan')" title="Pan (H)">
+          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
+            <path d="M5 1v4H1l2.5 2.5L1 10h4v3l2.5-2.5L10 13V9h3l-2.5-2.5L13 4H9V1L6.5 3.5 5 1z" stroke="currentColor" stroke-width="1.2" fill="none"/>
+          </svg>
+        </button>
+        <button class="wb-tool-btn" id="wb-btn-draw" onclick="setWbMode('draw')" title="Draw (D)">
+          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
+            <path d="M1 12L3.5 9 9 3.5 10.5 2l1 1-1.5 1.5-5.5 5.5L1 12z" stroke="currentColor" stroke-width="1.2"/>
+            <circle cx="10.5" cy="2.5" r="1.5" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="wb-tool-btn" id="wb-btn-eraser" onclick="setWbMode('eraser')" title="Eraser (E)">
+          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
+            <path d="M8 2L11 5L6 10L3 7Z" stroke="currentColor" stroke-width="1.2" fill="none"/>
+            <path d="M3 7l3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <rect x="1" y="9.5" width="11" height="2" rx="1" fill="currentColor" opacity="0.25"/>
+          </svg>
+        </button>
+        <button class="wb-tool-btn" id="wb-btn-connect" onclick="setWbMode('connect')" title="Connect nodes (C)">
+          <svg width="14" height="13" viewBox="0 0 13 12" fill="none">
+            <circle cx="2" cy="6" r="1.8" stroke="currentColor" stroke-width="1.2"/>
+            <circle cx="11" cy="6" r="1.8" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M3.8 6H7.5" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M7.2 4.5L9.2 6L7.2 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="wb-tool-btn" id="wb-btn-note" onclick="setWbMode('note')" title="Sticky note (N)">
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+            <rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M3.5 4.5h5M3.5 6.5h5M3.5 8.5h3" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+        </button>
+        <button class="wb-tool-btn" id="wb-btn-card" onclick="setWbMode('card')" title="Custom card (A)">
+          <svg width="14" height="13" viewBox="0 0 14 13" fill="none">
+            <rect x="1" y="1" width="12" height="11" rx="2.5" stroke="currentColor" stroke-width="1.2"/>
+            <rect x="1" y="1" width="12" height="4" rx="2.5" fill="currentColor" opacity="0.25"/>
+            <path d="M3.5 8h7M3.5 10h4.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <!-- Draw/eraser options (floating panel) -->
+        <div class="wb-draw-panel" id="wb-draw-panel">
+          <span class="wb-draw-panel-label">Color</span>
+          <div class="wb-swatch active" style="background:#e94141" onclick="setDrawColor('#e94141')" data-color="#e94141"></div>
+          <div class="wb-swatch" style="background:#f5a623" onclick="setDrawColor('#f5a623')" data-color="#f5a623"></div>
+          <div class="wb-swatch" style="background:#4caf50" onclick="setDrawColor('#4caf50')" data-color="#4caf50"></div>
+          <div class="wb-swatch" style="background:#2196f3" onclick="setDrawColor('#2196f3')" data-color="#2196f3"></div>
+          <div class="wb-swatch" style="background:#9c27b0" onclick="setDrawColor('#9c27b0')" data-color="#9c27b0"></div>
+          <div class="wb-swatch" style="background:var(--t1)" onclick="setDrawColor('var(--t1)')" data-color="t1"></div>
+          <div class="wb-tool-sep"></div>
+          <span class="wb-draw-panel-label">Size</span>
+          <button class="wb-w-btn active" id="wb-w-thin"   onclick="setDrawWidth(2,'thin')"   title="Thin">
+            <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+          <button class="wb-w-btn"        id="wb-w-medium" onclick="setDrawWidth(4,'medium')" title="Medium">
+            <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="3"   stroke-linecap="round"/></svg>
+          </button>
+          <button class="wb-w-btn"        id="wb-w-thick"  onclick="setDrawWidth(8,'thick')"  title="Thick">
+            <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/></svg>
+          </button>
+          <div class="wb-tool-sep"></div>
+          <button class="wb-btn" onclick="clearDrawing()" title="Clear all strokes" style="padding:4px 8px;font-size:10px">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+              <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div class="wb-tool-sep"></div>
+
+      <!-- Action buttons -->
+      <button class="wb-btn" onclick="syncTargets()" title="Add targets not yet on the board">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M6 3.5v5M3.5 6h5" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        Sync
+      </button>
+      <button class="wb-btn" onclick="fitToScreen()" title="Fit all to screen (F)">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M1 4V1h3M8 1h3v3M11 8v3H8M4 11H1V8" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+        Fit
+      </button>
+
+      <div class="wb-tool-sep"></div>
+
+      <!-- Search -->
+      <div class="wb-search-wrap">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+          <circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="wb-search" placeholder="Search… (/)" autocomplete="off"
+               oninput="wbSearch(this.value)">
+        <span class="wb-search-count" id="wb-search-count"></span>
+        <button class="wb-search-clear" id="wb-search-clear" onclick="wbSearchClear()" tabindex="-1">×</button>
+      </div>
+
+      <span class="wb-save-status" id="wb-save-status">Saved ✓</span>
+    </div>
+
+    <!-- Whiteboard viewport -->
+    <div id="wb-viewport">
+      <div id="wb-workspace">
+        <svg id="wb-svg" width="1" height="1"></svg>
+        <svg id="wb-edges-svg" width="1" height="1" style="position:absolute;left:0;top:0;overflow:visible">
+          <defs>
+            <marker id="wb-arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5"
+                    orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M0,0 L10,3.5 L0,7 Z" fill="context-stroke"/>
+            </marker>
+          </defs>
+        </svg>
+        <div id="wb-nodes-layer"></div>
+      </div>
+      <div id="wb-cursor-layer"></div>
+    </div>
+
+  </main>
+
+  <aside class="activity-col">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </aside>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/views/whiteboard.js"></script>
+<script src="js/page.js"></script>
+<script>
+function pageInit() {
+  initWhiteboard();
+}
+bootPage('whiteboard');
+</script>
+</body>
+</html>

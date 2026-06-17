@@ -57,7 +57,8 @@ projectRouter.use('/ps',       require('./routes/ps'));
 projectRouter.use('/vulns',    require('./routes/vulns'));
 projectRouter.use('/activity', require('./routes/activity'));
 projectRouter.use('/targets',  require('./routes/targets'));
-projectRouter.use('/tickets',  require('./routes/tickets'));
+projectRouter.use('/tickets',    require('./routes/tickets'));
+projectRouter.use('/whiteboard', require('./routes/whiteboard'));
 
 // Ports & endpoints nested under a specific target
 const targetRouter = express.Router({ mergeParams: true });

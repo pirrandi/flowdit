@@ -178,6 +178,10 @@ const api = {
   activity: {
     list: (pid, limit=50) => request('GET', `/projects/${pid}/activity?limit=${limit}`),
   },
+  whiteboard: {
+    get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),
+    save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
+  },
   portal: {
     auth: (token, password) => fetch(`${API_BASE}/portal/auth`, {
       method: 'POST',

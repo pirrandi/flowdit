@@ -118,6 +118,7 @@ function renderSidenav() {
         { href:`targets.html${pid}`,     label:'Targets'       },
         { href:`vulns.html${pid}`,       label:'Findings'      },
         { href:`export.html${pid}`,      label:'Report'        },
+        { href:`whiteboard.html${pid}`,  label:'Whiteboard'    },
       ]
     },
     {

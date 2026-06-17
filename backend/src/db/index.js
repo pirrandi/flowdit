@@ -1,4 +1,9 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Return DATE columns as plain "YYYY-MM-DD" strings instead of JS Date objects.
+// Without this, pg converts dates to midnight UTC Date objects which cause
+// off-by-one errors in browsers with non-UTC timezones.
+types.setTypeParser(1082, val => val);
 
 const pool = new Pool({
   host:     process.env.DB_HOST     || 'localhost',

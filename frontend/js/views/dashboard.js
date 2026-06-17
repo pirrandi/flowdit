@@ -290,10 +290,10 @@ function updateDashboard() {
             <div class="stat-val" style="color:var(--t3)">—</div>
             <div class="stat-sub"><a href="settings.html?pid=${pid}" style="color:var(--a);text-decoration:none">Set deadline →</a></div>
             <div class="stat-bar"></div>`;
+          const parseDate = s => { const [y,m,d] = s.slice(0,10).split('-').map(Number); return new Date(y,m-1,d); };
           const today = new Date(); today.setHours(0,0,0,0);
-          const end   = new Date(p.date_end); end.setHours(0,0,0,0);
-          const start = p.date_start ? new Date(p.date_start) : null;
-          if (start) start.setHours(0,0,0,0);
+          const end   = parseDate(p.date_end);
+          const start = p.date_start ? parseDate(p.date_start) : null;
           const days  = Math.ceil((end - today) / 86400000);
           const total = start ? Math.ceil((end - start) / 86400000) : null;
           const pct   = (total && total > 0) ? Math.max(0, Math.min(100, Math.round((1 - days/total)*100))) : 0;
@@ -546,7 +546,8 @@ function updateDashboard() {
                       <span style="font-size:11px;color:var(--t3)">${r.label}</span>
                       <span style="font-size:11px;color:var(--t4)">—</span>
                     </div>`;
-                  const d    = new Date(r.date); d.setHours(0,0,0,0);
+                  const parseD = s => { const [y,m,dd] = s.slice(0,10).split('-').map(Number); return new Date(y,m-1,dd); };
+                  const d    = parseD(r.date);
                   const diff = Math.ceil((d - today) / 86400000);
                   const fmt  = d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
                   const hint = diff < 0 ? `hace ${Math.abs(diff)}d` : diff === 0 ? 'hoy' : `en ${diff}d`;

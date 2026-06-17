@@ -326,6 +326,16 @@ const migrations = [
   `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS client_email VARCHAR(255)`,
   `ALTER TABLE ticket_replies ALTER COLUMN author_id DROP NOT NULL`,
   `ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS client_name VARCHAR(200)`,
+
+  // ── WHITEBOARD ───────────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS whiteboard_state (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id  UUID NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+    data        JSONB NOT NULL DEFAULT '{}',
+    updated_by  UUID REFERENCES users(id),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_whiteboard_state_project ON whiteboard_state(project_id)`,
 ];
 
 async function migrate() {
