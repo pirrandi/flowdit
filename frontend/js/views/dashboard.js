@@ -495,7 +495,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">WSTG Progress <span class="section-count">${wPct}%</span></div>
-            <a href="wstg.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">→</a>
+            <a href="owstg.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">→</a>
           </div>
           <div class="section-body">
             <div style="display:flex;gap:16px;margin-bottom:12px">

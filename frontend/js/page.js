@@ -1,5 +1,5 @@
 // ── page.js — shared controller for all internal pages ──────────────
-// Loaded by dashboard.html, wstg.html, portswigger.html, vulns.html, members.html
+// Loaded by dashboard.html, owstg.html, portswigger.html, vulns.html, members.html
 
 // ── AUTH GUARD ────────────────────────────────────────────────────
 window.addEventListener('fd:logout', () => { window.location.href = 'index.html'; });
@@ -110,7 +110,7 @@ const _NAV_ICONS = {
   'vulns.html':       `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L14 5v4c0 3.5-2.8 5.5-6 6.5C5.8 14.5 2 12.5 2 9V5z"/><line x1="8" y1="7" x2="8" y2="9.5"/><circle cx="8" cy="11.5" r=".7" fill="currentColor" stroke="none"/></svg>`,
   'export.html':      `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1h6l4 4v10H4z"/><path d="M10 1v4h4"/><line x1="6" y1="8" x2="11" y2="8"/><line x1="6" y1="11" x2="11" y2="11"/></svg>`,
   'whiteboard.html':  `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="11" rx="1.5"/><path d="M5 10.5L6.5 9l3-3L11 4.5l1 1-1.5 1.5-3 3L6 11.5z"/></svg>`,
-  'wstg.html':        `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="12" height="14" rx="1.5"/><path d="M5.5 5.5L7 7l3.5-3.5"/><line x1="5" y1="10" x2="11" y2="10"/><line x1="5" y1="13" x2="9" y2="13"/></svg>`,
+  'owstg.html':        `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="12" height="14" rx="1.5"/><path d="M5.5 5.5L7 7l3.5-3.5"/><line x1="5" y1="10" x2="11" y2="10"/><line x1="5" y1="13" x2="9" y2="13"/></svg>`,
   'methodology.html': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3" width="9" height="12" rx="1"/><path d="M7 3V1.5a1.5 1.5 0 013 0V3"/><line x1="6.5" y1="8" x2="9.5" y2="8"/><line x1="6.5" y1="11" x2="9.5" y2="11"/></svg>`,
   'members.html':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5.5" r="2.5"/><path d="M1 14c0-3 2-4.5 5-4.5s5 1.5 5 4.5"/><circle cx="12.5" cy="5" r="2"/><path d="M12.5 11c2.5.2 3.5 1.5 3.5 3"/></svg>`,
   'settings.html':    `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.5 3.5l1 1M11.5 11.5l1 1M3.5 12.5l1-1M11.5 4.5l1-1"/></svg>`,
@@ -138,7 +138,7 @@ function renderSidenav() {
     {
       label: 'Testing',
       items: [
-        { href:`wstg.html${pid}`,        label:'OWASP WSTG'    },
+        { href:`owstg.html${pid}`,        label:'OWASP WSTG'    },
         { href:`methodology.html${pid}`, label:'Methodologies' },
       ]
     },
