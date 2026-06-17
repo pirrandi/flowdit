@@ -617,7 +617,7 @@ function buildDetailedFindings(vulns, sec) {
     }
 
     // HTTP Proofs (request/response from scanner imports)
-    const httpProofs = Array.isArray(v.http_proofs) ? v.http_proofs : [];
+    const httpProofs = (Array.isArray(v.http_proofs) ? v.http_proofs : []).filter(p => p.include !== false);
     if (httpProofs.length) {
       out.push(labelText(`HTTP Proofs (${httpProofs.length})`));
       httpProofs.forEach((proof, idx) => {

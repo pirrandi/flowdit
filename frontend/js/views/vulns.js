@@ -226,18 +226,26 @@ function buildVulnCard(v) {
   const proofs = (v.http_proofs || []);
   const httpH = proofs.length ? `<div class="items-section">
     <div class="items-label">HTTP Proofs (${proofs.length})</div>
-    ${proofs.map((pr, i) => `
-      <div class="http-proof">
-        <div class="http-proof-head" onclick="this.nextElementSibling.classList.toggle('open')">
+    ${proofs.map((pr, i) => {
+      const included = pr.include !== false;
+      return `
+      <div class="http-proof" id="http-proof-${v.id}-${i}">
+        <div class="http-proof-head">
           <span class="http-proof-method">${esc(pr.method || 'HTTP')}</span>
-          <span class="http-proof-label">Proof #${i+1}</span>
-          <span class="http-proof-toggle">▶</span>
+          <span class="http-proof-label" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">Proof #${i+1}</span>
+          <label class="http-proof-include" title="Incluir en reporte" onclick="event.stopPropagation()">
+            <input type="checkbox" ${included ? 'checked' : ''} onchange="toggleHttpProofInclude('${v.id}',${i},this.checked)">
+            <span>reporte</span>
+          </label>
+          <button class="http-proof-edit-btn" onclick="editHttpProof('${v.id}',${i})" title="Editar">✎</button>
+          <span class="http-proof-toggle" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">▶</span>
         </div>
         <div class="http-proof-body">
           ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${esc(pr.request)}</pre>` : ''}
           ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${esc(pr.response)}</pre>` : ''}
         </div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
   </div>` : '';
 
   const editorBadge = v.editor_username ? `
@@ -585,6 +593,59 @@ async function submitImport() {
   }
 }
 
+async function toggleHttpProofInclude(vulnId, idx, checked) {
+  const v = state.customVulns.find(x => x.id === vulnId);
+  if (!v) return;
+  const proofs = (v.http_proofs || []).map((p, i) => i === idx ? { ...p, include: checked } : p);
+  v.http_proofs = proofs;
+  await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
+}
+
+function editHttpProof(vulnId, idx) {
+  const v = state.customVulns.find(x => x.id === vulnId);
+  if (!v) return;
+  const proof = (v.http_proofs || [])[idx];
+  if (!proof) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'wb-modal-overlay';
+  overlay.innerHTML = `
+    <div class="wb-modal" style="width:700px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column">
+      <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:12px">
+        Editar HTTP Proof #${idx+1}
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:8px">${esc(proof.method||'HTTP')}</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div class="http-proof-section-label" style="margin-bottom:4px">Request</div>
+          <textarea id="hp-edit-req" style="width:100%;height:200px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:var(--r-sm);color:var(--t1);padding:8px;resize:vertical;line-height:1.5">${esc(proof.request||'')}</textarea>
+        </div>
+        <div>
+          <div class="http-proof-section-label" style="margin-bottom:4px">Response</div>
+          <textarea id="hp-edit-res" style="width:100%;height:200px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:var(--r-sm);color:var(--t1);padding:8px;resize:vertical;line-height:1.5">${esc(proof.response||'')}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="wb-modal-btn wb-modal-cancel" onclick="this.closest('.wb-modal-overlay').remove()">Cancelar</button>
+        <button class="wb-modal-btn wb-modal-confirm" id="hp-edit-save">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('hp-edit-save').onclick = async () => {
+    const newReq = document.getElementById('hp-edit-req').value;
+    const newRes = document.getElementById('hp-edit-res').value;
+    const proofs = (v.http_proofs || []).map((p, i) =>
+      i === idx ? { ...p, request: newReq, response: newRes } : p
+    );
+    v.http_proofs = proofs;
+    await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
+    overlay.remove();
+    const card = document.getElementById(`vuln-${vulnId}`);
+    if (card) card.replaceWith(buildVulnCard(v));
+  };
+}
+
 window.setCVSSMetric      = setCVSSMetric;
 window.toggleCVSSSection  = toggleCVSSSection;
 window.copyCVSSVector     = copyCVSSVector;
@@ -608,8 +669,10 @@ window.aiDraft            = aiDraft;
 window.aiRemediation      = aiRemediation;
 window.aiCWE              = aiCWE;
 window.aiSeverity         = aiSeverity;
-window.openImportModal    = openImportModal;
-window.closeImportModal   = closeImportModal;
-window.handleImportFile   = handleImportFile;
-window.handleImportDrop   = handleImportDrop;
-window.submitImport       = submitImport;
+window.openImportModal        = openImportModal;
+window.closeImportModal       = closeImportModal;
+window.handleImportFile       = handleImportFile;
+window.handleImportDrop       = handleImportDrop;
+window.submitImport           = submitImport;
+window.toggleHttpProofInclude = toggleHttpProofInclude;
+window.editHttpProof          = editHttpProof;

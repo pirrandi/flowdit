@@ -3206,7 +3206,7 @@ function buildReport() {
             evid.forEach(img => { html += `<div style="break-inside:avoid;page-break-inside:avoid"><img src="${img.data}" class="rpt-evidence-img"></div>`; });
             html += '</div></div>';
           }
-          const httpProofs = Array.isArray(v.http_proofs) ? v.http_proofs : [];
+          const httpProofs = (Array.isArray(v.http_proofs) ? v.http_proofs : []).filter(p => p.include !== false);
           if (httpProofs.length) {
             html += `<div class="rpt-field"><div class="rpt-field-label">HTTP Proofs (${httpProofs.length})</div>`;
             httpProofs.forEach((proof, idx) => {
