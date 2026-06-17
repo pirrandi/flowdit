@@ -202,10 +202,10 @@ const api = {
     save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
   },
   import: {
-    burp: (pid, file) => {
+    scan: (pid, file) => {
       const fd = new FormData();
       fd.append('file', file);
-      return requestUpload('POST', `/projects/${pid}/import/burp`, fd);
+      return requestUpload('POST', `/projects/${pid}/import/scan`, fd);
     },
   },
   portal: {

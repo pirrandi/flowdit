@@ -487,7 +487,7 @@ function populateTargetSelect(selectedId) {
     inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${esc(t.host)}</option>`).join('');
 }
 
-// ── Import Burp ────────────────────────────────────────────────────────
+// ── Import Scan ─────────────────────────────────────────────────────────
 let _importFile = null;
 
 function openImportModal() {
@@ -508,8 +508,9 @@ function closeImportModal() {
 
 function handleImportFile(file) {
   if (!file) return;
-  if (!file.name.toLowerCase().endsWith('.xml')) {
-    document.getElementById('import-error').textContent = 'Please select an XML file.';
+  const ext = file.name.toLowerCase();
+  if (!ext.endsWith('.xml') && !ext.endsWith('.nessus')) {
+    document.getElementById('import-error').textContent = 'Please select an XML or .nessus file.';
     return;
   }
   _importFile = file;
@@ -533,11 +534,12 @@ async function submitImport() {
   document.getElementById('import-submit-btn').style.display = 'none';
 
   try {
-    const res = await api.import.burp(pid, _importFile);
+    const res = await api.import.scan(pid, _importFile);
     document.getElementById('import-loading').style.display  = 'none';
     document.getElementById('import-result').style.display   = '';
 
-    let text = `✓ Imported <strong>${res.imported}</strong> finding${res.imported !== 1 ? 's' : ''}`;
+    const toolName = { burp: 'Burp Suite', nessus: 'Nessus', zap: 'OWASP ZAP' }[res.format] || 'scanner';
+    let text = `✓ Imported <strong>${res.imported}</strong> finding${res.imported !== 1 ? 's' : ''} from ${toolName}`;
     if (res.targets_created > 0)
       text += ` · Created <strong>${res.targets_created}</strong> new target${res.targets_created !== 1 ? 's' : ''}`;
     document.getElementById('import-result-msg').innerHTML = text;
@@ -545,7 +547,7 @@ async function submitImport() {
     const fresh = await api.vulns.list(pid);
     state.customVulns = fresh.vulns || fresh;
     renderCustomVulns();
-    showToast(`Imported ${res.imported} findings from Burp Suite`, 'success');
+    showToast(`Imported ${res.imported} findings from ${toolName}`, 'success');
   } catch (err) {
     document.getElementById('import-loading').style.display    = 'none';
     document.getElementById('import-idle').style.display       = '';

@@ -6,123 +6,236 @@ const { requireAuth }                        = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
 
 const router = express.Router({ mergeParams: true });
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 router.use(requireAuth, requireProjectAccess);
 
-const SEVERITY_MAP = {
-  'high':          'high',
-  'medium':        'medium',
-  'low':           'low',
-  'information':   'info',
-  'informational': 'info',
-  'false positive':'info',
-};
-
+// ── Helpers ─────────────────────────────────────────────────────────────
 function stripHtml(val) {
   if (val == null) return '';
   return String(val)
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&lt;/g,  '<').replace(/&gt;/g,  '>')
-    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ')
     .trim();
 }
 
-function extractHostname(hostEl) {
-  const raw = typeof hostEl === 'object' ? String(hostEl['#text'] || '') : String(hostEl || '');
-  try { return new URL(raw.trim()).hostname; } catch { return raw.trim(); }
+function extractHostname(raw) {
+  const s = String(raw || '').trim();
+  try { return new URL(s).hostname || s; } catch { return s; }
 }
 
-// ── POST /burp ─────────────────────────────────────────────────────────
-router.post('/burp', requireEditor, upload.single('file'), async (req, res, next) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+async function upsertTarget(projectId, host, userId, targetMap) {
+  if (!host) return null;
+  const key = host.toLowerCase();
+  if (targetMap.has(key)) return { id: targetMap.get(key), created: false };
+  const { rows } = await db.query(
+    `INSERT INTO targets (project_id, host, type, scope, notes, added_by)
+     VALUES ($1,$2,'domain','in','',$3) RETURNING id`,
+    [projectId, host, userId]
+  );
+  const id = rows[0].id;
+  targetMap.set(key, id);
+  return { id, created: true };
+}
 
-  try {
-    const xml = req.file.buffer.toString('utf8');
-    const parser = new XMLParser({
-      ignoreAttributes:    false,
-      attributeNamePrefix: '@_',
-      cdataPropName:       '__cdata',
-      isArray: (name) => name === 'issue',
+async function insertVuln(projectId, userId, { name, category, severity, description, remediation, notes, targetId }) {
+  await db.query(
+    `INSERT INTO custom_vulns
+       (project_id, name, category, severity, description, remediation, notes,
+        items, payloads, evidence, target_id, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'[]','[]','[]',$8,$9,$9)`,
+    [projectId, name, category, severity, description, remediation, notes, targetId, userId]
+  );
+}
+
+// ── Burp Suite parser ───────────────────────────────────────────────────
+const BURP_SEV = { high:'high', medium:'medium', low:'low', information:'info', informational:'info', 'false positive':'info' };
+
+async function parseBurp(xml, projectId, userId, targetMap) {
+  const parser = new XMLParser({
+    ignoreAttributes: false, attributeNamePrefix: '@_', cdataPropName: '__cdata',
+    isArray: n => n === 'issue',
+  });
+  const root = parser.parse(xml)?.issues;
+  if (!root) throw new Error('Invalid Burp XML — missing <issues> root');
+
+  const issues = [].concat(root.issue || []);
+  let imported = 0, targetsCreated = 0;
+
+  for (const issue of issues) {
+    const host   = issue.host ? extractHostname(typeof issue.host === 'object' ? issue.host['#text'] : issue.host) : null;
+    const target = await upsertTarget(projectId, host, userId, targetMap);
+    if (target?.created) targetsCreated++;
+
+    await insertVuln(projectId, userId, {
+      name:        stripHtml(issue.name) || 'Unnamed Finding',
+      category:    'Burp Suite',
+      severity:    BURP_SEV[String(issue.severity || '').toLowerCase().trim()] || 'medium',
+      description: [stripHtml(issue.issueBackground), stripHtml(issue.issueDetail)].filter(Boolean).join('\n\n'),
+      remediation: [stripHtml(issue.remediationBackground), stripHtml(issue.remediationDetail)].filter(Boolean).join('\n\n'),
+      notes:       [issue.location && `Location: ${stripHtml(issue.location)}`, issue.confidence && `Confidence: ${stripHtml(issue.confidence)}`].filter(Boolean).join('\n'),
+      targetId:    target?.id || null,
     });
+    imported++;
+  }
+  return { imported, targets_created: targetsCreated };
+}
 
-    const parsed = parser.parse(xml);
-    const root   = parsed?.issues;
-    if (!root) return res.status(400).json({ error: 'Invalid Burp XML — missing <issues> root element' });
+// ── Nessus parser ───────────────────────────────────────────────────────
+const NESSUS_SEV = { 0:'info', 1:'low', 2:'medium', 3:'high', 4:'critical' };
 
-    let issues = root.issue || [];
-    if (!Array.isArray(issues)) issues = [issues];
-    if (!issues.length) return res.json({ imported: 0, targets_created: 0 });
+async function parseNessus(xml, projectId, userId, targetMap) {
+  const parser = new XMLParser({
+    ignoreAttributes: false, attributeNamePrefix: '@_',
+    isArray: n => ['Report','ReportHost','ReportItem','tag'].includes(n),
+  });
+  const root = parser.parse(xml)?.NessusClientData_v2;
+  if (!root) throw new Error('Invalid Nessus XML — missing <NessusClientData_v2> root');
 
-    const projectId = req.params.projectId;
+  const reports = [].concat(root.Report || []);
+  let imported = 0, targetsCreated = 0;
 
-    // Pre-load targets for host matching
-    const { rows: existingTargets } = await db.query(
-      'SELECT id, host FROM targets WHERE project_id = $1', [projectId]
-    );
-    const targetMap = new Map(existingTargets.map(t => [t.host.toLowerCase(), t.id]));
+  for (const report of reports) {
+    for (const reportHost of [].concat(report.ReportHost || [])) {
+      // Prefer FQDN over IP
+      const tags   = [].concat(reportHost.HostProperties?.tag || []);
+      const fqdn   = tags.find(t => t['@_name'] === 'host-fqdn')?.['#text'];
+      const ip     = tags.find(t => t['@_name'] === 'host-ip')?.['#text'];
+      const host   = fqdn || ip || reportHost['@_name'] || null;
+      const target = await upsertTarget(projectId, host, userId, targetMap);
+      if (target?.created) targetsCreated++;
 
-    let imported = 0;
-    let targetsCreated = 0;
+      for (const item of [].concat(reportHost.ReportItem || [])) {
+        const sevNum = parseInt(item['@_severity'] || '0', 10);
+        if (sevNum === 0) continue;  // skip informational noise (open ports, banners, etc.)
 
-    for (const issue of issues) {
-      const name     = stripHtml(issue.name) || 'Unnamed Finding';
-      const rawSev   = String(issue.severity || '').toLowerCase().trim();
-      const severity = SEVERITY_MAP[rawSev] || 'medium';
+        const cvssVector = item.cvss3_vector || item.cvss_vector || null;
+        const cvssScore  = parseFloat(item.cvss3_base_score || item.cvss_base_score || '') || null;
+        const cve        = item.cve ? String(item.cve).trim() : null;
 
-      const hostRaw  = issue.host ? extractHostname(issue.host) : null;
+        const notes = [
+          item['@_pluginFamily'] && `Family: ${item['@_pluginFamily']}`,
+          item['@_port'] && item['@_port'] !== '0' && `Port: ${item['@_port']}/${item['@_protocol'] || 'tcp'}`,
+          item['@_svc_name'] && `Service: ${item['@_svc_name']}`,
+          cve && `CVE: ${cve}`,
+          item.plugin_output && `Scanner output:\n${stripHtml(item.plugin_output)}`,
+        ].filter(Boolean).join('\n');
 
-      // Merge background + detail for description and remediation
-      const description = [
-        stripHtml(issue.issueBackground),
-        stripHtml(issue.issueDetail),
-      ].filter(Boolean).join('\n\n');
-
-      const remediation = [
-        stripHtml(issue.remediationBackground),
-        stripHtml(issue.remediationDetail),
-      ].filter(Boolean).join('\n\n');
-
-      const location   = stripHtml(issue.location);
-      const confidence = stripHtml(issue.confidence);
-      const notes = [
-        location   ? `Location: ${location}`     : '',
-        confidence ? `Confidence: ${confidence}` : '',
-      ].filter(Boolean).join('\n').trim();
-
-      // Match existing target or create one
-      let targetId = null;
-      if (hostRaw) {
-        const key = hostRaw.toLowerCase();
-        if (targetMap.has(key)) {
-          targetId = targetMap.get(key);
-        } else {
-          const { rows } = await db.query(
-            `INSERT INTO targets (project_id, host, type, scope, notes, added_by)
-             VALUES ($1, $2, 'domain', 'in', '', $3) RETURNING id`,
-            [projectId, hostRaw, req.user.id]
-          );
-          targetId = rows[0].id;
-          targetMap.set(key, targetId);
-          targetsCreated++;
-        }
+        await db.query(
+          `INSERT INTO custom_vulns
+             (project_id, name, category, severity, description, remediation, notes,
+              items, payloads, evidence, target_id, cvss_vector, cvss_score, created_by, updated_by)
+           VALUES ($1,$2,'Nessus',$3,$4,$5,$6,'[]','[]','[]',$7,$8,$9,$10,$10)`,
+          [
+            projectId,
+            stripHtml(item['@_pluginName']) || 'Unnamed Finding',
+            NESSUS_SEV[sevNum] || 'medium',
+            [stripHtml(item.synopsis), stripHtml(item.description)].filter(Boolean).join('\n\n'),
+            stripHtml(item.solution),
+            notes,
+            target?.id || null,
+            cvssVector,
+            cvssScore,
+            userId,
+          ]
+        );
+        imported++;
       }
+    }
+  }
+  return { imported, targets_created: targetsCreated };
+}
 
-      await db.query(
-        `INSERT INTO custom_vulns
-           (project_id, name, category, severity, description, remediation, notes,
-            items, payloads, evidence, target_id, created_by, updated_by)
-         VALUES ($1,$2,'Burp Suite',$3,$4,$5,$6,'[]','[]','[]',$7,$8,$8)`,
-        [projectId, name, severity, description, remediation, notes, targetId, req.user.id]
-      );
+// ── OWASP ZAP parser ────────────────────────────────────────────────────
+const ZAP_SEV = { 0:'info', 1:'low', 2:'medium', 3:'high' };
+const ZAP_CONF = { 0:'False Positive', 1:'Low', 2:'Medium', 3:'High', 4:'Confirmed' };
+
+async function parseZap(xml, projectId, userId, targetMap) {
+  const parser = new XMLParser({
+    ignoreAttributes: false, attributeNamePrefix: '@_',
+    isArray: n => ['site','alertitem','instance'].includes(n),
+  });
+  const root = parser.parse(xml)?.OWASPZAPReport;
+  if (!root) throw new Error('Invalid ZAP XML — missing <OWASPZAPReport> root');
+
+  const sites = [].concat(root.site || []);
+  let imported = 0, targetsCreated = 0;
+
+  for (const site of sites) {
+    const host   = site['@_host'] || extractHostname(site['@_name']) || null;
+    const target = await upsertTarget(projectId, host, userId, targetMap);
+    if (target?.created) targetsCreated++;
+
+    for (const alert of [].concat(site.alerts?.alertitem || [])) {
+      const riskCode = parseInt(alert.riskcode ?? '2', 10);
+      const confCode = parseInt(alert.confidence ?? '2', 10);
+
+      const instances = [].concat(alert.instances?.instance || []);
+      const uriList   = [...new Set(instances.map(i => i.uri).filter(Boolean))].slice(0, 10);
+
+      const notes = [
+        ZAP_CONF[confCode] && `Confidence: ${ZAP_CONF[confCode]}`,
+        alert.cweid && `CWE: CWE-${alert.cweid}`,
+        uriList.length && `Affected URLs:\n${uriList.join('\n')}`,
+        alert.otherinfo && `Other info:\n${stripHtml(alert.otherinfo)}`,
+      ].filter(Boolean).join('\n');
+
+      await insertVuln(projectId, userId, {
+        name:        stripHtml(alert.name || alert.alert) || 'Unnamed Alert',
+        category:    'OWASP ZAP',
+        severity:    ZAP_SEV[riskCode] ?? 'medium',
+        description: stripHtml(alert.desc),
+        remediation: stripHtml(alert.solution),
+        notes,
+        targetId:    target?.id || null,
+      });
       imported++;
     }
+  }
+  return { imported, targets_created: targetsCreated };
+}
 
-    res.json({ imported, targets_created: targetsCreated });
+// ── Auto-detect + single endpoint ───────────────────────────────────────
+function detectFormat(xml) {
+  if (/<issues[\s>]/i.test(xml))              return 'burp';
+  if (/NessusClientData/i.test(xml))          return 'nessus';
+  if (/OWASPZAPReport/i.test(xml))            return 'zap';
+  return null;
+}
+
+router.post('/scan', requireEditor, upload.single('file'), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const xml    = req.file.buffer.toString('utf8');
+    const format = detectFormat(xml);
+    if (!format) return res.status(400).json({ error: 'Unrecognized format — expected Burp Suite, Nessus, or OWASP ZAP XML' });
+
+    const projectId = req.params.projectId;
+    const { rows: existing } = await db.query('SELECT id, host FROM targets WHERE project_id=$1', [projectId]);
+    const targetMap = new Map(existing.map(t => [t.host.toLowerCase(), t.id]));
+
+    let result;
+    if (format === 'burp')   result = await parseBurp(xml,   projectId, req.user.id, targetMap);
+    if (format === 'nessus') result = await parseNessus(xml, projectId, req.user.id, targetMap);
+    if (format === 'zap')    result = await parseZap(xml,    projectId, req.user.id, targetMap);
+
+    res.json({ ...result, format });
   } catch (err) {
     next(err);
   }
+});
+
+// Keep /burp for backward compatibility
+router.post('/burp', requireEditor, upload.single('file'), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const xml = req.file.buffer.toString('utf8');
+    const { rows: existing } = await db.query('SELECT id, host FROM targets WHERE project_id=$1', [req.params.projectId]);
+    const targetMap = new Map(existing.map(t => [t.host.toLowerCase(), t.id]));
+    const result = await parseBurp(xml, req.params.projectId, req.user.id, targetMap);
+    res.json({ ...result, format: 'burp' });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
