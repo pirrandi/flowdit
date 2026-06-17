@@ -608,35 +608,50 @@ function editHttpProof(vulnId, idx) {
   if (!proof) return;
 
   const overlay = document.createElement('div');
-  overlay.className = 'wb-modal-overlay';
-  overlay.innerHTML = `
-    <div class="wb-modal" style="width:700px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column">
-      <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:12px">
-        Editar HTTP Proof #${idx+1}
-        <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:8px">${esc(proof.method||'HTTP')}</span>
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--bg2);border:1px solid var(--b2);border-radius:10px;padding:20px;width:700px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;gap:12px';
+
+  const reqTA = document.createElement('textarea');
+  reqTA.style.cssText = 'width:100%;height:200px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;color:var(--t1);padding:8px;resize:vertical;line-height:1.5;box-sizing:border-box';
+  reqTA.value = proof.request || '';
+
+  const resTA = document.createElement('textarea');
+  resTA.style.cssText = reqTA.style.cssText;
+  resTA.value = proof.response || '';
+
+  modal.innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--t1)">
+      Editar HTTP Proof #${idx+1}
+      <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-left:8px">${esc(proof.method||'HTTP')}</span>
+    </div>
+    <div style="overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+      <div>
+        <div class="http-proof-section-label" style="margin-bottom:4px">Request</div>
+        <div id="hp-req-slot"></div>
       </div>
-      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
-        <div>
-          <div class="http-proof-section-label" style="margin-bottom:4px">Request</div>
-          <textarea id="hp-edit-req" style="width:100%;height:200px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:var(--r-sm);color:var(--t1);padding:8px;resize:vertical;line-height:1.5">${esc(proof.request||'')}</textarea>
-        </div>
-        <div>
-          <div class="http-proof-section-label" style="margin-bottom:4px">Response</div>
-          <textarea id="hp-edit-res" style="width:100%;height:200px;font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--b2);border-radius:var(--r-sm);color:var(--t1);padding:8px;resize:vertical;line-height:1.5">${esc(proof.response||'')}</textarea>
-        </div>
+      <div>
+        <div class="http-proof-section-label" style="margin-bottom:4px">Response</div>
+        <div id="hp-res-slot"></div>
       </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-        <button class="wb-modal-btn wb-modal-cancel" onclick="this.closest('.wb-modal-overlay').remove()">Cancelar</button>
-        <button class="wb-modal-btn wb-modal-confirm" id="hp-edit-save">Guardar</button>
-      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="hp-cancel" style="padding:6px 14px;background:var(--bg3);border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:12px;cursor:pointer">Cancelar</button>
+      <button id="hp-save"   style="padding:6px 14px;background:var(--a);border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-weight:600">Guardar</button>
     </div>`;
+
+  modal.querySelector('#hp-req-slot').appendChild(reqTA);
+  modal.querySelector('#hp-res-slot').appendChild(resTA);
+  overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  document.getElementById('hp-edit-save').onclick = async () => {
-    const newReq = document.getElementById('hp-edit-req').value;
-    const newRes = document.getElementById('hp-edit-res').value;
+  modal.querySelector('#hp-cancel').onclick = () => overlay.remove();
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  modal.querySelector('#hp-save').onclick = async () => {
     const proofs = (v.http_proofs || []).map((p, i) =>
-      i === idx ? { ...p, request: newReq, response: newRes } : p
+      i === idx ? { ...p, request: reqTA.value, response: resTA.value } : p
     );
     v.http_proofs = proofs;
     await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
