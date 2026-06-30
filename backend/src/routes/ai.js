@@ -169,6 +169,26 @@ Respond with this exact JSON schema:
   "businessImpact": "..."
 }`;
 
+  } else if (type === 'remediation-action') {
+    userPrompt = `Write a short, non-technical action item for a penetration test finding, aimed at a remediation roadmap a non-technical executive will read. Use ONLY the data provided below.
+
+Finding name: ${c.name || 'Unknown'}
+Severity: ${c.severity || 'unknown'}
+${c.category ? `Category: ${c.category}` : ''}
+${c.remediation ? `Technical remediation notes: ${c.remediation}` : ''}
+
+Instrucciones:
+- Todo el contenido en español, tercera persona impersonal, modo imperativo/infinitivo (ej. "Validar...", "Implementar...", "Actualizar...")
+- UNA sola frase corta (máx. ~110 caracteres), texto plano (sin markdown, sin código, sin nombres de archivos/endpoints/parámetros, sin negritas)
+- Describe la acción de remediación a alto nivel (QUÉ hacer), no el mecanismo técnico ni el paso a paso
+- No uses jerga técnica (no menciones inyección SQL, XSS, tokens, payloads, código específico, nombres de funciones, etc.) — usa lenguaje de gestión de riesgo
+- Si no hay suficiente información, da una acción razonable basada en la categoría y severidad
+
+Respond with this exact JSON schema:
+{
+  "execAction": "..."
+}`;
+
   } else {
     return res.status(400).json({ error: 'Unknown type' });
   }

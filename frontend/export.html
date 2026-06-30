@@ -2021,6 +2021,7 @@ function buildSecItem(sec) {
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div class="exp-field-label" style="margin:0">Intro text</div>
       ${sec.type === 'exec-summary' ? `<button class="ai-btn" id="ai-exec-btn" onclick="aiExecSummary('${sec.id}')" title="Generate executive summary from findings">✦ Generate</button>` : ''}
+      ${sec.type === 'remediation-roadmap' ? `<button class="ai-btn" id="ai-roadmap-btn" onclick="aiRoadmapActions('${sec.id}')" title="Generate action items for every finding missing one">✦ Generate All</button>` : ''}
     </div>`;
     html += _richToolbar('desc-'+sec.id, 'desc-'+sec.id);
     html += `<div class="rich-editor" contenteditable="true" id="rich-desc-${sec.id}"
@@ -2420,7 +2421,7 @@ async function loadAllTargetDetails() {
 }
 
 function getEdit(id) {
-  if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', notes:'', businessImpact:'', evidence:[], _richHtml:false };
+  if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', notes:'', businessImpact:'', execAction:'', evidence:[], _richHtml:false };
   if (!Array.isArray(_localEdits[id].evidence)) _localEdits[id].evidence = [];
   return _localEdits[id];
 }
@@ -2432,6 +2433,16 @@ function saveVulnBizImpact(id, value) {
   if (!d.vulnEdits) d.vulnEdits = {};
   if (!d.vulnEdits[id]) d.vulnEdits[id] = {};
   d.vulnEdits[id].businessImpact = value;
+  saveReportData(d, false);
+}
+
+// Persiste la acción recomendada (Hoja de Ruta, texto plano) en localStorage del reporte (no en la DB)
+function saveVulnExecAction(id, value) {
+  getEdit(id).execAction = value;
+  const d = getReportData();
+  if (!d.vulnEdits) d.vulnEdits = {};
+  if (!d.vulnEdits[id]) d.vulnEdits[id] = {};
+  d.vulnEdits[id].execAction = value;
   saveReportData(d, false);
 }
 
@@ -2741,6 +2752,72 @@ async function aiBusinessImpact(vulnId) {
   }
 }
 
+async function _fetchRemediationAction(v, edit) {
+  const context = {
+    name:        v.name,
+    severity:    v.severity,
+    category:    v.category || '',
+    remediation: (edit.remediation || v.remediation || '').replace(/<[^>]+>/g, ' '),
+  };
+  const apiBase = window.FLOWDIT_API || 'http://localhost:4000/api';
+  const res = await fetch(`${apiBase}/ai/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${tokens.access}`,
+    },
+    body: JSON.stringify({ type: 'remediation-action', context }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'AI error');
+  const result = await res.json();
+  return result.execAction || '';
+}
+
+async function aiRemediationAction(vulnId) {
+  const btn = document.getElementById(`ai-action-${vulnId}`);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const v = (state.customVulns || []).find(x => x.id === vulnId);
+    if (!v) throw new Error('Finding not found');
+    const action = await _fetchRemediationAction(v, getEdit(vulnId));
+    if (action) {
+      saveVulnExecAction(vulnId, action);
+      const el = document.getElementById(`eaction-${vulnId}`);
+      if (el) el.value = action;
+      buildReport();
+    }
+  } catch(e) {
+    alert('AI error: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate'; }
+  }
+}
+
+// Generates the "Acción Recomendada" for every finding still missing one (does not overwrite existing text)
+async function aiRoadmapActions(secId) {
+  const btn = document.getElementById('ai-roadmap-btn');
+  const vulns = (state.customVulns || []).filter(v => !getEdit(v.id).execAction);
+  if (!vulns.length) { if (btn) btn.textContent = 'Nothing to generate'; setTimeout(() => { if (btn) btn.textContent = '✦ Generate All'; }, 1500); return; }
+  if (btn) btn.disabled = true;
+  let done = 0;
+  for (const v of vulns) {
+    if (btn) btn.textContent = `${done}/${vulns.length}…`;
+    try {
+      const action = await _fetchRemediationAction(v, getEdit(v.id));
+      if (action) {
+        saveVulnExecAction(v.id, action);
+        const el = document.getElementById(`eaction-${v.id}`);
+        if (el) el.value = action;
+      }
+    } catch(e) {
+      console.error('[ai roadmap action]', v.id, e);
+    }
+    done++;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '✦ Generate All'; }
+  buildReport();
+}
+
 // ── Build editor panel ────────────────────────────────────────────
 function buildEditor() {
   const scope  = document.getElementById('export-scope')?.value || 'all';
@@ -2767,14 +2844,16 @@ function buildEditor() {
         bySev[sev].forEach(v => {
           if (!_localEdits[v.id]) {
             const saved = d.vulnEdits?.[v.id];
-            _localEdits[v.id] = saved ? { ...saved } : {
+            const base = {
               description:    v.description ? renderMd(v.description) : '',
               remediation:    v.remediation ? renderMd(v.remediation) : '',
               notes:          v.notes    || '',
               businessImpact: '',
+              execAction:     '',
               evidence:       v.evidence || [],
               _richHtml:      true,
             };
+            _localEdits[v.id] = saved ? { ...base, ...saved, notes: base.notes, evidence: base.evidence } : base;
             if (_localEdits[v.id].probability == null)
               _localEdits[v.id].probability = d.vulnEdits?.[v.id]?.probability ?? 3;
             if (_localEdits[v.id].remediationPriority == null)
@@ -2864,6 +2943,7 @@ function findingEditorRich(id, v) {
   const remHtml  = edit.remediation || '';
   const notes    = edit.notes       || '';
   const bizImpact = edit.businessImpact || '';
+  const execAction = edit.execAction || '';
   const isCriticalHigh = sev === 'critical' || sev === 'high';
   return `<div class="exp-finding">
     <div class="exp-finding-header" onclick="toggleFinding('${id}')">
@@ -2920,6 +3000,15 @@ function findingEditorRich(id, v) {
           ${PRIORITY_ORDER.map(p =>
             `<option value="${p}" ${(edit.remediationPriority || defaultPriority(sev))===p?'selected':''}>${PRIORITY_LABEL[p]}</option>`).join('')}
         </select>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <div class="exp-field-label" style="margin:0">Acción Recomendada (Hoja de Ruta)</div>
+          <button class="ai-btn" id="ai-action-${id}" onclick="aiRemediationAction('${id}')" title="Generate a short, non-technical action item">✦ Generate</button>
+        </div>
+        <textarea class="exp-textarea" id="eaction-${id}" placeholder="Acción de alto nivel, sin jerga técnica..."
+          oninput="saveVulnExecAction('${id}',this.value)"
+        >${esc(execAction)}</textarea>
       </div>
       <div>
         <div class="exp-field-label">Evidencia</div>
@@ -3512,8 +3601,7 @@ function buildReport() {
         list.forEach(v => {
           const sev    = v.severity || 'medium';
           const edit   = getEdit(v.id);
-          const remTxt = (edit.remediation || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          const action = remTxt ? (remTxt.length > 160 ? remTxt.slice(0, 160) + '…' : remTxt) : 'Ver detalle técnico del hallazgo.';
+          const action = edit.execAction || 'Acción recomendada pendiente de generar.';
           const num    = vulnNumMap[v.id];
           md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${action} |`);
           html += `<tr>
