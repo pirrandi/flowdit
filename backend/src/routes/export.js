@@ -80,7 +80,7 @@ function encryptWithGs(pdfBytes, password) {
 // POST /api/export/pdf
 // Body: { pageUrl, token, password? }
 router.post('/pdf', auth, requireUser, async (req, res) => {
-  const { pageUrl, token, password, rptKey, rptData } = req.body;
+  const { pageUrl, token, password, rptKey, rptData, scope, reportType } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
   const executablePath = findChrome();
@@ -117,6 +117,27 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
       () => document.getElementById('report-preview')?.children.length > 0,
       { timeout: 15000 }
     );
+
+    // The fresh page always boots with the default scope/report-type — replay
+    // whatever the originating tab had selected, then wait for the rebuild.
+    if (scope || reportType) {
+      await page.evaluate((s, rt) => {
+        const preview = document.getElementById('report-preview');
+        if (preview) preview.dataset.rendered = 'false';
+        if (s) {
+          const el = document.getElementById('export-scope');
+          if (el) { el.value = s; el.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+        if (rt) {
+          const el = document.getElementById('report-type');
+          if (el) { el.value = rt; el.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+      }, scope || '', reportType || '');
+      await page.waitForFunction(
+        () => document.getElementById('report-preview')?.dataset.rendered === 'true',
+        { timeout: 15000 }
+      );
+    }
 
     // Switch to print media after JS has built the layout
     await page.emulateMediaType('print');

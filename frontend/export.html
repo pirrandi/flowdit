@@ -3802,17 +3802,19 @@ async function exportPdf() {
   btn.disabled = true;
 
   try {
-    const token    = localStorage.getItem('fd_access');
-    const filename = m.coverTitle || state.currentProject?.name || 'report';
-    const pid      = state.currentProject?.id;
-    const rptKey   = `fd_rpt_${pid}`;
-    const rptData  = localStorage.getItem(rptKey);
-    const pageUrl  = window.location.href;
+    const token      = localStorage.getItem('fd_access');
+    const filename   = m.coverTitle || state.currentProject?.name || 'report';
+    const pid        = state.currentProject?.id;
+    const rptKey     = `fd_rpt_${pid}`;
+    const rptData    = localStorage.getItem(rptKey);
+    const pageUrl    = window.location.href;
+    const scope      = document.getElementById('export-scope')?.value || 'all';
+    const reportType = document.getElementById('report-type')?.value || 'technical';
 
     const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ pageUrl, token, rptKey, rptData, password, filename }),
+      body: JSON.stringify({ pageUrl, token, rptKey, rptData, password, filename, scope, reportType }),
     });
 
     if (!res.ok) {
