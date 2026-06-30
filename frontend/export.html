@@ -131,6 +131,12 @@
 .card-info    {background:#6b728018;border:1px solid #6b728040;color:#9ca3af;}
 .card-wstg    {background:var(--bg3);border:1px solid var(--b1);color:var(--c-low);}
 
+/* ── Overall risk banner (executive) ─────────────────────────────── */
+.rpt-risk-banner { display:flex;align-items:center;gap:18px;border-radius:10px;padding:16px 20px;margin:0 0 18px; }
+.rpt-risk-banner-label { font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;opacity:.75; }
+.rpt-risk-banner-level { font-size:21px;font-weight:800;line-height:1.15;white-space:nowrap; }
+.rpt-risk-banner-text  { font-size:12px;line-height:1.55;flex:1;opacity:.92; }
+
 /* ── Risk distribution bar ───────────────────────────────────────── */
 .rpt-risk-wrap { margin:4px 0 24px; }
 .rpt-risk-bar  { display:flex;height:7px;border-radius:4px;overflow:hidden;gap:2px; }
@@ -730,6 +736,19 @@ const SEV_ORDER = ['critical','high','medium','low','info'];
 const SEV_LABEL = { critical:'Crítico', high:'Alto', medium:'Medio', low:'Bajo', info:'Info' };
 const SEV_EMOJI = { critical:'', high:'', medium:'', low:'', info:'' };
 
+// ── Overall risk banner (executive report) ─────────────────────────
+const RISK_LEVEL_LABEL = { critical:'Crítico', high:'Alto', medium:'Medio', low:'Bajo', info:'Informativo' };
+const RISK_BANNER_TEXT = {
+  critical: 'Se identificaron vulnerabilidades críticas que representan un riesgo severo e inmediato para la organización. Se recomienda remediación urgente.',
+  high:     'Se identificaron vulnerabilidades de alto impacto que deben priorizarse en el corto plazo para reducir la exposición al riesgo.',
+  medium:   'El nivel de riesgo general es moderado. Existen hallazgos que conviene remediar dentro del ciclo habitual de mantenimiento.',
+  low:      'El nivel de riesgo general es bajo. Los hallazgos identificados tienen impacto limitado sobre la organización.',
+  info:     'No se identificaron vulnerabilidades explotables. Los hallazgos reportados son de carácter informativo.',
+};
+function overallRiskLevel(bySev) {
+  return SEV_ORDER.find(s => bySev[s]?.length) || null;
+}
+
 
 // ── Free Edit (full markdown override) ───────────────────────────
 let _freeEditMd  = null;
@@ -866,9 +885,21 @@ const DEFAULT_SECTIONS = [
   { id:'wstg',              type:'wstg',              title:'Cobertura OWASP WSTG',     visible:true  },
   { id:'detailed-findings', type:'detailed-findings', title:'Hallazgos Detallados',     visible:true  },
   { id:'risk-matrix',       type:'risk-matrix',       title:'Matriz de Riesgo',         visible:false },
+  { id:'remediation-roadmap', type:'remediation-roadmap', title:'Hoja de Ruta de Remediación', visible:false },
   { id:'targets',           type:'targets',           title:'Alcance — Objetivos',      visible:true  },
   { id:'risk-table',        type:'risk-table',        title:'Clasificación de Riesgo',  visible:false },
 ];
+
+// ── Remediation roadmap priority buckets ────────────────────────────
+const PRIORITY_ORDER = ['immediate','short','medium','routine'];
+const PRIORITY_LABEL = { immediate:'Inmediato (0–7 días)', short:'Corto Plazo (2–4 semanas)', medium:'Mediano Plazo (1–3 meses)', routine:'Mantenimiento Rutinario' };
+const PRIORITY_COLOR = { immediate:'#ef4444', short:'#f97316', medium:'#eab308', routine:'#6b7280' };
+function defaultPriority(sev) {
+  if (sev === 'critical') return 'immediate';
+  if (sev === 'high')     return 'short';
+  if (sev === 'medium')   return 'medium';
+  return 'routine';
+}
 
 // Risk matrix: cell color by [impact-1][prob-1], impact 1=Bajo..4=Crítico, prob 1-5
 const RISK_CELL = [
@@ -2389,9 +2420,19 @@ async function loadAllTargetDetails() {
 }
 
 function getEdit(id) {
-  if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', notes:'', evidence:[], _richHtml:false };
+  if (!_localEdits[id]) _localEdits[id] = { description:'', remediation:'', notes:'', businessImpact:'', evidence:[], _richHtml:false };
   if (!Array.isArray(_localEdits[id].evidence)) _localEdits[id].evidence = [];
   return _localEdits[id];
+}
+
+// Persiste el impacto de negocio (texto plano) en localStorage del reporte (no en la DB)
+function saveVulnBizImpact(id, value) {
+  getEdit(id).businessImpact = value;
+  const d = getReportData();
+  if (!d.vulnEdits) d.vulnEdits = {};
+  if (!d.vulnEdits[id]) d.vulnEdits[id] = {};
+  d.vulnEdits[id].businessImpact = value;
+  saveReportData(d, false);
 }
 
 // ── Autosave timers ───────────────────────────────────────────────
@@ -2419,6 +2460,16 @@ function setProbability(id, val) {
   if (!d.vulnEdits) d.vulnEdits = {};
   if (!d.vulnEdits[id]) d.vulnEdits[id] = {};
   d.vulnEdits[id].probability = +val;
+  saveReportData(d, false);
+  buildReport();
+}
+
+function setPriority(id, val) {
+  getEdit(id).remediationPriority = val;
+  const d = getReportData();
+  if (!d.vulnEdits) d.vulnEdits = {};
+  if (!d.vulnEdits[id]) d.vulnEdits[id] = {};
+  d.vulnEdits[id].remediationPriority = val;
   saveReportData(d, false);
   buildReport();
 }
@@ -2650,6 +2701,46 @@ async function aiExecSummary(secId) {
   }
 }
 
+async function aiBusinessImpact(vulnId) {
+  const btn = document.getElementById(`ai-biz-${vulnId}`);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const v = (state.customVulns || []).find(x => x.id === vulnId);
+    if (!v) throw new Error('Finding not found');
+    const edit = getEdit(vulnId);
+    const context = {
+      name:        v.name,
+      severity:    v.severity,
+      category:    v.category || '',
+      target:      v.target_host || '',
+      description: (edit.description || v.description || '').replace(/<[^>]+>/g, ' '),
+    };
+
+    const apiBase = window.FLOWDIT_API || 'http://localhost:4000/api';
+    const res = await fetch(`${apiBase}/ai/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokens.access}`,
+      },
+      body: JSON.stringify({ type: 'business-impact', context }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'AI error');
+    const result = await res.json();
+
+    if (result.businessImpact) {
+      saveVulnBizImpact(vulnId, result.businessImpact);
+      const el = document.getElementById(`ebiz-${vulnId}`);
+      if (el) el.value = result.businessImpact;
+      buildReport();
+    }
+  } catch(e) {
+    alert('AI error: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate'; }
+  }
+}
+
 // ── Build editor panel ────────────────────────────────────────────
 function buildEditor() {
   const scope  = document.getElementById('export-scope')?.value || 'all';
@@ -2677,14 +2768,17 @@ function buildEditor() {
           if (!_localEdits[v.id]) {
             const saved = d.vulnEdits?.[v.id];
             _localEdits[v.id] = saved ? { ...saved } : {
-              description: v.description ? renderMd(v.description) : '',
-              remediation: v.remediation ? renderMd(v.remediation) : '',
-              notes:       v.notes    || '',
-              evidence:    v.evidence || [],
-              _richHtml:   true,
+              description:    v.description ? renderMd(v.description) : '',
+              remediation:    v.remediation ? renderMd(v.remediation) : '',
+              notes:          v.notes    || '',
+              businessImpact: '',
+              evidence:       v.evidence || [],
+              _richHtml:      true,
             };
             if (_localEdits[v.id].probability == null)
               _localEdits[v.id].probability = d.vulnEdits?.[v.id]?.probability ?? 3;
+            if (_localEdits[v.id].remediationPriority == null)
+              _localEdits[v.id].remediationPriority = d.vulnEdits?.[v.id]?.remediationPriority ?? defaultPriority(sev);
           }
           inner += findingEditorRich(v.id, v);
         });
@@ -2769,6 +2863,8 @@ function findingEditorRich(id, v) {
   const descHtml = edit.description || '';
   const remHtml  = edit.remediation || '';
   const notes    = edit.notes       || '';
+  const bizImpact = edit.businessImpact || '';
+  const isCriticalHigh = sev === 'critical' || sev === 'high';
   return `<div class="exp-finding">
     <div class="exp-finding-header" onclick="toggleFinding('${id}')">
       ${sevBadge}
@@ -2796,6 +2892,15 @@ function findingEditorRich(id, v) {
           style="max-height:180px"
           oninput="saveVulnEdit('${id}','remediation',this.innerHTML)">${remHtml}</div>
       </div>
+      ${isCriticalHigh ? `<div style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <div class="exp-field-label" style="margin:0">Impacto de Negocio (Ejecutivo)</div>
+          <button class="ai-btn" id="ai-biz-${id}" onclick="aiBusinessImpact('${id}')" title="Generate business-impact summary from this finding">✦ Generate</button>
+        </div>
+        <textarea class="exp-textarea" id="ebiz-${id}" placeholder="Consecuencia para el negocio en términos no técnicos..."
+          oninput="saveVulnBizImpact('${id}',this.value)"
+        >${esc(bizImpact)}</textarea>
+      </div>` : ''}
       <div style="margin-bottom:8px">
         <div class="exp-field-label">Notas</div>
         <textarea class="exp-textarea" id="enotes-${id}" placeholder="Observaciones adicionales..."
@@ -2807,6 +2912,13 @@ function findingEditorRich(id, v) {
         <select class="exp-textarea" style="min-height:auto;padding:4px 8px;cursor:pointer;resize:none" onchange="setProbability('${id}',this.value)">
           ${[['1','1 — Muy Baja'],['2','2 — Baja'],['3','3 — Moderada'],['4','4 — Alta'],['5','5 — Muy Alta']].map(([v,l]) =>
             `<option value="${v}" ${(edit.probability??3)==+v?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div style="margin-bottom:8px">
+        <div class="exp-field-label">Plazo de Remediación (Hoja de Ruta)</div>
+        <select class="exp-textarea" style="min-height:auto;padding:4px 8px;cursor:pointer;resize:none" onchange="setPriority('${id}',this.value)">
+          ${PRIORITY_ORDER.map(p =>
+            `<option value="${p}" ${(edit.remediationPriority || defaultPriority(sev))===p?'selected':''}>${PRIORITY_LABEL[p]}</option>`).join('')}
         </select>
       </div>
       <div>
@@ -2940,7 +3052,8 @@ function buildReport() {
   </div>`;
 
   // ── TOC (derived from visible sections) ───────────────────────────
-  const visibleSections = sections.filter(s => s.visible);
+  const FORCE_EXEC_TYPES = new Set(['risk-matrix', 'remediation-roadmap']);
+  const visibleSections = sections.filter(s => s.visible || (reportType === 'executive' && FORCE_EXEC_TYPES.has(s.type)));
   const _tocItems = [];
   const PROSE_TYPES = new Set(['custom']);
   let _tocSecNum = 0;
@@ -2959,6 +3072,8 @@ function buildReport() {
     } else if (sec.type === 'detailed-findings' && scope !== 'wstg' && vulns.length && reportType === 'technical') {
       _tocPush(sec, sid);
     } else if (sec.type === 'risk-matrix' && scope !== 'wstg' && vulns.length) {
+      _tocPush(sec, sid);
+    } else if (sec.type === 'remediation-roadmap' && scope !== 'wstg' && vulns.length) {
       _tocPush(sec, sid);
     } else if (sec.type === 'targets' && state.targets?.length) {
       _tocPush(sec, sid);
@@ -3024,10 +3139,20 @@ function buildReport() {
       _secNum++;
       const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       if (vulns.length) {
-        md('## Resumen Ejecutivo'); md('|Severidad|Cantidad|'); md('|---------|--------|');
+        const riskLevel = overallRiskLevel(bySev);
+        md('## Resumen Ejecutivo');
+        if (reportType === 'executive' && riskLevel) md(`**Riesgo General: ${RISK_LEVEL_LABEL[riskLevel]}** — ${RISK_BANNER_TEXT[riskLevel]}`);
+        md('|Severidad|Cantidad|'); md('|---------|--------|');
         SEV_ORDER.forEach(s => { if(bySev[s].length) md(`|${SEV_LABEL[s]}|${bySev[s].length}|`); });
         md('');
-        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<div class="rpt-summary">`;
+        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}`;
+        if (reportType === 'executive' && riskLevel) {
+          html += `<div class="rpt-risk-banner card-${riskLevel}">
+            <div><div class="rpt-risk-banner-label">Riesgo General</div><div class="rpt-risk-banner-level">${RISK_LEVEL_LABEL[riskLevel]}</div></div>
+            <div class="rpt-risk-banner-text">${RISK_BANNER_TEXT[riskLevel]}</div>
+          </div>`;
+        }
+        html += `<div class="rpt-summary">`;
         SEV_ORDER.forEach(s => {
           if (!bySev[s].length) return;
           html += `<div class="rpt-summary-card card-${s}"><div class="rpt-count">${bySev[s].length}</div><div class="rpt-label">${SEV_LABEL[s]}</div></div>`;
@@ -3044,7 +3169,31 @@ function buildReport() {
           const colors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#059669',info:'#6b7280'};
           html += `<div class="rpt-risk-legend-item"><div class="rpt-risk-legend-dot" style="background:${colors[s]}"></div>${SEV_LABEL[s]} (${bySev[s].length})</div>`;
         });
-        html += `</div></div>${_ce}`;
+        html += `</div></div>`;
+        if (reportType === 'executive') {
+          const criticalHigh = [...bySev.critical, ...bySev.high];
+          if (criticalHigh.length) {
+            md('### Hallazgos Críticos y de Alto Riesgo');
+            html += `<h3 style="margin-top:22px">Hallazgos Críticos y de Alto Riesgo</h3>`;
+            criticalHigh.forEach(v => {
+              const edit   = _localEdits[v.id] || {};
+              const impact = edit.businessImpact || data.vulnEdits?.[v.id]?.businessImpact || '';
+              const num    = vulnNumMap[v.id];
+              md(`**${num} — ${v.name}** (${SEV_LABEL[v.severity]})`);
+              md(impact || '_Impacto de negocio pendiente de completar._');
+              md('');
+              html += `<div class="rpt-vuln" style="border-left:4px solid ${v.severity==='critical'?'#ef4444':'#f97316'};margin-bottom:10px">
+                <div class="rpt-vuln-header">
+                  <span class="sev-badge sev-${v.severity}">${SEV_LABEL[v.severity]}</span>
+                  <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${num}</span>
+                  <span style="font-weight:600;font-size:13px">${esc(v.name)}</span>
+                </div>
+                <div class="rpt-field-val" style="padding:10px 14px;white-space:pre-wrap">${impact ? esc(impact) : '<em style="color:var(--t3)">Impacto de negocio pendiente de completar.</em>'}</div>
+              </div>`;
+            });
+          }
+        }
+        html += _ce;
       } else {
         html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<p style="color:var(--t3);font-style:italic">Sin hallazgos registrados para este proyecto.</p>${_ce}`;
       }
@@ -3333,6 +3482,56 @@ function buildReport() {
       continue;
     }
 
+    // ── Remediation Roadmap ──────────────────────────────────────
+    if (sec.type === 'remediation-roadmap' && scope !== 'wstg' && vulns.length) {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
+      md('## Hoja de Ruta de Remediación');
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}`;
+
+      const buckets = {};
+      PRIORITY_ORDER.forEach(p => buckets[p] = []);
+      vulns.forEach(v => {
+        const p = getEdit(v.id).remediationPriority || defaultPriority(v.severity||'medium');
+        buckets[p].push(v);
+      });
+
+      PRIORITY_ORDER.forEach(p => {
+        const list = buckets[p];
+        if (!list.length) return;
+        md(`### ${PRIORITY_LABEL[p]}`); md('| ID | Severidad | Hallazgo | Acción Recomendada |'); md('|----|-----------|----------|---------------------|');
+        html += `<div style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:9px;height:9px;border-radius:50%;background:${PRIORITY_COLOR[p]};flex-shrink:0"></span>
+            <span style="font-weight:700;font-size:13px">${PRIORITY_LABEL[p]}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${list.length} hallazgo${list.length>1?'s':''}</span>
+          </div>
+          <table class="rpt-table"><thead><tr>
+            <th style="width:52px">ID</th><th style="width:90px">Severidad</th><th>Hallazgo</th><th>Acción Recomendada</th>
+          </tr></thead><tbody>`;
+        list.forEach(v => {
+          const sev    = v.severity || 'medium';
+          const edit   = getEdit(v.id);
+          const remTxt = (edit.remediation || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const action = remTxt ? (remTxt.length > 160 ? remTxt.slice(0, 160) + '…' : remTxt) : 'Ver detalle técnico del hallazgo.';
+          const num    = vulnNumMap[v.id];
+          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${action} |`);
+          html += `<tr>
+            <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--t2);white-space:nowrap">${num}</div></td>
+            <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
+            <td style="font-weight:600;color:var(--t1)"><div class="rpt-cell">${esc(v.name)}</div></td>
+            <td style="font-size:12px;color:var(--t2)"><div class="rpt-cell">${esc(action)}</div></td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+        md('');
+      });
+
+      html += _ce;
+      html += _subsHtml(sec, _secNum);
+      continue;
+    }
+
     // ── Targets ───────────────────────────────────────────────────
     if (sec.type === 'targets' && state.targets?.length) {
       _secNum++;
@@ -3426,8 +3625,8 @@ function buildReport() {
     }
   }
 
-  // ── Methodology Progress (technical, always appended) ─────────────
-  if (reportType === 'technical' && scope !== 'wstg') {
+  // ── Methodology Progress (always appended; technical detail gated) ─
+  if (scope !== 'wstg') {
     const activeMethods = Object.entries(state.activeMethodProgress || {});
     if (activeMethods.length) {
       html += `<h2>Progreso de Metodología</h2>`;
@@ -3445,7 +3644,7 @@ function buildReport() {
               ${meth.done ? `<div style="width:${Math.round(meth.done/meth.total*100)}%;background:var(--c-low);border-radius:2px"></div>` : ''}
               ${meth.fail ? `<div style="width:${Math.round(meth.fail/meth.total*100)}%;background:var(--c-crit);border-radius:2px"></div>` : ''}
             </div>
-            ${tests.filter(t => t.status === 'fail').length ? `
+            ${reportType === 'technical' && tests.filter(t => t.status === 'fail').length ? `
               <div style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Verificaciones fallidas (${tests.filter(t=>t.status==='fail').length})</div>
               <div style="display:flex;flex-wrap:wrap;gap:4px">
                 ${tests.map((t,i) => t.status==='fail' ? `<span style="font-family:var(--mono);font-size:10px;background:var(--c-crit)18;border:1px solid var(--c-crit)30;color:var(--c-crit);border-radius:3px;padding:2px 6px">#${i+1}</span>` : '').filter(Boolean).join('')}

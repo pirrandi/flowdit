@@ -148,6 +148,27 @@ Respond with this exact JSON schema:
   "description": "..."
 }`;
 
+  } else if (type === 'business-impact') {
+    userPrompt = `Write a short business-impact statement for a penetration test finding, aimed at a non-technical executive audience. Use ONLY the data provided below.
+
+Finding name: ${c.name || 'Unknown'}
+Severity: ${c.severity || 'unknown'}
+${c.category ? `Category: ${c.category}` : ''}
+${c.target ? `Affected target: ${c.target}` : ''}
+${c.description ? `Technical description: ${c.description}` : ''}
+
+Instrucciones:
+- Todo el contenido en español, tercera persona impersonal
+- 1-2 frases, texto plano (sin markdown, sin listas, sin negritas)
+- Explica la CONSECUENCIA de negocio (ej. fuga de datos de clientes, fraude financiero, interrupción del servicio, daño reputacional, incumplimiento normativo) — no expliques el mecanismo técnico
+- No repitas el nombre del hallazgo ni uses jerga técnica (no menciones inyección, payloads, endpoints, código, etc.)
+- Sé específico al contexto, no genérico
+
+Respond with this exact JSON schema:
+{
+  "businessImpact": "..."
+}`;
+
   } else {
     return res.status(400).json({ error: 'Unknown type' });
   }
