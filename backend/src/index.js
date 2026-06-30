@@ -36,19 +36,22 @@ app.use(cors({
 
 app.use(express.json({ limit: '4mb' }));
 
-// Rate limiting
-app.use(rateLimit({ windowMs:15*60*1000, max:500, standardHeaders:true, legacyHeaders:false }));
-app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
-app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
-app.use('/api/portal/auth',   rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
+// Rate limiting (disabled in local dev)
+if (process.env.NODE_ENV === 'production') {
+  app.use(rateLimit({ windowMs:15*60*1000, max:500, standardHeaders:true, legacyHeaders:false }));
+  app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
+  app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
+  app.use('/api/portal/auth',   rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
+}
 
 // Health check
 app.get('/health', (_, res) => res.json({ status:'ok', ts: new Date() }));
 
 // Top-level routes
-app.use('/api/auth',     require('./routes/auth'));
-app.use('/api/portal',   require('./routes/portal'));   // public — no requireAuth
-app.use('/api/projects', require('./routes/projects'));
+app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/portal',    require('./routes/portal'));    // public — no requireAuth
+app.use('/api/projects',  require('./routes/projects'));
+app.use('/api/templates', require('./routes/templates'));
 
 // Nested project routes — mergeParams makes :projectId available in child routers
 const projectRouter = express.Router({ mergeParams: true });

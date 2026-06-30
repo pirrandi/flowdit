@@ -1,6 +1,6 @@
 // ── views/tickets.js — Client Queries page ───────────────────────────
 
-const STATUS_COLOR = { open:'var(--accent)', in_review:'#f59e0b', closed:'var(--green)' };
+const STATUS_COLOR = { open:'var(--a)', in_review:'var(--c-high)', closed:'var(--c-low)' };
 const STATUS_LABEL = { open:'Open', in_review:'In Review', closed:'Closed' };
 
 let _activeFilter  = 'all';
@@ -21,12 +21,12 @@ function renderTickets() {
 
   // Filter tabs
   document.getElementById('tickets-filters').innerHTML = `
-    <div style="display:flex;gap:4px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:3px">
+    <div style="display:flex;gap:4px;background:var(--bg3);border:1px solid var(--b1);border-radius:8px;padding:3px">
       ${[['all','All'],['open','Open'],['in_review','In Review'],['closed','Closed']].map(([key, label]) => `
         <button onclick="setTicketFilter('${key}')" id="tf-${key}"
           style="font-family:var(--mono);font-size:11px;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;transition:background .15s,color .15s;
                  background:${_activeFilter===key?'var(--surface)':'transparent'};
-                 color:${_activeFilter===key?'var(--text)':'var(--text3)'}">
+                 color:${_activeFilter===key?'var(--t1)':'var(--t3)'}">
           ${label}${counts[key] ? ` <span style="opacity:.6">${counts[key]}</span>` : ''}
         </button>`).join('')}
     </div>`;
@@ -103,7 +103,7 @@ async function openTicketModal(ticketId) {
     `Opened by <strong>${esc(openedBy)}</strong>${isPortalTicket ? ' <span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:1px 5px">portal</span>' : ''} · ${relativeDate(t.created_at)}` +
     (t.vuln_name ? ` · re: <span style="color:var(--a)">${esc(t.vuln_name)}</span>` : '');
 
-  const color = STATUS_COLOR[t.status] || 'var(--text3)';
+  const color = STATUS_COLOR[t.status] || 'var(--t3)';
   const btns  = ['open','in_review','closed'].filter(s => s !== t.status).map(s =>
     `<button class="btn-secondary" style="font-size:10px;padding:3px 9px;color:${STATUS_COLOR[s]};border-color:${STATUS_COLOR[s]}44"
       onclick="changeTicketStatus('${s}',event)">${STATUS_LABEL[s]}</button>`

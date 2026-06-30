@@ -252,17 +252,17 @@ function _injectProfileModal() {
 
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px">
         <div id="profile-avatar-preview" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0"></div>
-        <label style="font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:4px">
+        <label style="font-family:var(--mono);font-size:11px;color:var(--a);cursor:pointer;display:flex;align-items:center;gap:4px">
           ↑ Change photo
           <input type="file" id="profile-avatar-input" accept="image/*" style="display:none">
         </label>
-        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
+        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
       </div>
 
       <div class="form-group">
         <label class="form-label">Display name</label>
         <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="off">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:4px">Letters, numbers, _ and - only.</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Letters, numbers, _ and - only.</div>
       </div>
 
       <div class="form-error" id="profile-error"></div>
@@ -419,8 +419,8 @@ wsClient.on('activity', (event) => {
 });
 
 wsClient.on('presence',     ({ online }) => renderOnlinePresence(online));
-wsClient.on('connected',    () => { const d = document.getElementById('live-dot'); if(d){d.style.background='var(--green)';d.title='Live';} });
-wsClient.on('disconnected', () => { const d = document.getElementById('live-dot'); if(d){d.style.background='var(--red)';d.title='Reconnecting...';} });
+wsClient.on('connected',    () => { const d = document.getElementById('live-dot'); if(d){d.style.background='var(--c-low)';d.title='Live';} });
+wsClient.on('disconnected', () => { const d = document.getElementById('live-dot'); if(d){d.style.background='var(--c-crit)';d.title='Reconnecting...';} });
 
 // ── MODAL: NEW PROJECT ────────────────────────────────────────────
 function openNewProjectModal() {

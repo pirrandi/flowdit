@@ -208,6 +208,11 @@ const api = {
       return requestUpload('POST', `/projects/${pid}/import/scan`, fd);
     },
   },
+  templates: {
+    search: (q = '')  => request('GET',    `/templates?q=${encodeURIComponent(q)}`),
+    save:   (d)       => request('POST',   `/templates`, d),
+    delete: (id)      => request('DELETE', `/templates/${id}`),
+  },
   portal: {
     auth: (token, password) => fetch(`${API_BASE}/portal/auth`, {
       method: 'POST',

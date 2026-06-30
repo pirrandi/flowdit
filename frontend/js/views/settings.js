@@ -234,9 +234,9 @@ function buildFunSettings() {
     </div>`;
   };
   return `
-    ${ft('confetti', '🎉', 'Confetti at 100%', 'Confeti cuando la cobertura WSTG llega al 100%')}
-    ${ft('neon',     '🌈', 'Neon mode',        'Glow en badges de severidad y barras de progreso')}
-    ${ft('hacker',   '💀', 'Hacker vibes',     'Overlay de scanlines — máxima credibilidad en calls con el cliente')}
+    ${ft('confetti', '✦', 'Confetti at 100%', 'Confeti cuando la cobertura WSTG llega al 100%')}
+    ${ft('neon',     '◌', 'Neon mode',        'Glow en badges de severidad y barras de progreso')}
+    ${ft('hacker',   '⚙', 'Hacker vibes',     'Overlay de scanlines — máxima credibilidad en calls con el cliente')}
   `;
 }
 

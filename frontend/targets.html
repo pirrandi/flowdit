@@ -106,6 +106,26 @@
 <script src="js/components/activity.js"></script>
 <script src="js/views/targets.js"></script>
 <script src="js/page.js"></script>
+<script src="js/components/csel.js"></script>
+<script>
+initCsel('modal-target-type', [
+  { value: 'domain', label: 'Domain' },
+  { value: 'ip',     label: 'IP' },
+  { value: 'cidr',   label: 'CIDR' },
+  { value: 'url',    label: 'URL' },
+  { value: 'other',  label: 'Other' },
+]);
+initCsel('modal-target-scope', [
+  { value: 'in',  label: 'In Scope',     color: 'var(--a)' },
+  { value: 'out', label: 'Out of Scope', color: 'var(--t3)' },
+]);
+initCsel('modal-target-status', [
+  { value: 'active',       label: 'Active',       color: 'var(--a)' },
+  { value: 'completed',    label: 'Completed',    color: 'var(--c-low)' },
+  { value: 'out-of-scope', label: 'Out of Scope', color: 'var(--t3)' },
+]);
+</script>
+
 <script>
 function renderScopeSummary() {
   const t     = state.targets;

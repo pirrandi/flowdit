@@ -1,6 +1,115 @@
 // ── views/vulns.js ───────────────────────────────────────────────────
 let _editingVulnId = null;
 
+// ── TEMPLATE PICKER ──────────────────────────────────────────────────
+const SEV_COLORS = { critical:'var(--c-crit)', high:'var(--c-high)', medium:'var(--c-med)', low:'var(--c-low)', info:'var(--c-info)' };
+let _tplResults   = [];
+let _tplFocusIdx  = -1;
+let _tplDebounce  = null;
+
+function _tplDot(sev) {
+  return `<span style="width:7px;height:7px;border-radius:50%;background:${SEV_COLORS[sev]||'var(--t3)'};flex-shrink:0;display:inline-block"></span>`;
+}
+
+function tplSearch(q) {
+  clearTimeout(_tplDebounce);
+  _tplDebounce = setTimeout(async () => {
+    try {
+      _tplResults = await api.templates.search(q.trim());
+      _tplFocusIdx = -1;
+      _tplRender();
+    } catch(e) { /* ignore */ }
+  }, 200);
+}
+
+function _tplRender() {
+  const dd = document.getElementById('tpl-dropdown');
+  const inp = document.getElementById('tpl-search-input');
+  if (!dd || !inp) return;
+
+  if (_tplResults.length === 0) {
+    dd.innerHTML = `<div class="tpl-empty">No templates found</div>`;
+  } else {
+    dd.innerHTML = _tplResults.map((t, i) => `
+      <div class="tpl-item${i === _tplFocusIdx ? ' focused' : ''}" data-idx="${i}"
+           onmousedown="tplApply(${i})">
+        ${_tplDot(t.severity)}
+        <span class="tpl-item-name">${esc(t.name)}</span>
+        ${t.category ? `<span class="tpl-item-cat">${esc(t.category)}</span>` : ''}
+        ${!t.is_builtin ? `<span class="tpl-item-own">mine</span>` : ''}
+      </div>`).join('');
+  }
+
+  const rect = inp.getBoundingClientRect();
+  dd.style.top      = (rect.bottom + 4) + 'px';
+  dd.style.left     = rect.left + 'px';
+  dd.style.width    = rect.width + 'px';
+  dd.classList.add('open');
+}
+
+function _tplClose() {
+  const dd = document.getElementById('tpl-dropdown');
+  if (dd) dd.classList.remove('open');
+  _tplResults = [];
+  _tplFocusIdx = -1;
+}
+
+function tplKeydown(e) {
+  if (!document.getElementById('tpl-dropdown')?.classList.contains('open')) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _tplFocusIdx = Math.min(_tplFocusIdx + 1, _tplResults.length - 1);
+    _tplRender();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _tplFocusIdx = Math.max(_tplFocusIdx - 1, 0);
+    _tplRender();
+  } else if (e.key === 'Enter' && _tplFocusIdx >= 0) {
+    e.preventDefault();
+    tplApply(_tplFocusIdx);
+  } else if (e.key === 'Escape') {
+    _tplClose();
+  }
+}
+
+function tplApply(idx) {
+  const t = _tplResults[idx];
+  if (!t) return;
+
+  document.getElementById('modal-vuln-name').value  = t.name;
+  document.getElementById('modal-vuln-cat').value   = t.category || '';
+  document.getElementById('modal-vuln-cwe').value   = t.cwe || '';
+  document.getElementById('modal-vuln-sev').value   = t.severity;
+  document.getElementById('modal-vuln-desc').value  = t.description || '';
+  document.getElementById('modal-vuln-rem').value   = t.remediation || '';
+  if (window.cselSync) window.cselSync();
+
+  const inp = document.getElementById('tpl-search-input');
+  if (inp) inp.value = '';
+  _tplClose();
+}
+
+async function tplSaveCurrent() {
+  const name = document.getElementById('modal-vuln-name').value.trim();
+  if (!name) { showToast('Enter a name first', 'error'); return; }
+  const data = {
+    name,
+    category:    document.getElementById('modal-vuln-cat').value.trim() || null,
+    severity:    document.getElementById('modal-vuln-sev').value,
+    cwe:         document.getElementById('modal-vuln-cwe').value.trim() || null,
+    description: document.getElementById('modal-vuln-desc').value.trim() || null,
+    remediation: document.getElementById('modal-vuln-rem').value.trim() || null,
+  };
+  try {
+    await api.templates.save(data);
+    showToast('Template saved', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#tpl-search-wrap')) _tplClose();
+});
+
 function numberedCode(text) {
   if (!text) return '';
   const lines = text.split('\n');
@@ -60,7 +169,7 @@ function parseCVSSVector(vec) {
 function _cvssColor(s) {
   if (s >= 9) return '#dc2626'; if (s >= 7) return '#f97316';
   if (s >= 4) return '#f59e0b'; if (s > 0)  return '#059669';
-  return 'var(--text3)';
+  return 'var(--t3)';
 }
 function _cvssLabel(s) {
   if (s >= 9) return 'Critical'; if (s >= 7) return 'High';
@@ -220,12 +329,12 @@ function buildVulnCard(v) {
     </div>`).join('') + '</div>' : '';
 
   const noteH = v.notes ? `<div class="items-section"><div class="items-label">Notes</div>
-    <div class="payload-code" style="color:var(--text2);white-space:pre-wrap">${esc(v.notes)}</div></div>` : '';
+    <div class="payload-code" style="color:var(--t2);white-space:pre-wrap">${esc(v.notes)}</div></div>` : '';
 
   const descH = v.description ? `<div class="items-section"><div class="items-label">Description</div>
-    <div class="md-body" style="color:var(--text2)">${renderMd(v.description)}</div></div>` : '';
+    <div class="md-body" style="color:var(--t2)">${renderMd(v.description)}</div></div>` : '';
   const remH  = v.remediation ? `<div class="items-section"><div class="items-label">Remediation</div>
-    <div class="md-body" style="color:var(--green)">${renderMd(v.remediation)}</div></div>` : '';
+    <div class="md-body" style="color:var(--c-low)">${renderMd(v.remediation)}</div></div>` : '';
   const evidH = (v.evidence||[]).length ? `<div class="items-section">
     <div class="items-label">Evidence (${v.evidence.length})</div>
     <div class="evidence-thumbs">${v.evidence.map((img,i) =>
@@ -268,12 +377,12 @@ function buildVulnCard(v) {
   card.innerHTML = `
     <div class="vuln-header" onclick="toggleVulnBody('${v.id}',event)">
       <div class="test-check"
-        style="${isDone?'background:var(--green);border-color:var(--green);color:var(--bg)':isFail?'background:var(--red);border-color:var(--red);color:#fff':''}"
+        style="${isDone?'background:var(--c-low);border-color:var(--c-low);color:var(--bg)':isFail?'background:var(--c-crit);border-color:var(--c-crit);color:#fff':''}"
         onclick="cycleVulnStatus('${v.id}',event)">${isDone?'✓':isFail?'✕':''}</div>
       <span class="vuln-tag">${esc(v.category||'Custom')}</span>
       ${severityBadge(v.severity)}
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
-      ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
+      ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
@@ -354,6 +463,7 @@ function openAddVulnModal() {
   addModalRow('modal-items-list', 'Check item...');
   addModalRow('modal-payloads-list', 'Payload...', true);
   _initCVSS(null);
+  if (window.cselSync) window.cselSync();
   document.getElementById('vuln-modal').classList.add('open');
 }
 
@@ -380,6 +490,7 @@ function openEditVuln(id, e) {
   (v.payloads||[]).forEach(p => { addModalRow('modal-payloads-list','Payload...',true); pList.lastChild.querySelector('textarea').value = p; });
   if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...',true);
   _initCVSS(v.cvss_vector || null);
+  if (window.cselSync) window.cselSync();
   document.getElementById('vuln-modal').classList.add('open');
 }
 
@@ -473,7 +584,7 @@ async function aiDraft() {
     const result = await _aiGenerate('vuln-draft', ctx, 'ai-draft-btn', '✦ Draft');
     if (result.name)        document.getElementById('modal-vuln-name').value = result.name;
     if (result.category)    document.getElementById('modal-vuln-cat').value  = result.category;
-    if (result.severity)    document.getElementById('modal-vuln-sev').value  = result.severity;
+    if (result.severity)    { document.getElementById('modal-vuln-sev').value  = result.severity; if (window.cselSync) window.cselSync(); }
     if (result.description) document.getElementById('modal-vuln-desc').value = result.description;
     if (result.remediation) document.getElementById('modal-vuln-rem').value  = result.remediation;
     showToast('✦ Draft generated', 'success');
@@ -497,6 +608,7 @@ async function aiSeverity() {
     const result = await _aiGenerate('severity-suggest', { name: ctx.name, category: ctx.category }, 'ai-sev-btn', '✦ Suggest');
     if (result.severity) {
       document.getElementById('modal-vuln-sev').value = result.severity;
+      if (window.cselSync) window.cselSync();
       showToast(`✦ ${result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}${result.reason ? ' — ' + result.reason : ''}`, 'success');
     }
   } catch(e) { showToast(e.message, 'error'); }
@@ -532,6 +644,7 @@ function populateTargetSelect(selectedId) {
   const inScope = (state.targets||[]).filter(t => t.scope==='in');
   sel.innerHTML = '<option value="">— No target —</option>' +
     inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${esc(t.host)}</option>`).join('');
+  if (window.reinitCsel) window.reinitCsel('modal-vuln-target');
 }
 
 // ── Import Scan ─────────────────────────────────────────────────────────

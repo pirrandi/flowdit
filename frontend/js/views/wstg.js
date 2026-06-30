@@ -67,7 +67,7 @@ function buildTargetSelector(testId, currentTargetId) {
   ).join('');
 
   return `<div class="wstg-target-row" id="target-row-${testId}">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">Affected target</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--c-crit);flex-shrink:0">Affected target</span>
     <select class="wstg-target-select" onchange="saveWSTGTarget('${testId}',this.value)">
       <option value="">— Unassigned —</option>
       ${options}
@@ -172,7 +172,7 @@ function buildVulnLinkSelector(testId, currentLinkedId) {
     `<option value="${esc(v.id)}" ${v.id === currentLinkedId ? 'selected' : ''}>${esc(v.name)}</option>`
   ).join('');
   return `<div class="wstg-link-row" id="link-row-${testId}">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--accent3);flex-shrink:0">→ Link to finding</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--a);flex-shrink:0">→ Link to finding</span>
     <select class="wstg-link-select" onchange="saveWSTGLink('${testId}',this.value)">
       <option value="">— Not linked —</option>
       ${options}
@@ -226,9 +226,9 @@ async function _applyWSTGStatus(id, status, testName) {
       el.className = `test-item${sc?' '+sc:''}`;
       const chk = el.querySelector('.test-check');
       chk.textContent       = status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':'';
-      chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
-      chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
-      chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--text3)' : '';
+      chk.style.background  = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
+      chk.style.borderColor = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
+      chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--t3)' : '';
 
       // Toggle target selector row + link row
       const existingTargetRow = el.querySelector('.wstg-target-row');
@@ -354,9 +354,9 @@ function patchWSTGTestDOM(testId, progress) {
   const chk = el.querySelector('.test-check');
   if (chk) {
     chk.textContent       = status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':'';
-    chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
-    chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':status==='na'?'var(--border2)':'';
-    chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--text3)' : '';
+    chk.style.background  = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
+    chk.style.borderColor = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
+    chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--t3)' : '';
   }
 
   const name = el.querySelector('.test-name');

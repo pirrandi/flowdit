@@ -24,7 +24,7 @@
         <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--a);text-decoration:none">add descriptions & export →</a></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-sec" onclick="openImportModal()">↑ Import Burp XML</button>
+        <button class="btn" onclick="openImportModal()">↑ Import Burp XML</button>
         <button class="btn btn-prim" onclick="openAddVulnModal()">+ Add Vulnerability</button>
       </div>
     </div>
@@ -47,6 +47,17 @@
 <div class="modal-overlay" id="vuln-modal">
   <div class="modal" style="max-width:580px">
     <div class="modal-title" id="modal-title">Add Vulnerability</div>
+
+    <div class="tpl-search-wrap" id="tpl-search-wrap">
+      <div class="tpl-search-inner">
+        <input class="tpl-search-input" id="tpl-search-input"
+          placeholder="⌕  Search template — SQL Injection, XSS, IDOR..."
+          autocomplete="off" oninput="tplSearch(this.value)" onkeydown="tplKeydown(event)">
+        <button type="button" class="tpl-save-btn" onclick="tplSaveCurrent()" title="Save current fields as personal template">+ Save as template</button>
+      </div>
+      <div class="tpl-dropdown" id="tpl-dropdown"></div>
+    </div>
+    <hr class="tpl-divider">
 
     <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
       <div class="form-group" style="margin:0">
@@ -241,7 +252,7 @@
     </div>
 
     <div class="modal-actions" style="margin-top:20px">
-      <button class="btn btn-sec" onclick="closeImportModal()">Close</button>
+      <button class="btn" onclick="closeImportModal()">Close</button>
       <button class="btn btn-prim" id="import-submit-btn" onclick="submitImport()" style="display:none">Import</button>
     </div>
   </div>
@@ -255,9 +266,19 @@
 <script src="js/services/ws.js"></script>
 <script src="js/services/utils.js"></script>
 <script src="js/components/activity.js"></script>
+<script src="js/components/csel.js"></script>
 <script src="js/views/vulns.js?v=2"></script>
 <script src="js/page.js"></script>
 <script>
+  initCsel('modal-vuln-sev', [
+    { value: 'critical', label: 'Critical', color: 'var(--c-crit)' },
+    { value: 'high',     label: 'High',     color: 'var(--c-high)' },
+    { value: 'medium',   label: 'Medium',   color: 'var(--c-med)'  },
+    { value: 'low',      label: 'Low',      color: 'var(--c-low)'  },
+    { value: 'info',     label: 'Info',     color: 'var(--c-info)' },
+  ]);
+  initCsel('modal-vuln-target');
+
   function pageInit() {
     renderCustomVulns();
   }

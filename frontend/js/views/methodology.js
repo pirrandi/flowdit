@@ -34,10 +34,10 @@ function renderMethodologyList() {
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="progress-bar" style="flex:1;height:3px">
-          <div class="progress-bar-fill" style="width:${pct}%;${fail?'background:var(--red)':''}"></div>
+          <div class="progress-bar-fill" style="width:${pct}%;${fail?'background:var(--c-crit)':''}"></div>
         </div>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${tests.length} tests</span>
-        ${fail ? `<span style="font-family:var(--mono);font-size:10px;color:var(--red)">⚠${fail}</span>` : ''}
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${tests.length} tests</span>
+        ${fail ? `<span style="font-family:var(--mono);font-size:10px;color:var(--c-crit)">⚠${fail}</span>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -77,18 +77,18 @@ function renderMethodologyRunner() {
           <span style="font-size:16px;font-weight:700">${esc(m.name)}</span>
           ${m.is_shared ? '<span class="method-badge-shared">shared</span>' : ''}
         </div>
-        ${m.description ? `<div style="font-size:12px;color:var(--text3);margin-bottom:6px">${esc(m.description)}</div>` : ''}
+        ${m.description ? `<div style="font-size:12px;color:var(--t3);margin-bottom:6px">${esc(m.description)}</div>` : ''}
         <div style="display:flex;align-items:center;gap:10px">
           <div class="progress-bar" style="flex:1;max-width:300px">
             <div class="progress-bar-fill" style="width:${pct}%"></div>
           </div>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${done+fail}/${tests.length} · ${pct}%</span>
-          ${fail ? `<span style="font-family:var(--mono);font-size:11px;color:var(--red)">⚠ ${fail} vuln</span>` : ''}
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${done+fail}/${tests.length} · ${pct}%</span>
+          ${fail ? `<span style="font-family:var(--mono);font-size:11px;color:var(--c-crit)">⚠ ${fail} vuln</span>` : ''}
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         ${buildActivateBtn(m.id)}
-        ${isOwner ? `<button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="openEditMethodModal('${m.id}')">✎ Edit</button><button class="btn-secondary" style="font-size:11px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="deleteMethodology('${m.id}')">🗑 Delete</button>` : ''}
+        ${isOwner ? `<button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="openEditMethodModal('${m.id}')">✎ Edit</button><button class="btn-secondary" style="font-size:11px;padding:5px 10px;color:var(--c-crit);border-color:var(--c-crit)" onclick="deleteMethodology('${m.id}')">✕ Delete</button>` : ''}
         <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="closeMethodRunner()">✕ Close</button>
       </div>
     </div>
@@ -108,7 +108,7 @@ function buildMethodTestItem(methodId, test, idx, prog) {
 
   const targetRow = status === 'fail' && inScope.length ? `
     <div class="wstg-target-row" id="mtr-${methodId}-${idx}">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">Affected target</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--c-crit);flex-shrink:0">Affected target</span>
       <select class="wstg-target-select" onchange="saveMethodTarget('${methodId}',${idx},this.value)">
         <option value="">— Unassigned —</option>
         ${targetOpts}
@@ -118,7 +118,7 @@ function buildMethodTestItem(methodId, test, idx, prog) {
   return `<div class="test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}" id="mtest-${methodId}-${idx}">
     <div class="test-header" onclick="toggleMethodTestBody('${methodId}',${idx},event)">
       <div class="test-check"
-        style="${status==='done'?'background:var(--green);border-color:var(--green);color:var(--bg)':status==='fail'?'background:var(--red);border-color:var(--red);color:#fff':''}"
+        style="${status==='done'?'background:var(--c-low);border-color:var(--c-low);color:var(--bg)':status==='fail'?'background:var(--c-crit);border-color:var(--c-crit);color:#fff':''}"
         onclick="cycleMethodStatus('${methodId}',${idx},event)">${status==='done'?'✓':status==='fail'?'✕':''}</div>
       <span class="test-name">${esc(test.name)}</span>
       ${target_host && status==='fail' ? `<span class="wstg-target-badge">${esc(target_host)}</span>` : ''}
@@ -130,8 +130,8 @@ function buildMethodTestItem(methodId, test, idx, prog) {
     </div>
     ${targetRow}
     <div class="test-body" id="mbody-${methodId}-${idx}">
-      ${test.description ? `<div class="items-section"><div class="items-label">Description</div><div class="payload-code" style="color:var(--text2);white-space:pre-wrap">${esc(test.description)}</div></div>` : ''}
-      ${(test.references||[]).length ? `<div class="items-section"><div class="items-label">References</div>${test.references.map(r=>`<a href="${esc(r)}" target="_blank" style="display:block;font-family:var(--mono);font-size:11px;color:var(--accent);margin:2px 0">${esc(r)}</a>`).join('')}</div>` : ''}
+      ${test.description ? `<div class="items-section"><div class="items-label">Description</div><div class="payload-code" style="color:var(--t2);white-space:pre-wrap">${esc(test.description)}</div></div>` : ''}
+      ${(test.references||[]).length ? `<div class="items-section"><div class="items-label">References</div>${test.references.map(r=>`<a href="${esc(r)}" target="_blank" style="display:block;font-family:var(--mono);font-size:11px;color:var(--a);margin:2px 0">${esc(r)}</a>`).join('')}</div>` : ''}
       <textarea class="note-textarea" placeholder="// Notes, findings, POC..."
         onblur="saveMethodNote('${methodId}',${idx},this.value)">${esc(prog?.note||'')}</textarea>
     </div>
@@ -168,8 +168,8 @@ async function _applyMethodStatus(methodId, idx, status) {
       el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`;
       const chk = el.querySelector('.test-check');
       chk.textContent       = status==='done'?'✓':status==='fail'?'✕':'';
-      chk.style.background  = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
-      chk.style.borderColor = status==='done'?'var(--green)':status==='fail'?'var(--red)':'';
+      chk.style.background  = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':'';
+      chk.style.borderColor = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':'';
       chk.style.color       = status ? (status==='done'?'var(--bg)':'#fff') : '';
 
       // Toggle target row
@@ -179,7 +179,7 @@ async function _applyMethodStatus(methodId, idx, status) {
         const targetOpts = inScope.map(t => `<option value="${t.id}">${esc(t.host)}</option>`).join('');
         el.querySelector('.test-header').insertAdjacentHTML('afterend', `
           <div class="wstg-target-row" id="mtr-${methodId}-${idx}">
-            <span style="font-family:var(--mono);font-size:10px;color:var(--red);flex-shrink:0">Affected target</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--c-crit);flex-shrink:0">Affected target</span>
             <select class="wstg-target-select" onchange="saveMethodTarget('${methodId}',${idx},this.value)">
               <option value="">— Unassigned —</option>${targetOpts}
             </select>
@@ -342,7 +342,7 @@ async function deleteMethodology(id) {
 function buildActivateBtn(methodId) {
   if (!state.currentProject) return '';
   const active = (state.currentProject.active_methodology_ids || []).includes(methodId);
-  return `<button class="btn-secondary" style="font-size:11px;padding:5px 10px;${active?'border-color:var(--green);color:var(--green)':''}"
+  return `<button class="btn-secondary" style="font-size:11px;padding:5px 10px;${active?'border-color:var(--c-low);color:var(--c-low)':''}"
     onclick="toggleActivate('${methodId}')">${active ? '✓ Active' : '+ Activate'}</button>`;
 }
 

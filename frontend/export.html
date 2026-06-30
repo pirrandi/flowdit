@@ -106,7 +106,7 @@
 .rpt-cover-type { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--a);border:1px solid rgba(124,58,237,.27);border-radius:3px;padding:3px 9px; }
 .rpt-cover-conf { font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--red);border:1px solid var(--c-crit)44;border-radius:3px;padding:3px 9px; }
+  color:var(--c-crit);border:1px solid var(--c-crit)44;border-radius:3px;padding:3px 9px; }
 /* ── Cover metadata table (replaces grid of cards) ───────────────── */
 .rpt-cover-meta { margin-top:28px;border-top:1px solid var(--b1); }
 .rpt-cover-meta-row { display:flex;border-bottom:1px solid var(--b1)66;padding:10px 0;gap:0; }
@@ -153,7 +153,7 @@
 .rpt-table tr:last-child td { border-bottom:none; }
 .rpt-table tr:hover td { background:var(--bg2); }
 .rpt-table td.num { text-align:center;font-family:var(--mono);font-weight:600; }
-.rpt-table td.vuln-found { color:var(--red);font-weight:700; }
+.rpt-table td.vuln-found { color:var(--c-crit);font-weight:700; }
 .rpt-progress-cell { display:flex;align-items:center;gap:8px; }
 .rpt-mini-bar { flex:1;height:4px;background:var(--b1);border-radius:2px;overflow:hidden; }
 .rpt-mini-fill { height:100%;background:var(--c-low);border-radius:2px; }
@@ -170,7 +170,7 @@
 .rpt-vuln-cat  { font-family:var(--mono);font-size:10px;color:var(--t3); }
 .rpt-vuln-status { font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px; }
 .rpt-status-done { color:var(--c-low);background:var(--c-low)18;border:1px solid var(--c-low)30; }
-.rpt-status-fail { color:var(--red);background:var(--c-crit)18;border:1px solid var(--c-crit)30; }
+.rpt-status-fail { color:var(--c-crit);background:var(--c-crit)18;border:1px solid var(--c-crit)30; }
 .rpt-status-pending { color:var(--t3);background:var(--bg3);border:1px solid var(--b1); }
 .rpt-field { padding:10px 14px;border-top:1px solid var(--b1); }
 .rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:5px; }
@@ -180,7 +180,7 @@
 .rpt-divider { border:none;border-top:1px solid var(--b1);margin:32px 0; }
 
 /* ── WSTG vuln items ─────────────────────────────────────────────── */
-.rpt-wstg-vuln { padding:11px 14px;border:1px solid var(--b1);border-left:4px solid var(--red);border-radius:6px;margin-bottom:8px;background:var(--bg2); }
+.rpt-wstg-vuln { padding:11px 14px;border:1px solid var(--b1);border-left:4px solid var(--c-crit);border-radius:6px;margin-bottom:8px;background:var(--bg2); }
 
 /* ── Evidence ────────────────────────────────────────────────────── */
 .rpt-evidence-grid { display:flex;flex-direction:column;gap:12px;margin-top:6px; }
@@ -455,7 +455,7 @@
 .sec-type-badge { font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:.04em; }
 .sec-btn { background:none;border:1px solid var(--b1);border-radius:3px;cursor:pointer;color:var(--t3);font-size:10px;padding:1px 5px;line-height:1.5;flex-shrink:0; }
 .sec-btn:hover { color:var(--t1);border-color:var(--t3);background:var(--bg3); }
-.sec-btn.del:hover { color:var(--red);border-color:var(--c-crit)55;background:var(--c-crit)08; }
+.sec-btn.del:hover { color:var(--c-crit);border-color:var(--c-crit)55;background:var(--c-crit)08; }
 .sec-edit-body { display:none;padding:8px 10px 10px;border-top:1px solid var(--b1)44;background:var(--bg); }
 .sec-edit-body.open { display:block; }
 .sec-meta-header { padding:7px 14px 6px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--t2);font-weight:600;background:var(--bg3);border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none; }
@@ -624,7 +624,7 @@
   <button class="rich-tb-btn" onclick="richTableDelRow()" title="Delete current row">− row</button>
   <button class="rich-tb-btn" onclick="richTableDelCol()" title="Delete current column">− col</button>
   <span class="rich-tb-sep"></span>
-  <button class="rich-tb-btn" style="color:var(--red)" onclick="richTableDelete()" title="Delete entire table">del table</button>
+  <button class="rich-tb-btn" style="color:var(--c-crit)" onclick="richTableDelete()" title="Delete entire table">del table</button>
 </div>
 <!-- Image context toolbar -->
 <div id="rich-ctx-img" class="rich-ctx-tb no-print">
@@ -643,7 +643,7 @@
   <button class="rich-tb-btn" onclick="richImgAlign('center')" title="Center">⊡</button>
   <button class="rich-tb-btn" onclick="richImgAlign('right')"  title="Float right">◨</button>
   <span class="rich-tb-sep"></span>
-  <button class="rich-tb-btn" style="color:var(--red)" onclick="richImgDelete()" title="Delete image">del</button>
+  <button class="rich-tb-btn" style="color:var(--c-crit)" onclick="richImgDelete()" title="Delete image">del</button>
 </div>
 <div class="toast-container" id="toast-container"></div>
 
@@ -653,7 +653,19 @@
 <script src="js/services/ws.js"></script>
 <script src="js/services/utils.js"></script>
 <script src="js/components/activity.js"></script>
+<script src="js/components/csel.js"></script>
 <script src="js/page.js"></script>
+<script>
+initCsel('export-scope', [
+  { value: 'all',   label: 'Full Report' },
+  { value: 'vulns', label: 'Vulns Only'  },
+  { value: 'wstg',  label: 'WSTG Only'  },
+]);
+initCsel('report-type', [
+  { value: 'technical', label: 'Technical' },
+  { value: 'executive', label: 'Executive' },
+]);
+</script>
 <script>
 // ── Styled markdown renderer (uses .rpt CSS classes) ─────────────
 function renderMdStyled(raw) {
@@ -1536,8 +1548,8 @@ function richTableCustom(editorId, palPfx) {
 
 function _insertTable(editorId, rows, cols) {
   document.getElementById(editorId)?.focus();
-  const th = n => `<th style="border:1px solid var(--border2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left">Header ${n}</th>`;
-  const td = ()  => `<td style="border:1px solid var(--border2,#555);padding:6px 10px;font-size:12px"> </td>`;
+  const th = n => `<th style="border:1px solid var(--b2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left">Header ${n}</th>`;
+  const td = ()  => `<td style="border:1px solid var(--b2,#555);padding:6px 10px;font-size:12px"> </td>`;
   const headerRow = Array.from({length:cols},(_,i)=>th(i+1)).join('');
   const bodyRows  = Array.from({length:rows},()=>`<tr>${Array.from({length:cols},td).join('')}</tr>`).join('');
   const html = `<table class="rpt-table" style="border-collapse:collapse;width:100%;margin:8px 0">
@@ -1663,7 +1675,7 @@ function richTableAddRow() {
   const tr   = document.createElement('tr');
   for (let i = 0; i < cols; i++) {
     const td = document.createElement('td');
-    td.style.cssText = 'border:1px solid var(--border2,#555);padding:6px 10px;font-size:12px';
+    td.style.cssText = 'border:1px solid var(--b2,#555);padding:6px 10px;font-size:12px';
     td.innerHTML = ' ';
     tr.appendChild(td);
   }
@@ -1687,8 +1699,8 @@ function richTableAddCol() {
     const isHead = !!row.closest('thead');
     const cell   = document.createElement(isHead ? 'th' : 'td');
     cell.style.cssText = isHead
-      ? 'border:1px solid var(--border2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left'
-      : 'border:1px solid var(--border2,#555);padding:6px 10px;font-size:12px';
+      ? 'border:1px solid var(--b2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left'
+      : 'border:1px solid var(--b2,#555);padding:6px 10px;font-size:12px';
     cell.innerHTML = isHead ? 'Header' : ' ';
     const ref = row.cells[colIdx + 1] || null;
     row.insertBefore(cell, ref);
@@ -3079,7 +3091,7 @@ function buildReport() {
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
         <p><strong>${wTested}/${wTotal}</strong> pruebas completadas &nbsp;·&nbsp;
           <strong style="color:var(--c-low)">${wDone} aprobadas</strong> &nbsp;·&nbsp;
-          <strong style="color:var(--red)">${wFail} hallazgos</strong></p>
+          <strong style="color:var(--c-crit)">${wFail} hallazgos</strong></p>
         <table class="rpt-table"><thead><tr>
           <th>Categoría</th><th style="text-align:center">Realizadas</th>
           <th style="text-align:center">Total</th><th style="text-align:center">Hallazgos</th>
@@ -3103,7 +3115,7 @@ function buildReport() {
       }));
       if (failedWSTG.length && reportType === 'technical') {
         md(`### Hallazgos Encontrados (${failedWSTG.length})`);
-        html += `<h3 style="margin-top:24px">Hallazgos Encontrados <span style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--red);margin-left:6px">${failedWSTG.length}</span></h3>`;
+        html += `<h3 style="margin-top:24px">Hallazgos Encontrados <span style="font-family:var(--mono);font-size:11px;font-weight:400;color:var(--c-crit);margin-left:6px">${failedWSTG.length}</span></h3>`;
         failedWSTG.forEach(({ cat, test, prog }) => {
           const edit = _localEdits[test.id] || {};
           const desc = edit.description || prog?.description || '';
@@ -3118,7 +3130,7 @@ function buildReport() {
           md('');
           html += `<div class="rpt-wstg-vuln">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:var(--c-crit)18;border:1px solid var(--c-crit)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
+              <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--c-crit);background:var(--c-crit)18;border:1px solid var(--c-crit)30;border-radius:3px;padding:2px 6px">${esc(test.id)}</span>
               <span style="font-weight:600;font-size:13px;color:var(--t1)">${esc(test.name)}</span>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${desc||rem?'8px':'0'}">
@@ -3425,18 +3437,18 @@ function buildReport() {
           <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg2)">
             <div style="font-weight:600;font-size:13px;flex:1">${esc(meth.name)}</div>
             <div style="font-family:var(--mono);font-size:11px;color:var(--c-low)">${meth.done} completados</div>
-            ${meth.fail ? `<div style="font-family:var(--mono);font-size:11px;color:var(--red)">${meth.fail} fallidos</div>` : ''}
+            ${meth.fail ? `<div style="font-family:var(--mono);font-size:11px;color:var(--c-crit)">${meth.fail} fallidos</div>` : ''}
             <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${meth.total} total</div>
           </div>
           <div style="padding:10px 14px">
             <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--b1);gap:2px;margin-bottom:8px">
               ${meth.done ? `<div style="width:${Math.round(meth.done/meth.total*100)}%;background:var(--c-low);border-radius:2px"></div>` : ''}
-              ${meth.fail ? `<div style="width:${Math.round(meth.fail/meth.total*100)}%;background:var(--red);border-radius:2px"></div>` : ''}
+              ${meth.fail ? `<div style="width:${Math.round(meth.fail/meth.total*100)}%;background:var(--c-crit);border-radius:2px"></div>` : ''}
             </div>
             ${tests.filter(t => t.status === 'fail').length ? `
               <div style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Verificaciones fallidas (${tests.filter(t=>t.status==='fail').length})</div>
               <div style="display:flex;flex-wrap:wrap;gap:4px">
-                ${tests.map((t,i) => t.status==='fail' ? `<span style="font-family:var(--mono);font-size:10px;background:var(--c-crit)18;border:1px solid var(--c-crit)30;color:var(--red);border-radius:3px;padding:2px 6px">#${i+1}</span>` : '').filter(Boolean).join('')}
+                ${tests.map((t,i) => t.status==='fail' ? `<span style="font-family:var(--mono);font-size:10px;background:var(--c-crit)18;border:1px solid var(--c-crit)30;color:var(--c-crit);border-radius:3px;padding:2px 6px">#${i+1}</span>` : '').filter(Boolean).join('')}
               </div>` : ''}
           </div>
         </div>`;

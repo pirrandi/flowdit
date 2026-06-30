@@ -23,8 +23,8 @@ function renderTargets() {
   const outScope = state.targets.filter(t => t.scope === 'out');
 
   container.innerHTML = '';
-  if (inScope.length)  container.appendChild(buildTargetGroup('In Scope', inScope, 'var(--green)'));
-  if (outScope.length) container.appendChild(buildTargetGroup('Out of Scope', outScope, 'var(--text3)'));
+  if (inScope.length)  container.appendChild(buildTargetGroup('In Scope', inScope, 'var(--c-low)'));
+  if (outScope.length) container.appendChild(buildTargetGroup('Out of Scope', outScope, 'var(--t3)'));
 }
 
 function buildTargetGroup(label, targets, color) {
@@ -43,7 +43,7 @@ function buildTargetCard(t) {
   card.className = 'vuln-card';
   card.id = `target-${t.id}`;
 
-  const statusColor = TARGET_STATUS_COLORS[t.status] || 'var(--text3)';
+  const statusColor = TARGET_STATUS_COLORS[t.status] || 'var(--t3)';
   const statusLabel = t.status === 'out-of-scope' ? 'Out of Scope' : t.status.charAt(0).toUpperCase() + t.status.slice(1);
   const linkedVulns = state.customVulns.filter(v => v.target_id === t.id);
 
@@ -52,7 +52,7 @@ function buildTargetCard(t) {
       <span class="vuln-tag" style="text-transform:uppercase">${t.type}</span>
       <span class="vuln-name" style="font-family:var(--mono);font-size:12px">${esc(t.host)}</span>
       <span style="font-family:var(--mono);font-size:10px;color:${statusColor};margin-left:auto;flex-shrink:0">${statusLabel}</span>
-      ${linkedVulns.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--red);margin-left:8px">${linkedVulns.length} finding${linkedVulns.length>1?'s':''}</span>` : ''}
+      ${linkedVulns.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--c-crit);margin-left:8px">${linkedVulns.length} finding${linkedVulns.length>1?'s':''}</span>` : ''}
       <div class="vuln-actions">
         <button class="btn-icon edit"   onclick="openEditTarget('${t.id}',event)">✎</button>
         <button class="btn-icon delete" onclick="deleteTarget('${t.id}',event)">✕</button>
@@ -75,7 +75,7 @@ function buildTargetCard(t) {
         <div class="target-loading">// loading endpoints...</div>
       </div>
       ${t.notes ? `<div class="target-tab-body" id="ttab-notes-${t.id}" style="display:none">
-        <div class="payload-code" style="color:var(--text2);white-space:pre-wrap;margin:8px 0">${esc(t.notes)}</div>
+        <div class="payload-code" style="color:var(--t2);white-space:pre-wrap;margin:8px 0">${esc(t.notes)}</div>
       </div>` : ''}
     </div>`;
   return card;
@@ -136,7 +136,7 @@ async function loadTargetDetail(targetId) {
 }
 
 // ── PORTS TAB ─────────────────────────────────────────────────────────
-const PORT_STATE_COLORS = { open: 'var(--green)', filtered: 'var(--yellow,#f59e0b)', closed: 'var(--text3)' };
+const PORT_STATE_COLORS = { open: 'var(--c-low)', filtered: 'var(--a)', closed: 'var(--t3)' };
 
 function renderPortsTab(targetId) {
   const el = document.getElementById(`ttab-ports-${targetId}`);
@@ -160,14 +160,18 @@ function renderPortsTab(targetId) {
       <input type="text" class="target-inline-input" style="flex:1" placeholder="Version" id="pa-ver-${targetId}">
       <button class="btn-accent" style="padding:4px 10px;font-size:11px;flex-shrink:0" onclick="addPort('${targetId}')">+ Add</button>
     </div>`;
+  if (window.initCsel) {
+    initCsel(`pa-proto-${targetId}`, [{value:'tcp',label:'tcp'},{value:'udp',label:'udp'}]);
+    initCsel(`pa-state-${targetId}`, [{value:'open',label:'open'},{value:'filtered',label:'filtered'},{value:'closed',label:'closed'}]);
+  }
 }
 
 function portRowHtml(targetId, p) {
   return `
     <div class="target-data-row" id="port-row-${p.id}">
       <span class="port-num">${p.port}/${p.protocol}</span>
-      <span style="font-family:var(--mono);font-size:10px;color:${PORT_STATE_COLORS[p.state]||'var(--text3)'}">${p.state}</span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--text2);flex:1">${esc(p.service||'')}${p.version?` <span style="color:var(--text3)">${esc(p.version)}</span>`:''}</span>
+      <span style="font-family:var(--mono);font-size:10px;color:${PORT_STATE_COLORS[p.state]||'var(--t3)'}">${p.state}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--t2);flex:1">${esc(p.service||'')}${p.version?` <span style="color:var(--t3)">${esc(p.version)}</span>`:''}</span>
       <button class="btn-icon edit"   onclick="editPort('${targetId}','${p.id}',event)">✎</button>
       <button class="btn-icon delete" onclick="deletePort('${targetId}','${p.id}',event)">✕</button>
     </div>`;
@@ -193,6 +197,10 @@ function editPort(targetId, portId, e) {
     <input type="text" class="target-inline-input" style="flex:1" placeholder="Version"  id="pe-ver-${portId}" value="${esc(p.version||'')}">
     <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="savePort('${targetId}','${portId}',event)">Save</button>
     <button class="btn-icon"   onclick="cancelPortEdit('${targetId}','${portId}',event)">✕</button>`;
+  if (window.initCsel) {
+    initCsel(`pe-proto-${portId}`, [{value:'tcp',label:'tcp'},{value:'udp',label:'udp'}]);
+    initCsel(`pe-state-${portId}`, [{value:'open',label:'open'},{value:'filtered',label:'filtered'},{value:'closed',label:'closed'}]);
+  }
 }
 
 async function savePort(targetId, portId, e) {
@@ -248,9 +256,9 @@ async function deletePort(targetId, portId, e) {
 
 // ── ENDPOINTS TAB ─────────────────────────────────────────────────────
 const METHOD_COLORS = {
-  GET:'var(--green)', POST:'var(--accent)', PUT:'var(--yellow,#f59e0b)',
-  PATCH:'var(--blue,#3b82f6)', DELETE:'var(--red)', HEAD:'var(--text3)',
-  OPTIONS:'var(--text3)', OTHER:'var(--text3)'
+  GET:'var(--c-low)', POST:'var(--a)', PUT:'var(--a)',
+  PATCH:'#3b82f6', DELETE:'var(--c-crit)', HEAD:'var(--t3)',
+  OPTIONS:'var(--t3)', OTHER:'var(--t3)'
 };
 const METHODS = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','OTHER'];
 
@@ -270,20 +278,23 @@ function renderEndpointsTab(targetId) {
       <input type="text" class="target-inline-input" style="flex:1" placeholder="/path or /api/endpoint" id="ea-path-${targetId}"
         onkeydown="if(event.key==='Enter')addEndpoint('${targetId}')">
       <input type="number" class="target-inline-input" style="width:70px" placeholder="200" id="ea-code-${targetId}" min="100" max="599">
-      <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;cursor:pointer">
-        <input type="checkbox" id="ea-interesting-${targetId}" style="accent-color:var(--accent)"> ★
+      <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--t3);flex-shrink:0;cursor:pointer">
+        <input type="checkbox" id="ea-interesting-${targetId}"> ★
       </label>
       <button class="btn-accent" style="padding:4px 10px;font-size:11px;flex-shrink:0" onclick="addEndpoint('${targetId}')">+ Add</button>
     </div>`;
+  if (window.initCsel) {
+    initCsel(`ea-method-${targetId}`, METHODS.map(m => ({value:m, label:m})));
+  }
 }
 
 function endpointRowHtml(targetId, ep) {
   return `
     <div class="target-data-row" id="ep-row-${ep.id}">
-      <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${METHOD_COLORS[ep.method]||'var(--text3)'};width:56px;flex-shrink:0">${ep.method}</span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ep.path)}</span>
-      ${ep.status_code ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${ep.status_code}</span>` : ''}
-      ${ep.interesting ? `<span style="font-family:var(--mono);font-size:9px;color:var(--accent);border:1px solid var(--accent)44;border-radius:3px;padding:1px 5px">★</span>` : ''}
+      <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${METHOD_COLORS[ep.method]||'var(--t3)'};width:56px;flex-shrink:0">${ep.method}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ep.path)}</span>
+      ${ep.status_code ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${ep.status_code}</span>` : ''}
+      ${ep.interesting ? `<span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid var(--a)44;border-radius:3px;padding:1px 5px">★</span>` : ''}
       <button class="btn-icon edit"   onclick="editEndpoint('${targetId}','${ep.id}',event)">✎</button>
       <button class="btn-icon delete" onclick="deleteEndpoint('${targetId}','${ep.id}',event)">✕</button>
     </div>`;
@@ -300,11 +311,14 @@ function editEndpoint(targetId, epId, e) {
     </select>
     <input type="text" class="target-inline-input" style="flex:1" placeholder="/path" id="ee-path-${epId}" value="${esc(ep.path)}">
     <input type="number" class="target-inline-input" style="width:70px" placeholder="200" id="ee-code-${epId}" value="${ep.status_code||''}" min="100" max="599">
-    <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;cursor:pointer">
-      <input type="checkbox" id="ee-interesting-${epId}" style="accent-color:var(--accent)" ${ep.interesting?'checked':''}> ★
+    <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--t3);flex-shrink:0;cursor:pointer">
+      <input type="checkbox" id="ee-interesting-${epId}" ${ep.interesting?'checked':''}> ★
     </label>
     <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="saveEndpoint('${targetId}','${epId}',event)">Save</button>
     <button class="btn-icon"   onclick="cancelEndpointEdit('${targetId}','${epId}',event)">✕</button>`;
+  if (window.initCsel) {
+    initCsel(`ee-method-${epId}`, METHODS.map(m => ({value:m, label:m})));
+  }
 }
 
 async function saveEndpoint(targetId, epId, e) {
@@ -368,6 +382,7 @@ function openAddTargetModal() {
   document.getElementById('modal-target-status').value = 'active';
   document.getElementById('modal-target-notes').value  = '';
   document.getElementById('target-error').style.display = 'none';
+  if (window.cselSync) window.cselSync();
   document.getElementById('target-modal').classList.add('open');
   document.getElementById('modal-target-host').focus();
 }
@@ -384,6 +399,7 @@ function openEditTarget(id, e) {
   document.getElementById('modal-target-status').value = t.status;
   document.getElementById('modal-target-notes').value  = t.notes || '';
   document.getElementById('target-error').style.display = 'none';
+  if (window.cselSync) window.cselSync();
   document.getElementById('target-modal').classList.add('open');
 }
 

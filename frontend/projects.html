@@ -12,11 +12,11 @@
 <style>
 .proj-topbar {
   height:50px;display:flex;align-items:center;gap:14px;padding:0 28px;
-  border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;
+  border-bottom:1px solid var(--b1);background:var(--bg2);flex-shrink:0;
 }
 .proj-topbar-logo { display:flex;align-items:center;gap:8px;text-decoration:none; }
 .proj-topbar-logo img { height:22px; }
-.proj-topbar-logo span { font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);letter-spacing:.04em; }
+.proj-topbar-logo span { font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);letter-spacing:.04em; }
 
 .proj-body { flex:1;overflow-y:auto;padding:36px 40px; }
 @media(max-width:700px){ .proj-body { padding:24px 16px; } }
@@ -28,30 +28,30 @@
   margin-top:24px;
 }
 .proj-card {
-  border:1px solid var(--border);border-radius:10px;padding:18px 20px;
+  border:1px solid var(--b1);border-radius:10px;padding:18px 20px;
   cursor:pointer;transition:border-color .15s,transform .1s;
   background:var(--bg2);display:flex;flex-direction:column;gap:6px;
   text-decoration:none;color:inherit;
 }
-.proj-card:hover { border-color:var(--accent);transform:translateY(-1px); }
+.proj-card:hover { border-color:var(--a);transform:translateY(-1px); }
 .proj-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0; }
-.proj-card-name { font-size:14px;font-weight:700;color:var(--text);line-height:1.3;
+.proj-card-name { font-size:14px;font-weight:700;color:var(--t1);line-height:1.3;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.proj-card-target { font-family:var(--mono);font-size:11px;color:var(--accent);margin-top:1px;
+.proj-card-target { font-family:var(--mono);font-size:11px;color:var(--a);margin-top:1px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.proj-card-desc { font-size:12px;color:var(--text3);line-height:1.5;
+.proj-card-desc { font-size:12px;color:var(--t3);line-height:1.5;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
 .proj-card-footer { display:flex;align-items:center;gap:10px;margin-top:6px;padding-top:10px;
-  border-top:1px solid var(--border); }
-.proj-card-meta { font-family:var(--mono);font-size:10px;color:var(--text3); }
+  border-top:1px solid var(--b1); }
+.proj-card-meta { font-family:var(--mono);font-size:10px;color:var(--t3); }
 
 .proj-add-card {
-  border:1px dashed var(--border);border-radius:10px;padding:18px 20px;
+  border:1px dashed var(--b1);border-radius:10px;padding:18px 20px;
   cursor:pointer;transition:border-color .15s,background .15s;
   background:transparent;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:8px;min-height:120px;color:var(--text3);
+  justify-content:center;gap:8px;min-height:120px;color:var(--t3);
 }
-.proj-add-card:hover { border-color:var(--accent);background:var(--bg2);color:var(--text2); }
+.proj-add-card:hover { border-color:var(--a);background:var(--bg2);color:var(--t2); }
 .proj-add-card-icon { font-size:22px;opacity:.5; }
 .proj-add-card-label { font-family:var(--mono);font-size:12px; }
 </style>
@@ -82,7 +82,7 @@
   </div>
 
   <div class="proj-grid" id="projects-grid">
-    <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Loading projects...</div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Loading projects...</div>
   </div>
 </div>
 
@@ -104,7 +104,7 @@
 <div class="modal-overlay" id="join-modal">
   <div class="modal">
     <div class="modal-title">Join a Project</div>
-    <p style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:16px">
+    <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:16px">
       Paste the invite code shared with you by a project owner.
     </p>
     <div class="form-group">
@@ -182,16 +182,16 @@ function _injectProfileModal() {
       <div class="modal-title">Edit Profile</div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px">
         <div id="profile-avatar-preview" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0"></div>
-        <label style="font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:4px">
+        <label style="font-family:var(--mono);font-size:11px;color:var(--a);cursor:pointer;display:flex;align-items:center;gap:4px">
           ↑ Change photo
           <input type="file" id="profile-avatar-input" accept="image/*" style="display:none">
         </label>
-        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
+        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
       </div>
       <div class="form-group">
         <label class="form-label">Display name</label>
         <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="off">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:4px">Letters, numbers, _ and - only.</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Letters, numbers, _ and - only.</div>
       </div>
       <div class="form-error" id="profile-error"></div>
       <div class="modal-footer">
