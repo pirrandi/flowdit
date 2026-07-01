@@ -26,7 +26,14 @@ async function chatCompletion({ systemPrompt, messages, temperature = 0.4, maxTo
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  return {
+    text: data.choices?.[0]?.message?.content || '',
+    model: model || DEFAULT_MODEL,
+    usage: {
+      inputTokens:  data.usage?.prompt_tokens     || 0,
+      outputTokens: data.usage?.completion_tokens || 0,
+    },
+  };
 }
 
 function generateJSON({ systemPrompt, userPrompt, temperature, maxTokens, model }) {

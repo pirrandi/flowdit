@@ -360,6 +360,21 @@ const migrations = [
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) NOT NULL DEFAULT 'groq' CHECK (ai_provider IN ('groq','anthropic'))`,
   // NULL = use the provider's default model (GROQ_MODEL / ANTHROPIC_MODEL env var)
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50)`,
+
+  // ── AI USAGE LOG (estimated spend, computed from the token counts each call already returns) ──
+  `CREATE TABLE IF NOT EXISTS ai_usage (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+    provider      VARCHAR(20) NOT NULL,
+    model         VARCHAR(50) NOT NULL,
+    action        VARCHAR(30) NOT NULL,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd      NUMERIC(12,6),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_usage_project ON ai_usage(project_id)`,
 ];
 
 const BUILTIN_TEMPLATES = [

@@ -33,7 +33,14 @@ async function chatCompletion({ systemPrompt, messages, maxTokens = 1024, model 
 
   if (response.stop_reason === 'refusal') throw new Error('AI declined to respond');
   const textBlock = response.content.find(b => b.type === 'text');
-  return textBlock?.text || '';
+  return {
+    text: textBlock?.text || '',
+    model: model || DEFAULT_MODEL,
+    usage: {
+      inputTokens:  response.usage?.input_tokens  || 0,
+      outputTokens: response.usage?.output_tokens || 0,
+    },
+  };
 }
 
 function generateJSON({ systemPrompt, userPrompt, maxTokens, model }) {

@@ -10,6 +10,7 @@ async function renderSettings() {
   const p       = state.currentProject;
   const pid     = p.id;
   const isOwner = p.member_role === 'owner';
+  const aiUsage = isOwner ? await request('GET', `/projects/${pid}/ai/usage`).catch(() => null) : null;
 
   container.innerHTML = `
     <div class="page-header">
@@ -81,6 +82,14 @@ async function renderSettings() {
           </div>
         </div>
 
+        <div class="members-card">
+          <div class="members-card-title">AI Usage</div>
+          <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 14px">
+            Consumo estimado de IA en este proyecto, calculado localmente a partir de los tokens que reporta cada respuesta. No es el saldo de tu cuenta — para eso, mirá el dashboard del proveedor.
+          </p>
+          ${buildAiUsageCard(aiUsage)}
+        </div>
+
         <div class="members-card" style="border-color:rgba(239,68,68,.25)">
           <div class="members-card-title" style="color:var(--c-crit)">Danger Zone</div>
           <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 12px">
@@ -137,6 +146,28 @@ function buildAiModelOptions(provider, selected) {
     `<option value="${m.value}" ${selected === m.value ? 'selected' : ''}>${m.label}</option>`
   ).join('');
   return `<option value="" ${!selected ? 'selected' : ''}>Predeterminado (.env)</option>${opts}`;
+}
+
+function buildAiUsageCard(usage) {
+  if (!usage || !usage.totals.calls) {
+    return `<p style="font-family:var(--mono);font-size:11px;color:var(--t3)">Sin uso de IA registrado todavía en este proyecto.</p>`;
+  }
+  const fmt$ = n => `$${Number(n).toFixed(4)}`;
+  const rows = usage.byModel.map(m => `
+    <div class="client-setting-row" style="padding:6px 0">
+      <div>
+        <div style="font-size:12px;font-weight:600">${esc(m.model)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(m.provider)} · ${m.calls} llamadas · ${(m.input_tokens+m.output_tokens).toLocaleString()} tokens</div>
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--t2)">${m.cost_usd != null ? fmt$(m.cost_usd) : '—'}</div>
+    </div>`).join('');
+
+  return `
+    <div style="font-size:20px;font-weight:700;margin-bottom:2px">${fmt$(usage.totals.cost_usd)}</div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:12px">
+      ${usage.totals.calls} llamadas · ${(usage.totals.input_tokens+usage.totals.output_tokens).toLocaleString()} tokens
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--b1);padding-top:6px">${rows}</div>`;
 }
 
 function dateField(id, label, val) {

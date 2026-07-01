@@ -1,7 +1,9 @@
 const express = require('express');
+const db = require('../db');
 const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess } = require('../middleware/project');
 const ai = require('../services/ai');
+const { logUsage } = require('../services/ai/usage');
 
 const router = express.Router({ mergeParams: true });
 
@@ -193,12 +195,23 @@ Respond with this exact JSON schema:
 
 
   try {
-    const raw = await ai.generateJSON(req.project.ai_provider, {
+    const result = await ai.generateJSON(req.project.ai_provider, {
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       temperature: 0.4,
       maxTokens: 1024,
       model: req.project.ai_model || undefined,
+    });
+    const raw = result.text;
+
+    logUsage({
+      projectId: req.params.projectId,
+      userId:    req.user.id,
+      provider:  req.project.ai_provider,
+      model:     result.model,
+      action:    'generate',
+      inputTokens:  result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
     });
 
     // Escape literal control characters inside JSON string values
@@ -303,18 +316,55 @@ router.post('/chat', async (req, res) => {
   ];
 
   try {
-    const answer = await ai.chat(req.project.ai_provider, {
+    const result = await ai.chat(req.project.ai_provider, {
       systemPrompt,
       messages,
       temperature: 0.5,
       maxTokens: 1024,
       model: req.project.ai_model || undefined,
     });
-    res.json({ answer });
+
+    logUsage({
+      projectId: req.params.projectId,
+      userId:    req.user.id,
+      provider:  req.project.ai_provider,
+      model:     result.model,
+      action:    'chat',
+      inputTokens:  result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+    });
+
+    res.json({ answer: result.text });
   } catch (err) {
     console.error('AI chat error:', err);
     res.status(500).json({ error: 'Internal error: ' + err.message });
   }
+});
+
+// GET /api/projects/:projectId/ai/usage — estimated AI spend for this project
+router.get('/usage', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT provider, model,
+              COUNT(*)::int              AS calls,
+              SUM(input_tokens)::int     AS input_tokens,
+              SUM(output_tokens)::int    AS output_tokens,
+              SUM(cost_usd)              AS cost_usd
+       FROM ai_usage
+       WHERE project_id = $1
+       GROUP BY provider, model
+       ORDER BY cost_usd DESC NULLS LAST`,
+      [req.params.projectId]
+    );
+    const totals = rows.reduce((acc, r) => {
+      acc.calls        += r.calls;
+      acc.input_tokens  += r.input_tokens;
+      acc.output_tokens += r.output_tokens;
+      acc.cost_usd      += r.cost_usd ? Number(r.cost_usd) : 0;
+      return acc;
+    }, { calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 });
+    res.json({ byModel: rows, totals });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
