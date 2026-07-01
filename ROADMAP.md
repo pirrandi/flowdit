@@ -6,7 +6,7 @@ Tres capas: adopción, producto, monetización.
 
 ## Adopción — lo que hace que la gente lo pruebe
 
-- [ ] **Docker Compose todo-en-uno** — un solo `docker compose up` que levante backend + PostgreSQL + Nginx. Hoy el setup manual requiere demasiados pasos para que alguien lo pruebe sin compromiso.
+- [x] **Docker Compose todo-en-uno** — `docker compose --profile full up -d --build` levanta backend + PostgreSQL + Nginx (Chromium/Ghostscript incluidos para el export PDF). El `docker compose up` normal (sin profile) sigue siendo solo DB + Nginx para no romper el flujo de dev local con nodemon.
 - [ ] **Screenshots y GIF en el README** — la gente decide si instalar o no en 10 segundos mirando capturas. Un GIF del flujo completo (proyecto → vuln → PDF) vale más que cualquier descripción.
 - [ ] **Demo en vivo** — instancia pública en `demo.flowdit.space` con datos de ejemplo precargados. Sin demo, la mayoría no llega a instalarlo.
 

@@ -12,6 +12,10 @@
   <img src="https://img.shields.io/badge/self--hosted-yes-blue?style=flat-square" alt="Self-hosted">
 </p>
 
+<p align="center">
+  <img src="frontend/img/screenshots/dashboard.png" alt="Flowdit dashboard" width="100%">
+</p>
+
 ---
 
 ## What is Flowdit?
@@ -24,39 +28,53 @@ No more delivering a PDF at the end and hoping the client trusts the process. Wi
 
 ## Features
 
-**Findings & Vulnerability Tracking**
+### Findings & Vulnerability Tracking
+
+<img src="frontend/img/screenshots/vulns.png" alt="Vulnerability tracking" width="100%">
+
 - Custom vulnerability library with severity, CVSS v3.1 scoring, CWE, checklist items, payloads, and notes
 - Built-in interactive CVSS v3.1 calculator with vector string generation
 - Evidence attachments (screenshots) per finding
 - HTTP Proofs — import request/response pairs from Burp Suite, annotate with markdown, include selectively in reports
 - Burp Suite XML import
 
-**Targets & Scope**
+### Targets & Scope
+
+<img src="frontend/img/screenshots/targets.png" alt="Targets and scope" width="100%">
+
 - Track hosts, IPs, CIDRs, URLs with in/out-of-scope status
 - Port and service inventory per target
 - Endpoint tracking with HTTP method, status code, and notes
 
-**Methodologies**
+### Methodologies
+
+<img src="frontend/img/screenshots/wstg.png" alt="OWASP WSTG checklist" width="100%">
+
 - Full OWASP WSTG checklist with per-test notes and status
 - PortSwigger Web Security Academy lab tracker
 - Custom methodology builder — create reusable test libraries for your team
 
-**Reporting**
+### Reporting
+
+<img src="frontend/img/screenshots/export.png" alt="Report editor and PDF export" width="100%">
+
 - PDF export — professional report with executive summary, findings, risk breakdown, evidence, HTTP proofs, WSTG results, and targets table. Configurable sections, fonts, accent color, watermark, page header/footer, and password encryption
 - DOCX export — full Word document generated server-side, no LibreOffice required
 
-**Client Portal**
+### Client Portal
+
+<img src="frontend/img/screenshots/client-portal.png" alt="Read-only client portal" width="100%">
+
 - Read-only view for clients, accessible via invite link
 - Configurable visibility: findings, WSTG progress, targets, activity feed
 - Ticket system — clients can open queries linked to specific findings; team responds in thread
 
-**Collaboration**
+### Collaboration & Platform
+
 - Team members with roles: owner, editor, viewer
 - Real-time activity feed via WebSockets
 - Collaborative whiteboard per project
 - AI assistant for remediation suggestions and report text
-
-**Platform**
 - Project branding — upload logo per engagement
 - Timeline tracking with start, end, and report dates
 - Dark and light theme, compact density mode
@@ -91,7 +109,19 @@ No more delivering a PDF at the end and hoping the client trusts the process. Wi
 - A domain with DNS pointed to your server
 - Chromium or Google Chrome (for PDF export)
 
-### Quick setup
+### Try it in one command (Docker)
+
+Spins up Postgres + backend (with Chromium/Ghostscript for PDF export) + Nginx, no manual setup:
+
+```bash
+git clone https://github.com/Pirrandi/flowdit.git
+cd flowdit
+docker compose --profile full up -d --build
+```
+
+Then open http://localhost. This is meant for trying Flowdit locally, not for production — see [DEPLOY.md](DEPLOY.md) for a real deployment (systemd/PM2, SSL, hardened env).
+
+### Manual setup
 
 ```bash
 # 1. Clone the repo
@@ -166,12 +196,13 @@ flowdit/
 
 - [ ] Nessus `.nessus` import
 - [ ] Nmap XML import
-- [ ] Common vulnerability template library
 - [ ] Retest / remediation tracking workflow
 - [ ] Email notifications for ticket replies
 - [ ] CVSS v4.0 support
 - [ ] Two-factor authentication
 - [ ] CSV export for executive summaries
+
+See [ROADMAP.md](ROADMAP.md) for the full adoption/product/monetization plan.
 
 ---
 
