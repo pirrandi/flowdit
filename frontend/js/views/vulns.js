@@ -556,7 +556,7 @@ async function _aiGenerate(type, context, btnId, btnLabel) {
   const btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.classList.add('loading'); btn.textContent = '…'; }
   try {
-    return await request('POST', '/ai/generate', { type, context });
+    return await request('POST', `/projects/${state.currentProject.id}/ai/generate`, { type, context });
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = btnLabel; }
   }

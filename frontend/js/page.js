@@ -534,7 +534,7 @@ async function aiChatSend() {
   _chatRender();
   _chatSetLoading(true);
   try {
-    const result = await request('POST', '/ai/chat', {
+    const result = await request('POST', `/projects/${state.currentProject.id}/ai/chat`, {
       question,
       history: _chatHistory.slice(-7, -1),
       context: _buildProjectContext(),

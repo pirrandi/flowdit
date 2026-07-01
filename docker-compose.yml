@@ -32,6 +32,10 @@ services:
       JWT_REFRESH_EXPIRES_IN: 30d
       CORS_ORIGIN: http://localhost
       RATE_LIMIT_MAX: 500
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
     ports:
       - "4000:4000"
     depends_on:

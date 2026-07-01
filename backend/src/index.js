@@ -63,6 +63,7 @@ projectRouter.use('/targets',  require('./routes/targets'));
 projectRouter.use('/tickets',    require('./routes/tickets'));
 projectRouter.use('/whiteboard', require('./routes/whiteboard'));
 projectRouter.use('/import',    require('./routes/import'));
+projectRouter.use('/ai',        require('./routes/ai'));
 
 // Ports & endpoints nested under a specific target
 const targetRouter = express.Router({ mergeParams: true });
@@ -72,7 +73,6 @@ projectRouter.use('/targets/:targetId', targetRouter);
 
 app.use('/api/methodologies', require('./routes/methodologies'));
 app.use('/api/export',       require('./routes/export'));
-app.use('/api/ai',           require('./routes/ai'));
 app.use('/api/projects/:projectId', projectRouter);
 
 // 404

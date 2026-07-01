@@ -8,6 +8,7 @@
     "migrate": "node src/db/migrate.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "docx": "^9.7.0",

@@ -65,7 +65,7 @@ router.get('/:projectId', requireProjectAccess, (req, res) => res.json(sanitizeP
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password'];
+  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model'];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
 

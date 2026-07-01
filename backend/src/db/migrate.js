@@ -355,6 +355,11 @@ const migrations = [
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS idx_vuln_templates_name ON vuln_templates USING gin(to_tsvector('english', name))`,
+
+  // ── AI PROVIDER (per-project) ────────────────────────────────────────
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) NOT NULL DEFAULT 'groq' CHECK (ai_provider IN ('groq','anthropic'))`,
+  // NULL = use the provider's default model (GROQ_MODEL / ANTHROPIC_MODEL env var)
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50)`,
 ];
 
 const BUILTIN_TEMPLATES = [

@@ -2684,7 +2684,7 @@ async function aiExecSummary(secId) {
     };
 
     const apiBase = window.FLOWDIT_API || 'http://localhost:4000/api';
-    const res = await fetch(`${apiBase}/ai/generate`, {
+    const res = await fetch(`${apiBase}/projects/${state.currentProject.id}/ai/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2728,7 +2728,7 @@ async function aiBusinessImpact(vulnId) {
     };
 
     const apiBase = window.FLOWDIT_API || 'http://localhost:4000/api';
-    const res = await fetch(`${apiBase}/ai/generate`, {
+    const res = await fetch(`${apiBase}/projects/${state.currentProject.id}/ai/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2760,7 +2760,7 @@ async function _fetchRemediationAction(v, edit) {
     remediation: (edit.remediation || v.remediation || '').replace(/<[^>]+>/g, ' '),
   };
   const apiBase = window.FLOWDIT_API || 'http://localhost:4000/api';
-  const res = await fetch(`${apiBase}/ai/generate`, {
+  const res = await fetch(`${apiBase}/projects/${state.currentProject.id}/ai/generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

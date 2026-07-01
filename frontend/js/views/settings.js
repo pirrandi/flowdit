@@ -59,6 +59,28 @@ async function renderSettings() {
           <button class="btn btn-prim" onclick="saveTimeline()">Guardar fechas</button>
         </div>
 
+        <div class="members-card">
+          <div class="members-card-title">AI Provider</div>
+          <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 14px">
+            Motor de IA usado para redactar hallazgos, resúmenes y el chat asistente en este proyecto.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="form-label" style="margin-bottom:4px">Proveedor</div>
+              <select class="form-input" id="cfg-ai-provider" onchange="setAiProvider(this.value)">
+                <option value="groq"      ${(p.ai_provider||'groq')==='groq'      ? 'selected' : ''}>Groq (Llama 3.3 70B)</option>
+                <option value="anthropic" ${p.ai_provider==='anthropic'           ? 'selected' : ''}>Anthropic (Claude)</option>
+              </select>
+            </div>
+            <div>
+              <div class="form-label" style="margin-bottom:4px">Modelo</div>
+              <select class="form-input" id="cfg-ai-model" onchange="setAiModel(this.value)">
+                ${buildAiModelOptions(p.ai_provider || 'groq', p.ai_model)}
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div class="members-card" style="border-color:rgba(239,68,68,.25)">
           <div class="members-card-title" style="color:var(--c-crit)">Danger Zone</div>
           <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 12px">
@@ -96,6 +118,26 @@ async function renderSettings() {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────
+
+const AI_MODELS = {
+  groq: [
+    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (versatile)' },
+    { value: 'llama-3.1-8b-instant',    label: 'Llama 3.1 8B (rápido)' },
+  ],
+  anthropic: [
+    { value: 'claude-opus-4-8',  label: 'Claude Opus 4.8 (más capaz)' },
+    { value: 'claude-sonnet-5',  label: 'Claude Sonnet 5 (equilibrado)' },
+    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (más rápido/económico)' },
+  ],
+};
+
+function buildAiModelOptions(provider, selected) {
+  const models = AI_MODELS[provider] || [];
+  const opts = models.map(m =>
+    `<option value="${m.value}" ${selected === m.value ? 'selected' : ''}>${m.label}</option>`
+  ).join('');
+  return `<option value="" ${!selected ? 'selected' : ''}>Predeterminado (.env)</option>${opts}`;
+}
 
 function dateField(id, label, val) {
   const fmt = d => d ? d.slice(0,10) : '';
@@ -272,6 +314,28 @@ async function saveTimeline() {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+async function setAiProvider(provider) {
+  try {
+    // Switching provider clears the chosen model — the old value may not exist on the new provider
+    const updated = await api.projects.update(state.currentProject.id, { ai_provider: provider, ai_model: null });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    showToast('✓ Proveedor de IA actualizado', 'success');
+    renderSettings();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function setAiModel(model) {
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { ai_model: model || null });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    showToast('✓ Modelo actualizado', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function toggleProjectFlag(flag, value) {
   try {
     const updated = await api.projects.update(state.currentProject.id, { [flag]: value });
@@ -379,6 +443,8 @@ window.renderSettings       = renderSettings;
 window.saveGeneral          = saveGeneral;
 window.saveTimeline         = saveTimeline;
 window.toggleProjectFlag    = toggleProjectFlag;
+window.setAiProvider        = setAiProvider;
+window.setAiModel           = setAiModel;
 window.onLogoFileChange     = onLogoFileChange;
 window.removeLogo           = removeLogo;
 window.setLogoBg            = setLogoBg;

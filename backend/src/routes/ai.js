@@ -1,10 +1,11 @@
 const express = require('express');
 const { requireAuth, requireUser } = require('../middleware/auth');
+const { requireProjectAccess } = require('../middleware/project');
+const ai = require('../services/ai');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+router.use(requireAuth, requireUser, requireProjectAccess);
 
 const SYSTEM_PROMPT = `Eres un pentester senior redactando informes profesionales de seguridad en español.
 Escribe en tercera persona impersonal (ej. "se ha identificado", "se observó", "se logró", "se determinó") — nunca en primera persona.
@@ -12,12 +13,9 @@ El contenido debe ser técnicamente preciso y específico a la evidencia proporc
 Puedes y debes usar markdown dentro de los valores del JSON: **negritas**, \`código inline\`, bloques de código con triple backtick, listas, saltos de línea con \\n.
 Responde ÚNICAMENTE con JSON válido siguiendo el esquema solicitado. Sin texto fuera del objeto JSON.`;
 
-router.post('/generate', requireAuth, requireUser, async (req, res) => {
+router.post('/generate', async (req, res) => {
   const { type, context = {} } = req.body;
   if (!type) return res.status(400).json({ error: 'type required' });
-
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
 
   const c = context;
   const payloadBlock = c.payloads?.length
@@ -195,31 +193,13 @@ Respond with this exact JSON schema:
 
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user',   content: userPrompt },
-        ],
-        temperature: 0.4,
-        max_tokens: 1024,
-      }),
+    const raw = await ai.generateJSON(req.project.ai_provider, {
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt,
+      temperature: 0.4,
+      maxTokens: 1024,
+      model: req.project.ai_model || undefined,
     });
-
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Groq error:', err);
-      return res.status(502).json({ error: 'AI service error' });
-    }
-
-    const data = await response.json();
-    const raw  = data.choices?.[0]?.message?.content || '';
 
     // Escape literal control characters inside JSON string values
     // (models often emit bare newlines in multi-line text fields)
@@ -263,14 +243,11 @@ Respond with this exact JSON schema:
   }
 });
 
-// POST /api/ai/chat
+// POST /api/projects/:projectId/ai/chat
 // Body: { question, history: [{role,content}], context: { project, vulns, wstg, targets, team, tickets, methodologies } }
-router.post('/chat', requireAuth, requireUser, async (req, res) => {
+router.post('/chat', async (req, res) => {
   const { question, history = [], context = {} } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
-
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
 
   const ctx = context;
   const p   = ctx.project || {};
@@ -321,34 +298,18 @@ router.post('/chat', requireAuth, requireUser, async (req, res) => {
   console.log('[AI chat] project:', p.name, '| systemPrompt length:', systemPrompt.length);
 
   const messages = [
-    { role: 'system', content: systemPrompt },
     ...history.slice(-6).filter(m => m && m.role && m.content),
     { role: 'user', content: question },
   ];
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages,
-        temperature: 0.5,
-        max_tokens: 1024,
-      }),
+    const answer = await ai.chat(req.project.ai_provider, {
+      systemPrompt,
+      messages,
+      temperature: 0.5,
+      maxTokens: 1024,
+      model: req.project.ai_model || undefined,
     });
-
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Groq chat error:', err);
-      return res.status(502).json({ error: 'AI service error' });
-    }
-
-    const data   = await response.json();
-    const answer = data.choices?.[0]?.message?.content || '';
     res.json({ answer });
   } catch (err) {
     console.error('AI chat error:', err);
