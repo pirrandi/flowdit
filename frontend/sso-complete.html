@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Signing in...</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<script src="js/config.js"></script>
+</head>
+<body>
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// completing sign-in...</div></div>
+
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script>
+(async () => {
+  const code = new URLSearchParams(window.location.search).get('xchg');
+  if (!code) { window.location.href = 'index.html?ssoError=' + encodeURIComponent('Missing sign-in code'); return; }
+  try {
+    const data = await api.auth.sso.exchange(code);
+    api.auth.setTokens(data.accessToken, data.refreshToken);
+    localStorage.setItem('fd_user', JSON.stringify(data.user));
+    window.location.href = 'projects.html';
+  } catch (e) {
+    window.location.href = 'index.html?ssoError=' + encodeURIComponent(e.message || 'Sign-in failed');
+  }
+})();
+</script>
+</body>
+</html>

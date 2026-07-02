@@ -12,6 +12,13 @@ async function boot() {
   }
   hide('loading-overlay');
   document.getElementById('login-screen').style.display = 'flex';
+
+  const ssoError = new URLSearchParams(window.location.search).get('ssoError');
+  if (ssoError) {
+    const err = document.getElementById('login-error');
+    err.textContent = ssoError;
+    err.style.display = 'block';
+  }
 }
 
 async function resolveHome() {
@@ -23,6 +30,38 @@ function switchAuthTab(tab, btn) {
   btn.classList.add('active');
   document.getElementById('login-form').style.display    = tab === 'login'    ? '' : 'none';
   document.getElementById('register-form').style.display = tab === 'register' ? '' : 'none';
+}
+
+let _ssoStartUrl = null;
+
+function onLoginIdentifierChange() {
+  // Editing the field after an SSO offer was shown invalidates it — revert
+  // to the normal password flow until the next blur re-checks.
+  if (_ssoStartUrl) {
+    _ssoStartUrl = null;
+    document.getElementById('login-sso-cta').style.display = 'none';
+    document.getElementById('login-pass-group').style.display = '';
+    document.getElementById('login-btn').style.display = '';
+  }
+}
+
+async function checkSsoForIdentifier() {
+  const identifier = document.getElementById('login-user').value.trim();
+  if (!identifier.includes('@')) return;
+  try {
+    const res = await api.auth.sso.check(identifier);
+    if (!res.available) return;
+    _ssoStartUrl = res.startUrl;
+    document.getElementById('login-sso-btn').textContent = `Continue with ${res.organizationName}`;
+    document.getElementById('login-sso-cta').style.display = '';
+    document.getElementById('login-pass-group').style.display = 'none';
+    document.getElementById('login-btn').style.display = 'none';
+  } catch { /* SSO check failing silently just leaves the normal password flow available */ }
+}
+
+function continueWithSso() {
+  if (!_ssoStartUrl) return;
+  window.location.href = `${window.FLOWDIT_API}${_ssoStartUrl}`;
 }
 
 async function doLogin() {
@@ -68,8 +107,11 @@ async function doRegister() {
   }
 }
 
-window.switchAuthTab = switchAuthTab;
-window.doLogin       = doLogin;
-window.doRegister    = doRegister;
+window.switchAuthTab           = switchAuthTab;
+window.doLogin                 = doLogin;
+window.doRegister              = doRegister;
+window.onLoginIdentifierChange = onLoginIdentifierChange;
+window.checkSsoForIdentifier   = checkSsoForIdentifier;
+window.continueWithSso         = continueWithSso;
 
 boot();

@@ -42,6 +42,8 @@ if (process.env.NODE_ENV === 'production') {
   app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
   app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
   app.use('/api/portal/auth',   rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
+  app.use('/api/auth/sso/start',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
+  app.use('/api/auth/sso/callback', rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
 }
 
 // Health check
@@ -49,6 +51,7 @@ app.get('/health', (_, res) => res.json({ status:'ok', ts: new Date() }));
 
 // Top-level routes
 app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/auth/sso',  require('./routes/sso'));
 app.use('/api/portal',    require('./routes/portal'));    // public — no requireAuth
 app.use('/api/projects',  require('./routes/projects'));
 app.use('/api/organizations', require('./routes/organizations'));

@@ -439,6 +439,29 @@ const migrations = [
       CREATE TRIGGER trg_organizations_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION update_updated_at();
     END IF;
   END $$`,
+
+  // ── SSO (per-organization OIDC — Microsoft Entra ID first, provider-agnostic) ──
+  // email_domain is stored already-lowercased/trimmed by the route layer so the
+  // login-time lookup is a plain indexed equality match, no LOWER() at query time.
+  `CREATE TABLE IF NOT EXISTS organization_sso_configs (
+    organization_id   UUID PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    issuer_url        TEXT NOT NULL,
+    client_id         VARCHAR(255) NOT NULL,
+    client_secret_enc TEXT NOT NULL,
+    email_domain      VARCHAR(255) NOT NULL,
+    enforce           BOOLEAN NOT NULL DEFAULT false,
+    enabled           BOOLEAN NOT NULL DEFAULT true,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  // only one *enabled* org may claim a given email domain
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sso_domain_enabled ON organization_sso_configs(email_domain) WHERE enabled`,
+
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_org_sso_configs_updated_at') THEN
+      CREATE TRIGGER trg_org_sso_configs_updated_at BEFORE UPDATE ON organization_sso_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+    END IF;
+  END $$`,
 ];
 
 const BUILTIN_TEMPLATES = [

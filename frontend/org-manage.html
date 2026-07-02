@@ -76,7 +76,7 @@
 <script src="js/services/utils.js"></script>
 <script>
 const ORG_ID = new URLSearchParams(window.location.search).get('oid');
-let _org = null, _members = [], _invites = [];
+let _org = null, _members = [], _invites = [], _sso = null;
 
 document.querySelector('.org-back').innerHTML = `${icon('arrow-left',{size:11})} All Organizations`;
 
@@ -102,9 +102,11 @@ async function bootOrgManage() {
 
 async function loadAndRender() {
   const isAdmin = _org.member_role === 'owner' || _org.member_role === 'admin';
-  [_members, _invites] = await Promise.all([
+  const isOwner = _org.member_role === 'owner';
+  [_members, _invites, _sso] = await Promise.all([
     api.organizations.members.list(ORG_ID).catch(() => []),
     isAdmin ? api.organizations.invites.list(ORG_ID).catch(() => []) : Promise.resolve([]),
+    (isOwner && !_org.is_personal) ? api.organizations.sso.get(ORG_ID).catch(() => null) : Promise.resolve(null),
   ]);
   render();
 }
@@ -159,6 +161,8 @@ function render() {
           <button class="btn btn-prim" onclick="renameOrg()">Save</button>
         </div>
       </div>` : ''}
+
+      ${(isOwner && !_org.is_personal) ? renderSsoSection() : ''}
 
       <div class="members-card">
         <div class="members-card-title">
@@ -225,7 +229,84 @@ function render() {
   `;
 }
 
+function renderSsoSection() {
+  const cfg = _sso || {};
+  const enforce = cfg.enforce ?? false;
+  const enabled = cfg.enabled ?? true;
+  return `
+    <div class="members-card">
+      <div class="members-card-title">Single Sign-On (OIDC)</div>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:12px">
+        Members whose email domain matches below get offered "Continue with ${esc(_org.name)}" at login. First-time SSO sign-ins are added to this org automatically as members.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Issuer URL</label>
+        <input type="text" class="form-input" id="sso-issuer" placeholder="https://login.microsoftonline.com/{tenant-id}/v2.0" value="${esc(cfg.issuer_url || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client ID</label>
+        <input type="text" class="form-input" id="sso-client-id" value="${esc(cfg.client_id || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Secret ${cfg.hasClientSecret ? '<span style="color:var(--t3);font-weight:400">(configured — leave blank to keep it)</span>' : ''}</label>
+        <input type="password" class="form-input" id="sso-client-secret" placeholder="${cfg.hasClientSecret ? '••••••••••••' : ''}" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email Domain</label>
+        <input type="text" class="form-input" id="sso-domain" placeholder="resility.io" value="${esc(cfg.email_domain || '')}">
+      </div>
+      <div class="client-setting-row" style="padding:8px 0">
+        <div>
+          <div style="font-size:13px;font-weight:600">Enforce SSO</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Blocks password login/registration for this domain</div>
+        </div>
+        <button class="setting-toggle ${enforce?'on':''}" id="sso-enforce-toggle" onclick="this.classList.toggle('on')">
+          <span class="setting-toggle-knob"></span>
+        </button>
+      </div>
+      <div class="client-setting-row" style="padding:8px 0">
+        <div>
+          <div style="font-size:13px;font-weight:600">Enabled</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Turn off to disable SSO without losing the configuration</div>
+        </div>
+        <button class="setting-toggle ${enabled?'on':''}" id="sso-enabled-toggle" onclick="this.classList.toggle('on')">
+          <span class="setting-toggle-knob"></span>
+        </button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-prim" onclick="saveSso()">Save</button>
+        ${_sso ? `<button class="btn-secondary" style="border-color:var(--c-crit);color:var(--c-crit)" onclick="removeSso()">Remove</button>` : ''}
+      </div>
+    </div>`;
+}
+
 // ── ACTIONS ───────────────────────────────────────────────────────
+async function saveSso() {
+  const issuer_url    = document.getElementById('sso-issuer')?.value.trim();
+  const client_id     = document.getElementById('sso-client-id')?.value.trim();
+  const client_secret = document.getElementById('sso-client-secret')?.value.trim();
+  const email_domain  = document.getElementById('sso-domain')?.value.trim();
+  const enforce = document.getElementById('sso-enforce-toggle')?.classList.contains('on');
+  const enabled = document.getElementById('sso-enabled-toggle')?.classList.contains('on');
+  if (!issuer_url || !client_id || !email_domain) { showToast('Issuer URL, Client ID and Email Domain are required', 'error'); return; }
+  try {
+    await api.organizations.sso.upsert(ORG_ID, { issuer_url, client_id, client_secret, email_domain, enforce, enabled });
+    _sso = await api.organizations.sso.get(ORG_ID);
+    render();
+    showToast('SSO configuration saved', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function removeSso() {
+  if (!confirm('Remove SSO configuration for this organization? Members on this domain will need a password to log in.')) return;
+  try {
+    await api.organizations.sso.remove(ORG_ID);
+    _sso = null;
+    render();
+    showToast('SSO configuration removed', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function renameOrg() {
   const name = document.getElementById('org-rename-input')?.value.trim();
   if (!name) return;
@@ -315,6 +396,8 @@ document.getElementById('invite-modal').addEventListener('click', e => {
 
 window.toggleUserMenu       = toggleUserMenu;
 window.doLogout             = doLogout;
+window.saveSso               = saveSso;
+window.removeSso             = removeSso;
 window.renameOrg            = renameOrg;
 window.changeOrgMemberRole  = changeOrgMemberRole;
 window.removeOrgMember      = removeOrgMember;

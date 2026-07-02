@@ -22,6 +22,7 @@
     "multer": "^2.2.0",
     "node-html-parser": "^7.1.0",
     "nodemailer": "^8.0.8",
+    "openid-client": "^6.8.4",
     "pdf-lib": "^1.17.1",
     "pg": "^8.12.0",
     "puppeteer-core": "^24.39.1",

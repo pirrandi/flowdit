@@ -1,20 +1,14 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
-const jwt    = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const wsService = require('../services/ws');
+const { signAccess } = require('../utils/tokens');
 
 // Palette for auto-assigned avatar colors
 const COLORS = ['#7c3aed','#2563eb','#059669','#dc2626','#d97706','#0891b2','#7c3aed','#be185d'];
-
-function signAccess(user) {
-  return jwt.sign({ sub: user.id, username: user.username }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
-}
 
 // POST /auth/register
 router.post('/register', [
@@ -26,6 +20,18 @@ router.post('/register', [
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
   const { username, email, password } = req.body;
+
+  // Org-enforced SSO blocks fresh password registration for this domain too —
+  // otherwise someone bypasses SSO entirely by just signing up a new account.
+  const domain = email.split('@')[1];
+  const enforced = await db.query(
+    `SELECT o.name FROM organization_sso_configs c
+     JOIN organizations o ON o.id = c.organization_id
+     WHERE c.email_domain=$1 AND c.enabled=true AND c.enforce=true`,
+    [domain]
+  );
+  if (enforced.rows.length)
+    return res.status(403).json({ error: `This organization requires signing in via SSO (${enforced.rows[0].name})`, ssoRequired: true });
 
   // Registration now creates a user AND their personal organization together —
   // every user must have an org for the permission model to hold, so a crash
@@ -95,7 +101,23 @@ router.post('/login', [
       'SELECT * FROM users WHERE username=$1 OR email=$1', [login]
     );
     const user = rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password)))
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+    // Org-enforced SSO blocks password login for this domain — checked before
+    // bcrypt so a correct-but-should-be-blocked password never succeeds.
+    // Only queried once a user is actually found, so the common case (no
+    // matching user, typos/bots) pays zero extra cost.
+    const domain = user.email.split('@')[1];
+    const enforced = await db.query(
+      `SELECT o.name FROM organization_sso_configs c
+       JOIN organizations o ON o.id = c.organization_id
+       WHERE c.email_domain=$1 AND c.enabled=true AND c.enforce=true`,
+      [domain]
+    );
+    if (enforced.rows.length)
+      return res.status(403).json({ error: `This organization requires signing in via SSO (${enforced.rows[0].name})`, ssoRequired: true });
+
+    if (!(await bcrypt.compare(password, user.password)))
       return res.status(401).json({ error: 'Invalid credentials' });
 
     const accessToken  = signAccess(user);

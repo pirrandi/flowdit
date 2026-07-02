@@ -4,6 +4,8 @@ const { body, validationResult } = require('express-validator');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requireOrgAccess, requireOrgAdmin, requireOrgOwner } = require('../middleware/organization');
+const { encrypt } = require('../utils/crypto');
+const { invalidateDiscovery } = require('../services/sso');
 
 router.use(requireAuth);
 
@@ -66,6 +68,68 @@ router.delete('/:orgId', requireOrgAccess, requireOrgOwner, async (req, res, nex
   try {
     await db.query(`DELETE FROM organizations WHERE id=$1`, [req.params.orgId]);
     res.json({ ok:true });
+  } catch (err) { next(err); }
+});
+
+// ── SSO (OIDC — owner-only, never returns the decrypted secret) ─────
+
+router.get('/:orgId/sso', requireOrgAccess, requireOrgOwner, async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT issuer_url, client_id, email_domain, enforce, enabled, updated_at
+       FROM organization_sso_configs WHERE organization_id=$1`,
+      [req.params.orgId]
+    );
+    if (!rows.length) return res.json(null);
+    res.json({ ...rows[0], hasClientSecret: true });
+  } catch (err) { next(err); }
+});
+
+router.put('/:orgId/sso', requireOrgAccess, requireOrgOwner, [
+  body('issuer_url').trim().isURL({ require_tld: false }),
+  body('client_id').trim().isLength({ min: 1, max: 255 }),
+  body('client_secret').optional({ checkFalsy: true }).trim().isLength({ min: 1 }),
+  body('email_domain').trim().isLength({ min: 1, max: 255 }),
+  body('enforce').optional().isBoolean(),
+  body('enabled').optional().isBoolean(),
+], async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  if (req.organization.is_personal)
+    return res.status(400).json({ error: 'Personal organizations cannot configure SSO' });
+
+  const { issuer_url, client_id, client_secret, enforce = false, enabled = true } = req.body;
+  const email_domain = req.body.email_domain.toLowerCase().trim();
+
+  try {
+    const existing = await db.query(
+      `SELECT client_secret_enc FROM organization_sso_configs WHERE organization_id=$1`,
+      [req.params.orgId]
+    );
+    if (!client_secret && !existing.rows.length)
+      return res.status(400).json({ error: 'Client secret is required' });
+    const client_secret_enc = client_secret ? encrypt(client_secret) : existing.rows[0].client_secret_enc;
+
+    await db.query(
+      `INSERT INTO organization_sso_configs (organization_id, issuer_url, client_id, client_secret_enc, email_domain, enforce, enabled)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (organization_id) DO UPDATE SET
+         issuer_url=$2, client_id=$3, client_secret_enc=$4, email_domain=$5, enforce=$6, enabled=$7`,
+      [req.params.orgId, issuer_url, client_id, client_secret_enc, email_domain, enforce, enabled]
+    );
+    invalidateDiscovery(req.params.orgId);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Another organization already claims this email domain' });
+    next(err);
+  }
+});
+
+router.delete('/:orgId/sso', requireOrgAccess, requireOrgOwner, async (req, res, next) => {
+  try {
+    await db.query(`DELETE FROM organization_sso_configs WHERE organization_id=$1`, [req.params.orgId]);
+    invalidateDiscovery(req.params.orgId);
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 

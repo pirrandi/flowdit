@@ -33,9 +33,13 @@
     <div id="login-form">
       <div class="form-group">
         <label class="form-label">Username or Email</label>
-        <input type="text" class="form-input" id="login-user" placeholder="h4ck3r" autocomplete="username">
+        <input type="text" class="form-input" id="login-user" placeholder="h4ck3r" autocomplete="username"
+          oninput="onLoginIdentifierChange()" onblur="checkSsoForIdentifier()">
       </div>
-      <div class="form-group">
+      <div id="login-sso-cta" style="display:none;margin-bottom:14px">
+        <button class="btn-primary" id="login-sso-btn" onclick="continueWithSso()"></button>
+      </div>
+      <div id="login-pass-group" class="form-group">
         <label class="form-label">Password</label>
         <input type="password" class="form-input" id="login-pass" placeholder="••••••••"
           onkeydown="if(event.key==='Enter')doLogin()">

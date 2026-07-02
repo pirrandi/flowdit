@@ -110,6 +110,10 @@ const api = {
     setTokens: (a,r)       => tokens.set(a, r),
     clearTokens: ()        => tokens.clear(),
     hasSession: ()         => !!tokens.access,
+    sso: {
+      check:    (email)    => request('POST', '/auth/sso/check', { email }),
+      exchange: (code)     => request('POST', '/auth/sso/exchange', { code }),
+    },
   },
   projects: {
     list:    ()       => request('GET',    '/projects'),
@@ -135,6 +139,11 @@ const api = {
       list:   (oid)             => request('GET',    `/organizations/${oid}/invites`),
       create: (oid, role, label)=> request('POST',   `/organizations/${oid}/invites`, { role, label }),
       revoke: (oid, id)         => request('DELETE', `/organizations/${oid}/invites/${id}`),
+    },
+    sso: {
+      get:    (oid)      => request('GET',    `/organizations/${oid}/sso`),
+      upsert: (oid, d)   => request('PUT',    `/organizations/${oid}/sso`, d),
+      remove: (oid)      => request('DELETE', `/organizations/${oid}/sso`),
     },
   },
   members: {
