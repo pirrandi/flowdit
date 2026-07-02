@@ -23,19 +23,31 @@ async function requireProjectAccess(req, res, next) {
     } catch (err) { return next(err); }
   }
 
-  // Regular user access
+  // Regular user access — direct project membership, OR implicit access via
+  // being an owner/admin of the project's organization (the enterprise case:
+  // a company account holder can see/manage every project the company owns
+  // without being manually invited to each one). Direct membership always
+  // wins if both exist (COALESCE prefers pm.role). Org owner maps to project
+  // 'owner' — a strong, intentional grant (can rename/delete/manage members/
+  // regenerate the client portal link) for the literal company-account
+  // owner. Org admin maps to project 'editor' (can edit data, not delete
+  // or touch membership).
   try {
     const { rows } = await db.query(
-      `SELECT p.*, pm.role AS member_role
+      `SELECT p.*,
+              COALESCE(pm.role, CASE om.role WHEN 'owner' THEN 'owner' WHEN 'admin' THEN 'editor' END) AS member_role,
+              (pm.user_id IS NULL) AS via_org
        FROM projects p
-       JOIN project_members pm ON pm.project_id = p.id
-       WHERE p.id = $1 AND pm.user_id = $2`,
+       LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $2
+       LEFT JOIN organization_members om ON om.organization_id = p.organization_id AND om.user_id = $2 AND om.role IN ('owner','admin')
+       WHERE p.id = $1 AND (pm.user_id IS NOT NULL OR om.user_id IS NOT NULL)`,
       [projectId, req.user.id]
     );
     if (!rows.length)
       return res.status(404).json({ error: 'Project not found or access denied' });
     req.project    = rows[0];
     req.memberRole = rows[0].member_role;
+    req.viaOrg     = rows[0].via_org;
     next();
   } catch (err) { next(err); }
 }

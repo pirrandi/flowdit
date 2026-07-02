@@ -119,6 +119,24 @@ const api = {
     delete:  (id)     => request('DELETE', `/projects/${id}`),
     join:    (token)  => request('POST',   '/projects/join', { token }),
   },
+  organizations: {
+    list:    ()       => request('GET',    '/organizations'),
+    create:  (d)      => request('POST',   '/organizations', d),
+    get:     (id)     => request('GET',    `/organizations/${id}`),
+    update:  (id,d)   => request('PATCH',  `/organizations/${id}`, d),
+    delete:  (id)     => request('DELETE', `/organizations/${id}`),
+    join:    (token)  => request('POST',   '/organizations/join', { token }),
+    members: {
+      list:       (oid)         => request('GET',    `/organizations/${oid}/members`),
+      changeRole: (oid,uid,role)=> request('PATCH',  `/organizations/${oid}/members/${uid}`, { role }),
+      remove:     (oid,uid)     => request('DELETE', `/organizations/${oid}/members/${uid}`),
+    },
+    invites: {
+      list:   (oid)             => request('GET',    `/organizations/${oid}/invites`),
+      create: (oid, role, label)=> request('POST',   `/organizations/${oid}/invites`, { role, label }),
+      revoke: (oid, id)         => request('DELETE', `/organizations/${oid}/invites/${id}`),
+    },
+  },
   members: {
     list:       (pid)         => request('GET',    `/projects/${pid}/members`),
     changeRole: (pid,uid,role)=> request('PATCH',  `/projects/${pid}/members/${uid}`, { role }),

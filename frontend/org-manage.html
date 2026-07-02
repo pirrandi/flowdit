@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Manage Organization</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+<style>
+.proj-topbar {
+  height:50px;display:flex;align-items:center;gap:14px;padding:0 28px;
+  border-bottom:1px solid var(--b1);background:var(--bg2);flex-shrink:0;
+}
+.proj-topbar-logo { display:flex;align-items:center;gap:8px;text-decoration:none; }
+.proj-topbar-logo img { height:22px; }
+.proj-topbar-logo span { font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);letter-spacing:.04em; }
+.proj-body { flex:1;overflow-y:auto;padding:36px 40px;max-width:760px;margin:0 auto;width:100%; }
+@media(max-width:700px){ .proj-body { padding:24px 16px; } }
+.org-back { font-family:var(--mono);font-size:11px;color:var(--t3);text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-bottom:16px; }
+.org-back:hover { color:var(--a); }
+</style>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+
+<div class="proj-topbar">
+  <a href="projects.html" class="proj-topbar-logo">
+    <img src="img/flowdit-logo.png" alt="Flowdit">
+    <span>Flowdit</span>
+  </a>
+  <div style="flex:1"></div>
+  <div id="proj-topbar-user"></div>
+</div>
+
+<div class="proj-body">
+  <a href="orgs.html" class="org-back"></a>
+  <div id="org-manage-content">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Loading...</div>
+  </div>
+</div>
+
+<!-- Generate Invite Modal -->
+<div class="modal-overlay" id="invite-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">Generate Invite Code</div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <div style="display:flex;gap:8px" id="invite-role-btns">
+        <button class="invite-role-btn" data-role="admin" onclick="selectInviteRole('admin')">Admin</button>
+        <button class="invite-role-btn active" data-role="member" onclick="selectInviteRole('member')">Member</button>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:6px" id="invite-role-hint">
+        No implicit project access — must still be invited per-project.
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label <span style="color:var(--t3);font-weight:400">(optional)</span></label>
+      <input type="text" class="form-input" id="invite-label" placeholder="e.g. Alice, IT Lead…">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('invite-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="invite-save-btn" onclick="submitCreateInvite()">Generate &amp; Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/icons.js"></script>
+<script src="js/services/utils.js"></script>
+<script>
+const ORG_ID = new URLSearchParams(window.location.search).get('oid');
+let _org = null, _members = [], _invites = [];
+
+document.querySelector('.org-back').innerHTML = `${icon('arrow-left',{size:11})} All Organizations`;
+
+// ── AUTH GUARD + BOOT ──────────────────────────────────────────────
+async function bootOrgManage() {
+  if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
+  if (!ORG_ID) { window.location.href = 'orgs.html'; return; }
+  try { state.user = await api.auth.me(); }
+  catch { window.location.href = 'index.html'; return; }
+
+  renderUserPill();
+
+  try {
+    _org = await api.organizations.get(ORG_ID);
+  } catch {
+    window.location.href = 'orgs.html';
+    return;
+  }
+
+  await loadAndRender();
+  hide('loading-overlay');
+}
+
+async function loadAndRender() {
+  const isAdmin = _org.member_role === 'owner' || _org.member_role === 'admin';
+  [_members, _invites] = await Promise.all([
+    api.organizations.members.list(ORG_ID).catch(() => []),
+    isAdmin ? api.organizations.invites.list(ORG_ID).catch(() => []) : Promise.resolve([]),
+  ]);
+  render();
+}
+
+// ── USER PILL ─────────────────────────────────────────────────────
+function renderUserPill() {
+  const u = state.user;
+  const color = u.avatar_color || '#7c3aed';
+  document.getElementById('proj-topbar-user').innerHTML = `
+    <div class="user-pill" onclick="toggleUserMenu()">
+      ${avatarHtml(u.username, color, 24, u.avatar_url)}
+      <span>${esc(u.username)}</span>
+      <div class="user-dropdown" id="user-dropdown">
+        <button class="dropdown-item" onclick="window.location.href='projects.html'">${icon('layout-grid',{size:13})} Projects</button>
+        <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out',{size:13})} Logout</button>
+      </div>
+    </div>`;
+}
+function toggleUserMenu() { document.getElementById('user-dropdown')?.classList.toggle('open'); }
+function closeUserMenu()  { document.getElementById('user-dropdown')?.classList.remove('open'); }
+document.addEventListener('click', e => { if (!e.target.closest('.user-pill')) closeUserMenu(); });
+
+async function doLogout() {
+  await api.auth.logout().catch(() => {});
+  localStorage.removeItem('fd_project');
+  window.location.href = 'index.html';
+}
+
+// ── RENDER ────────────────────────────────────────────────────────
+function badgeClass(role) { return role === 'owner' ? 'owner' : role === 'admin' ? 'editor' : 'viewer'; }
+
+function render() {
+  const isOwner = _org.member_role === 'owner';
+  const isAdmin = isOwner || _org.member_role === 'admin';
+
+  document.getElementById('org-manage-content').innerHTML = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">${esc(_org.name)}</div>
+        <div class="page-subtitle">// ${_org.is_personal ? 'personal organization' : 'organization'}</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+
+      ${isOwner ? `
+      <div class="members-card">
+        <div class="members-card-title">Rename</div>
+        <div style="display:flex;gap:8px">
+          <input type="text" class="form-input" id="org-rename-input" value="${esc(_org.name)}" style="flex:1">
+          <button class="btn btn-prim" onclick="renameOrg()">Save</button>
+        </div>
+      </div>` : ''}
+
+      <div class="members-card">
+        <div class="members-card-title">
+          Members
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3);font-weight:400">${_members.length} total</span>
+        </div>
+        ${_members.map(m => `
+          <div class="member-row">
+            <div class="member-avatar-lg" style="background:${roleColor(badgeClass(m.role))};overflow:hidden;padding:0${m.avatar_url ? `;box-shadow:0 0 0 2px ${roleColor(badgeClass(m.role))}` : ''}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${m.username[0].toUpperCase()}</span>`}</div>
+            <div class="member-info">
+              <div class="member-username">${esc(m.username)}</div>
+              <div class="member-meta">
+                ${m.invited_by_username ? `Invited by ${esc(m.invited_by_username)} · ` : ''}
+                Joined ${relativeDate(m.joined_at)}
+              </div>
+            </div>
+            <span class="role-badge role-${badgeClass(m.role)}">${m.role}</span>
+            ${isOwner && m.role !== 'owner' ? `
+              <button class="btn-icon" onclick="changeOrgMemberRole('${m.id}','${m.role==='admin'?'member':'admin'}')" title="${m.role==='admin'?'Make member':'Make admin'}">${icon(m.role==='admin'?'user-minus':'user-plus',{size:12})}</button>
+              <button class="btn-icon delete" onclick="removeOrgMember('${m.id}')" title="Remove">${icon('x',{size:12})}</button>
+            ` : ''}
+          </div>`).join('')}
+      </div>
+
+      ${isAdmin ? `
+      <div class="members-card">
+        <div class="members-card-title">
+          Invite Links
+          <button class="btn btn-prim" style="padding:4px 12px;font-size:12px" onclick="createInvite()">+ Generate Code</button>
+        </div>
+        <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:12px">
+          Org owners/admins get implicit access to every project in the org. Members don't — they still need a per-project invite.
+        </p>
+        ${_invites.length ? `
+          <div class="invite-list">
+            ${_invites.map(inv => {
+              const expired = new Date(inv.expires_at) < new Date();
+              const used    = !!inv.accepted_at;
+              const cls     = (expired || used) ? 'invite-item invite-used' : 'invite-item';
+              return `<div class="${cls}">
+                <div class="invite-token-display">${esc(inv.token)}</div>
+                <span class="invite-role-tag role-badge role-${badgeClass(inv.role)}">${inv.role}</span>
+                <span class="invite-expires">
+                  ${used ? `Used by ${esc(inv.accepted_by_username||'?')}` : expired ? 'Expired' : `Expires ${relativeDate(inv.expires_at)}`}
+                </span>
+                ${!used && !expired ? `
+                  <button class="btn-icon" onclick="copyOrgInviteCode('${esc(inv.token)}')" title="Copy code">copy</button>
+                  <button class="btn-icon delete" onclick="revokeOrgInvite('${inv.id}')" title="Revoke">${icon('x',{size:12})}</button>` : ''}
+              </div>`;
+            }).join('')}
+          </div>` : '<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">No invite codes yet.</div>'}
+      </div>` : ''}
+
+      ${isOwner && !_org.is_personal ? `
+      <div class="members-card" style="border-color:rgba(239,68,68,.3)">
+        <div class="members-card-title" style="color:var(--c-crit)">Danger Zone</div>
+        <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:12px">
+          Deletes this organization. Projects already assigned to it are not deleted, but implicit org-wide access for its members is removed immediately.
+        </p>
+        <button class="btn-secondary" style="border-color:var(--c-crit);color:var(--c-crit)" onclick="deleteOrg()">Delete Organization</button>
+      </div>` : ''}
+
+    </div>
+  `;
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────────
+async function renameOrg() {
+  const name = document.getElementById('org-rename-input')?.value.trim();
+  if (!name) return;
+  try {
+    _org = { ..._org, ...(await api.organizations.update(ORG_ID, { name })) };
+    render();
+    showToast('Organization renamed', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function changeOrgMemberRole(userId, role) {
+  try {
+    await api.organizations.members.changeRole(ORG_ID, userId, role);
+    await loadAndRender();
+    showToast('Role updated', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function removeOrgMember(userId) {
+  if (!confirm('Remove this member from the organization?')) return;
+  try {
+    await api.organizations.members.remove(ORG_ID, userId);
+    await loadAndRender();
+    showToast('Member removed', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+const INVITE_ROLE_HINTS = {
+  admin:  'Implicit editor-level access to every project in the org.',
+  member: 'No implicit project access — must still be invited per-project.',
+};
+
+function createInvite() {
+  document.getElementById('invite-label').value = '';
+  selectInviteRole('member');
+  document.getElementById('invite-modal').classList.add('open');
+}
+
+function selectInviteRole(role) {
+  document.querySelectorAll('.invite-role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
+  document.getElementById('invite-role-hint').textContent = INVITE_ROLE_HINTS[role] || '';
+}
+
+async function submitCreateInvite() {
+  const role  = document.querySelector('.invite-role-btn.active')?.dataset.role || 'member';
+  const label = document.getElementById('invite-label').value.trim();
+  const btn   = document.getElementById('invite-save-btn');
+  btn.disabled = true;
+  try {
+    const inv = await api.organizations.invites.create(ORG_ID, role, label);
+    navigator.clipboard.writeText(inv.token).catch(() => {});
+    document.getElementById('invite-modal').classList.remove('open');
+    showToast(`Code copied: ${inv.token}`, 'success');
+    await loadAndRender();
+  } catch(e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function copyOrgInviteCode(token) {
+  await navigator.clipboard.writeText(token);
+  showToast(`Copied: ${token}`, 'info');
+}
+
+async function revokeOrgInvite(id) {
+  if (!confirm('Revoke this invite code?')) return;
+  try {
+    await api.organizations.invites.revoke(ORG_ID, id);
+    showToast('Invite revoked', 'success');
+    await loadAndRender();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function deleteOrg() {
+  if (!confirm(`Delete "${_org.name}"? This cannot be undone.`)) return;
+  try {
+    await api.organizations.delete(ORG_ID);
+    window.location.href = 'orgs.html';
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+document.getElementById('invite-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+window.toggleUserMenu       = toggleUserMenu;
+window.doLogout             = doLogout;
+window.renameOrg            = renameOrg;
+window.changeOrgMemberRole  = changeOrgMemberRole;
+window.removeOrgMember      = removeOrgMember;
+window.createInvite         = createInvite;
+window.selectInviteRole     = selectInviteRole;
+window.submitCreateInvite   = submitCreateInvite;
+window.copyOrgInviteCode    = copyOrgInviteCode;
+window.revokeOrgInvite      = revokeOrgInvite;
+window.deleteOrg            = deleteOrg;
+
+bootOrgManage();
+</script>
+</body>
+</html>

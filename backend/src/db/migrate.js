@@ -386,6 +386,59 @@ const migrations = [
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS retest_notes   TEXT`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS verified_at    TIMESTAMPTZ`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS verified_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
+
+  // ── ORGANIZATIONS (foundational layer for company/enterprise use) ────
+  // An organization groups multiple projects under one company account,
+  // with its own membership separate from any single project's sharing.
+  // Every user gets a silent personal org at registration (is_personal=true);
+  // creating a real second org (a company account) is opt-in.
+  `CREATE TABLE IF NOT EXISTS organizations (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(200) NOT NULL,
+    owner_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_personal BOOLEAN NOT NULL DEFAULT false,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // role tiers deliberately differ from project_members (owner/editor/viewer):
+  // only owner/admin grant implicit access to every project in the org —
+  // plain 'member' grants zero implicit project access (still needs an
+  // explicit per-project invite, exactly like today).
+  `CREATE TABLE IF NOT EXISTS organization_members (
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role            VARCHAR(20) NOT NULL DEFAULT 'member' CHECK (role IN ('owner','admin','member')),
+    invited_by      UUID REFERENCES users(id),
+    joined_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (organization_id, user_id)
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS organization_invites (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id  UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    invited_by       UUID NOT NULL REFERENCES users(id),
+    role             VARCHAR(20) NOT NULL DEFAULT 'member' CHECK (role IN ('owner','admin','member')),
+    token            VARCHAR(128) UNIQUE NOT NULL,
+    label            VARCHAR(100),
+    expires_at       TIMESTAMPTZ NOT NULL,
+    accepted_at      TIMESTAMPTZ,
+    accepted_by      UUID REFERENCES users(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE`,
+
+  `CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_organizations_owner ON organizations(owner_id)`,
+  // one personal org per owner — makes the backfill/register-time auto-create idempotent
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_org_one_personal_per_owner ON organizations(owner_id) WHERE is_personal`,
+
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_organizations_updated_at') THEN
+      CREATE TRIGGER trg_organizations_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+    END IF;
+  END $$`,
 ];
 
 const BUILTIN_TEMPLATES = [
@@ -604,6 +657,46 @@ async function seedTemplates(db) {
   if (added > 0) console.log(`  ✦ Seeded ${added} built-in vulnerability templates`);
 }
 
+// One-time backfill: every pre-existing project gets grouped into a new
+// personal organization owned by its current owner_id. Scoped to
+// organization_id IS NULL so re-running this on every deploy is a no-op
+// once fully backfilled. Does NOT touch other projects' project_members —
+// existing collaborators/clients keep exactly their current access and are
+// not added to the new org.
+async function backfillOrganizations(db) {
+  const { rows: owners } = await db.query(
+    `SELECT DISTINCT owner_id FROM projects WHERE organization_id IS NULL`
+  );
+  let created = 0;
+  for (const { owner_id } of owners) {
+    const { rows: userRows } = await db.query(`SELECT username FROM users WHERE id=$1`, [owner_id]);
+    if (!userRows.length) continue; // orphaned owner_id safety
+
+    const { rows: orgRows } = await db.query(
+      `INSERT INTO organizations (name, owner_id, is_personal)
+       VALUES ($1,$2,true)
+       ON CONFLICT (owner_id) WHERE is_personal DO NOTHING
+       RETURNING id`,
+      [`${userRows[0].username}'s Organization`, owner_id]
+    );
+    const orgId = orgRows[0]
+      ? orgRows[0].id
+      : (await db.query(`SELECT id FROM organizations WHERE owner_id=$1 AND is_personal=true`, [owner_id])).rows[0].id;
+
+    await db.query(
+      `INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1,$2,'owner')
+       ON CONFLICT DO NOTHING`,
+      [orgId, owner_id]
+    );
+    await db.query(
+      `UPDATE projects SET organization_id=$1 WHERE owner_id=$2 AND organization_id IS NULL`,
+      [orgId, owner_id]
+    );
+    created++;
+  }
+  if (created > 0) console.log(`  ✦ Backfilled ${created} personal organization(s)`);
+}
+
 async function migrate() {
   console.log('🔄 Running migrations...');
   for (const sql of migrations) {
@@ -614,6 +707,7 @@ async function migrate() {
     }
   }
   await seedTemplates(db);
+  await backfillOrganizations(db);
   console.log('✅ Migrations complete');
   process.exit(0);
 }

@@ -235,6 +235,7 @@ function renderTopbar() {
         ${role ? `<span style="font-family:var(--mono);font-size:9px;color:${color};opacity:.8">${role}</span>` : ''}
         <div class="user-dropdown" id="user-dropdown">
           <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">${icon('user', { size: 13 })} Edit Profile</button>
+          <button class="dropdown-item" onclick="window.location.href='orgs.html'">${icon('building-2', { size: 13 })} Organizations</button>
           <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out', { size: 13 })} Logout</button>
         </div>
       </div>

@@ -26,33 +26,59 @@ router.post('/register', [
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
   const { username, email, password } = req.body;
+
+  // Registration now creates a user AND their personal organization together —
+  // every user must have an org for the permission model to hold, so a crash
+  // partway through (e.g. after the user insert but before the org insert)
+  // can't be allowed to leave a user with no org. Transactional.
+  const client = await db.pool.connect();
   try {
-    const exists = await db.query(
+    await client.query('BEGIN');
+
+    const exists = await client.query(
       'SELECT id FROM users WHERE username=$1 OR email=$2', [username, email]
     );
-    if (exists.rows.length)
+    if (exists.rows.length) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Username or email already taken' });
+    }
 
     const hash  = await bcrypt.hash(password, 12);
     const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO users (username, email, password, avatar_color)
        VALUES ($1,$2,$3,$4) RETURNING id, username, email, avatar_color, created_at`,
       [username, email, hash, color]
     );
     const user = rows[0];
 
+    const { rows: orgRows } = await client.query(
+      `INSERT INTO organizations (name, owner_id, is_personal) VALUES ($1,$2,true) RETURNING id`,
+      [`${user.username}'s Organization`, user.id]
+    );
+    await client.query(
+      `INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1,$2,'owner')`,
+      [orgRows[0].id, user.id]
+    );
+
     const accessToken  = signAccess(user);
     const refreshToken = uuidv4() + uuidv4().replace(/-/g,'');
-    await db.query(
+    await client.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
        VALUES ($1,$2, NOW() + INTERVAL '30 days')`,
       [user.id, refreshToken]
     );
 
+    await client.query('COMMIT');
+
     res.status(201).json({ accessToken, refreshToken,
       user: { id:user.id, username:user.username, email:user.email, avatar_color:user.avatar_color } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // POST /auth/login

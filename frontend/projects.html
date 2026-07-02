@@ -90,6 +90,7 @@
 <div class="modal-overlay" id="project-modal">
   <div class="modal">
     <div class="modal-title">New Project</div>
+    <div class="form-group" id="proj-org-group"><label class="form-label">Organization</label><select class="form-input" id="proj-org-select"></select></div>
     <div class="form-group"><label class="form-label">Project Name</label><input type="text" class="form-input" id="proj-name" placeholder="Client Corp — Q3 Pentest"></div>
     <div class="form-group"><label class="form-label">Target / Scope</label><input type="text" class="form-input" id="proj-target" placeholder="https://target.com"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-input note-textarea" id="proj-desc" placeholder="Scope, objectives..."></textarea></div>
@@ -142,6 +143,11 @@ async function bootProjects() {
   } catch {
     state.projects = [];
   }
+  try {
+    state.orgs = await api.organizations.list();
+  } catch {
+    state.orgs = [];
+  }
 
   renderProjects();
   hide('loading-overlay');
@@ -157,6 +163,7 @@ function renderUserPill() {
       <span>${esc(u.username)}</span>
       <div class="user-dropdown" id="user-dropdown">
         <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> Edit Profile</button>
+        <button class="dropdown-item" onclick="window.location.href='orgs.html'">${icon('building-2',{size:13})} Organizations</button>
         <button class="dropdown-item danger" onclick="doLogout()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></svg> Logout</button>
       </div>
     </div>`;
@@ -310,6 +317,7 @@ function renderProjects() {
         <div style="min-width:0;flex:1;overflow:hidden">
           <div class="proj-card-name">${esc(p.name)}</div>
           ${p.target ? `<div class="proj-card-target">${esc(p.target)}</div>` : ''}
+          ${p.organization_name ? `<div class="proj-card-meta" style="display:inline-flex;align-items:center;gap:3px;margin-top:3px">${icon('building-2',{size:10})} ${esc(p.organization_name)}</div>` : ''}
         </div>
         <span class="role-badge role-${role}">${role}</span>
       </div>
@@ -333,19 +341,32 @@ function renderProjects() {
 // ── NEW PROJECT ───────────────────────────────────────────────────
 function openNewProjectModal() {
   ['proj-name','proj-target','proj-desc'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+
+  const orgs = state.orgs || [];
+  const sel  = document.getElementById('proj-org-select');
+  const grp  = document.getElementById('proj-org-group');
+  sel.innerHTML = orgs.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('');
+  // Auto-select personal org by default, if present; otherwise first org.
+  const personal = orgs.find(o => o.is_personal);
+  if (personal) sel.value = personal.id;
+  // The common solo case (exactly one org) stays as frictionless as before — hide the picker.
+  grp.style.display = orgs.length > 1 ? '' : 'none';
+
   document.getElementById('project-modal').classList.add('open');
   setTimeout(() => document.getElementById('proj-name')?.focus(), 50);
 }
 
 async function saveNewProject() {
-  const name   = document.getElementById('proj-name')?.value.trim();
-  const target = document.getElementById('proj-target')?.value.trim();
-  const desc   = document.getElementById('proj-desc')?.value.trim();
-  const btn    = document.getElementById('proj-save-btn');
+  const name           = document.getElementById('proj-name')?.value.trim();
+  const target          = document.getElementById('proj-target')?.value.trim();
+  const desc            = document.getElementById('proj-desc')?.value.trim();
+  const organization_id = document.getElementById('proj-org-select')?.value;
+  const btn             = document.getElementById('proj-save-btn');
   if (!name) return;
+  if (!organization_id) { showToast('No organization available', 'error'); return; }
   btn.disabled = true;
   try {
-    const proj = await api.projects.create({ name, target, description: desc });
+    const proj = await api.projects.create({ name, target, description: desc, organization_id });
     document.getElementById('project-modal').classList.remove('open');
     localStorage.setItem('fd_project', proj.id);
     window.location.href = `dashboard.html?pid=${proj.id}`;

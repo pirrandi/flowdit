@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowdit — Organizations</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+<style>
+.proj-topbar {
+  height:50px;display:flex;align-items:center;gap:14px;padding:0 28px;
+  border-bottom:1px solid var(--b1);background:var(--bg2);flex-shrink:0;
+}
+.proj-topbar-logo { display:flex;align-items:center;gap:8px;text-decoration:none; }
+.proj-topbar-logo img { height:22px; }
+.proj-topbar-logo span { font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);letter-spacing:.04em; }
+
+.proj-body { flex:1;overflow-y:auto;padding:36px 40px; }
+@media(max-width:700px){ .proj-body { padding:24px 16px; } }
+
+.proj-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:14px;
+  margin-top:24px;
+}
+.proj-card {
+  border:1px solid var(--b1);border-radius:10px;padding:18px 20px;
+  cursor:pointer;transition:border-color .15s,transform .1s;
+  background:var(--bg2);display:flex;flex-direction:column;gap:6px;
+  text-decoration:none;color:inherit;
+}
+.proj-card:hover { border-color:var(--a);transform:translateY(-1px); }
+.proj-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0; }
+.proj-card-name { font-size:14px;font-weight:700;color:var(--t1);line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.proj-card-footer { display:flex;align-items:center;gap:10px;margin-top:6px;padding-top:10px;
+  border-top:1px solid var(--b1); }
+.proj-card-meta { font-family:var(--mono);font-size:10px;color:var(--t3); }
+
+.proj-add-card {
+  border:1px dashed var(--b1);border-radius:10px;padding:18px 20px;
+  cursor:pointer;transition:border-color .15s,background .15s;
+  background:transparent;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;min-height:120px;color:var(--t3);
+}
+.proj-add-card:hover { border-color:var(--a);background:var(--bg2);color:var(--t2); }
+.proj-add-card-icon { font-size:22px;opacity:.5; }
+.proj-add-card-label { font-family:var(--mono);font-size:12px; }
+</style>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
+
+<div class="proj-topbar">
+  <a href="projects.html" class="proj-topbar-logo">
+    <img src="img/flowdit-logo.png" alt="Flowdit">
+    <span>Flowdit</span>
+  </a>
+  <div style="flex:1"></div>
+  <div id="proj-topbar-user"></div>
+</div>
+
+<div class="proj-body">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Organizations</div>
+      <div class="page-subtitle">// company accounts you belong to</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-secondary" onclick="openJoinOrgModal()" style="padding:7px 14px;font-size:12px">Join Organization</button>
+      <button class="btn-accent" onclick="openNewOrgModal()" style="padding:7px 14px;font-size:12px">+ New Organization</button>
+    </div>
+  </div>
+
+  <div class="proj-grid" id="orgs-grid">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Loading organizations...</div>
+  </div>
+</div>
+
+<!-- New Organization Modal -->
+<div class="modal-overlay" id="org-modal">
+  <div class="modal">
+    <div class="modal-title">New Organization</div>
+    <div class="form-group"><label class="form-label">Organization Name</label><input type="text" class="form-input" id="org-name" placeholder="Acme Security Consulting"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('org-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="org-save-btn" onclick="saveNewOrg()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Join Organization Modal -->
+<div class="modal-overlay" id="join-org-modal">
+  <div class="modal">
+    <div class="modal-title">Join an Organization</div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:16px">
+      Paste the invite code shared with you by an organization owner/admin.
+    </p>
+    <div class="form-group">
+      <label class="form-label">Invite Code</label>
+      <input type="text" class="form-input" id="join-org-code-input"
+        placeholder="FO-XXXXXXXXXXXX"
+        style="text-transform:uppercase;letter-spacing:.1em;font-family:var(--mono)"
+        onkeydown="if(event.key==='Enter')doJoinOrg()">
+    </div>
+    <div class="form-error" id="join-org-error"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('join-org-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-save" id="join-org-btn" onclick="doJoinOrg()">Join</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/icons.js"></script>
+<script src="js/services/utils.js"></script>
+<script>
+// ── AUTH GUARD + BOOT ──────────────────────────────────────────────
+async function bootOrgs() {
+  if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
+  try { state.user = await api.auth.me(); }
+  catch { window.location.href = 'index.html'; return; }
+
+  renderUserPill();
+
+  try {
+    state.orgs = await api.organizations.list();
+  } catch {
+    state.orgs = [];
+  }
+
+  renderOrgs();
+  hide('loading-overlay');
+}
+
+// ── USER PILL (mirrors projects.html) ───────────────────────────────
+function renderUserPill() {
+  const u = state.user;
+  const color = u.avatar_color || '#7c3aed';
+  document.getElementById('proj-topbar-user').innerHTML = `
+    <div class="user-pill" onclick="toggleUserMenu()">
+      ${avatarHtml(u.username, color, 24, u.avatar_url)}
+      <span>${esc(u.username)}</span>
+      <div class="user-dropdown" id="user-dropdown">
+        <button class="dropdown-item" onclick="window.location.href='projects.html'">${icon('layout-grid',{size:13})} Projects</button>
+        <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out',{size:13})} Logout</button>
+      </div>
+    </div>`;
+}
+function toggleUserMenu() { document.getElementById('user-dropdown')?.classList.toggle('open'); }
+function closeUserMenu()  { document.getElementById('user-dropdown')?.classList.remove('open'); }
+document.addEventListener('click', e => { if (!e.target.closest('.user-pill')) closeUserMenu(); });
+
+async function doLogout() {
+  await api.auth.logout().catch(() => {});
+  localStorage.removeItem('fd_project');
+  window.location.href = 'index.html';
+}
+
+// ── RENDER ORGS ───────────────────────────────────────────────────
+function renderOrgs() {
+  const grid = document.getElementById('orgs-grid');
+  if (!state.orgs.length) {
+    grid.innerHTML = `
+      <div class="proj-add-card" onclick="openNewOrgModal()">
+        <div class="proj-add-card-icon">${icon('plus',{size:20})}</div>
+        <div class="proj-add-card-label">New Organization</div>
+      </div>
+      <div class="proj-add-card" onclick="openJoinOrgModal()">
+        <div class="proj-add-card-icon">${icon('link',{size:20})}</div>
+        <div class="proj-add-card-label">Join an Organization</div>
+      </div>`;
+    return;
+  }
+
+  let html = state.orgs.map(o => {
+    const role = o.member_role || 'member';
+    const members = o.member_count || 1;
+    const projects = o.project_count || 0;
+    return `<a href="org-manage.html?oid=${o.id}" class="proj-card">
+      <div class="proj-card-top">
+        <div style="min-width:0;flex:1;overflow:hidden">
+          <div class="proj-card-name">${esc(o.name)}</div>
+          ${o.is_personal ? `<div class="proj-card-meta" style="margin-top:2px">Personal</div>` : ''}
+        </div>
+        <span class="role-badge role-${role === 'owner' ? 'owner' : role === 'admin' ? 'editor' : 'viewer'}">${role}</span>
+      </div>
+      <div class="proj-card-footer">
+        <span class="proj-card-meta" style="display:inline-flex;align-items:center;gap:3px">${icon('users',{size:11})} ${members} member${members>1?'s':''}</span>
+        <span class="proj-card-meta" style="display:inline-flex;align-items:center;gap:3px;margin-left:10px">${icon('layout-grid',{size:11})} ${projects} project${projects!=1?'s':''}</span>
+      </div>
+    </a>`;
+  }).join('');
+
+  html += `<div class="proj-add-card" onclick="openNewOrgModal()">
+    <div class="proj-add-card-icon">${icon('plus',{size:20})}</div>
+    <div class="proj-add-card-label">New Organization</div>
+  </div>`;
+
+  grid.innerHTML = html;
+}
+
+// ── NEW ORGANIZATION ──────────────────────────────────────────────
+function openNewOrgModal() {
+  const el = document.getElementById('org-name');
+  if (el) el.value = '';
+  document.getElementById('org-modal').classList.add('open');
+  setTimeout(() => el?.focus(), 50);
+}
+
+async function saveNewOrg() {
+  const name = document.getElementById('org-name')?.value.trim();
+  const btn  = document.getElementById('org-save-btn');
+  if (!name) return;
+  btn.disabled = true;
+  try {
+    await api.organizations.create({ name });
+    document.getElementById('org-modal').classList.remove('open');
+    state.orgs = await api.organizations.list();
+    renderOrgs();
+    showToast('Organization created', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+  finally { btn.disabled = false; }
+}
+
+// ── JOIN ORGANIZATION ─────────────────────────────────────────────
+function openJoinOrgModal() {
+  const el = document.getElementById('join-org-code-input');
+  if (el) el.value = '';
+  document.getElementById('join-org-error').style.display = 'none';
+  document.getElementById('join-org-modal').classList.add('open');
+  setTimeout(() => el?.focus(), 50);
+}
+
+async function doJoinOrg() {
+  const input = document.getElementById('join-org-code-input');
+  const err   = document.getElementById('join-org-error');
+  const btn   = document.getElementById('join-org-btn');
+  const code  = (input?.value || '').trim().toUpperCase();
+  if (!code) return;
+  err.style.display = 'none';
+  btn.disabled = true;
+  try {
+    await api.organizations.join(code);
+    document.getElementById('join-org-modal').classList.remove('open');
+    state.orgs = await api.organizations.list();
+    renderOrgs();
+    showToast('Joined organization', 'success');
+  } catch(e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally { btn.disabled = false; }
+}
+
+// ── MODAL CLOSE ON BACKDROP ────────────────────────────────────────
+['org-modal','join-org-modal'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  });
+});
+
+window.toggleUserMenu   = toggleUserMenu;
+window.doLogout         = doLogout;
+window.openNewOrgModal  = openNewOrgModal;
+window.saveNewOrg       = saveNewOrg;
+window.openJoinOrgModal = openJoinOrgModal;
+window.doJoinOrg        = doJoinOrg;
+
+bootOrgs();
+</script>
+</body>
+</html>

@@ -18,16 +18,26 @@ function sanitizeProject(p) {
   return out;
 }
 
-// GET /projects
+// GET /projects — direct membership OR implicit access via being an
+// owner/admin of the project's organization (same fallback shape as
+// requireProjectAccess). Without the org-fallback join here, an org
+// admin would have no way to *discover* projects they weren't directly
+// invited to — this is what actually makes "the company can see
+// everything" true, not just authorizable-if-you-know-the-URL.
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT p.*, pm.role AS member_role,
-              u.username AS owner_username,
+      `SELECT p.*,
+              COALESCE(pm.role, CASE om.role WHEN 'owner' THEN 'owner' WHEN 'admin' THEN 'editor' END) AS member_role,
+              u.username AS owner_username, o.name AS organization_name,
+              (pm.user_id IS NULL) AS via_org,
               (SELECT COUNT(*) FROM project_members pm2 WHERE pm2.project_id = p.id) AS member_count
        FROM projects p
-       JOIN project_members pm ON pm.project_id=p.id AND pm.user_id=$1
+       LEFT JOIN project_members pm ON pm.project_id=p.id AND pm.user_id=$1
+       LEFT JOIN organization_members om ON om.organization_id=p.organization_id AND om.user_id=$1 AND om.role IN ('owner','admin')
        JOIN users u ON u.id=p.owner_id
+       LEFT JOIN organizations o ON o.id=p.organization_id
+       WHERE pm.user_id IS NOT NULL OR om.user_id IS NOT NULL
        ORDER BY p.updated_at DESC`,
       [req.user.id]
     );
@@ -35,21 +45,29 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /projects
+// POST /projects — every project belongs to an organization now; the
+// caller must be a member (any role) of the org they're creating it under.
 router.post('/', [
   body('name').trim().isLength({ min:1, max:200 }),
   body('target').optional().trim(),
   body('description').optional().trim(),
+  body('organization_id').isUUID(),
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { name, target='', description='' } = req.body;
+  const { name, target='', description='', organization_id } = req.body;
   try {
+    const orgMember = await db.query(
+      `SELECT 1 FROM organization_members WHERE organization_id=$1 AND user_id=$2`,
+      [organization_id, req.user.id]
+    );
+    if (!orgMember.rows.length) return res.status(403).json({ error: 'You are not a member of that organization' });
+
     const { rows } = await db.query(
-      `INSERT INTO projects (name, target, description, owner_id)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [name, target, description, req.user.id]
+      `INSERT INTO projects (name, target, description, owner_id, organization_id)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [name, target, description, req.user.id, organization_id]
     );
     const project = rows[0];
     await db.query(

@@ -51,6 +51,7 @@ app.get('/health', (_, res) => res.json({ status:'ok', ts: new Date() }));
 app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/portal',    require('./routes/portal'));    // public — no requireAuth
 app.use('/api/projects',  require('./routes/projects'));
+app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/templates', require('./routes/templates'));
 
 // Nested project routes — mergeParams makes :projectId available in child routers
