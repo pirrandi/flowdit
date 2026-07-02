@@ -126,7 +126,6 @@ const api = {
     update:  (id,d)   => request('PATCH',  `/organizations/${id}`, d),
     delete:  (id)     => request('DELETE', `/organizations/${id}`),
     join:    (token)  => request('POST',   '/organizations/join', { token }),
-    projects: (oid)   => request('GET',    `/organizations/${oid}/projects`),
     members: {
       list:       (oid)         => request('GET',    `/organizations/${oid}/members`),
       changeRole: (oid,uid,role)=> request('PATCH',  `/organizations/${oid}/members/${uid}`, { role }),

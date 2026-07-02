@@ -46,38 +46,6 @@ router.post('/', [
 // GET /organizations/:orgId
 router.get('/:orgId', requireOrgAccess, (req, res) => res.json(req.organization));
 
-// GET /organizations/:orgId/projects — the admin-panel payoff of the org model:
-// every project the company owns, with enough at-a-glance signal (findings by
-// severity, member count) to not have to click into each one. Owner/admin only —
-// a plain 'member' has no implicit visibility into org projects, so showing them
-// this list would leak more than their actual access grants.
-router.get('/:orgId/projects', requireOrgAccess, requireOrgAdmin, async (req, res, next) => {
-  try {
-    const { rows } = await db.query(
-      `SELECT p.id, p.name, p.status, p.updated_at, u.username AS owner_username,
-              (SELECT COUNT(*) FROM project_members pm WHERE pm.project_id=p.id) AS member_count,
-              COALESCE(v.crit,0)::int AS crit_count, COALESCE(v.high,0)::int AS high_count,
-              COALESCE(v.med,0)::int  AS med_count,  COALESCE(v.low,0)::int  AS low_count,
-              COALESCE(v.info,0)::int AS info_count
-       FROM projects p
-       JOIN users u ON u.id = p.owner_id
-       LEFT JOIN (
-         SELECT project_id,
-           COUNT(*) FILTER (WHERE severity='critical') AS crit,
-           COUNT(*) FILTER (WHERE severity='high')     AS high,
-           COUNT(*) FILTER (WHERE severity='medium')   AS med,
-           COUNT(*) FILTER (WHERE severity='low')      AS low,
-           COUNT(*) FILTER (WHERE severity='info')     AS info
-         FROM custom_vulns GROUP BY project_id
-       ) v ON v.project_id = p.id
-       WHERE p.organization_id = $1
-       ORDER BY p.updated_at DESC`,
-      [req.params.orgId]
-    );
-    res.json(rows);
-  } catch (err) { next(err); }
-});
-
 // PATCH /organizations/:orgId — rename
 router.patch('/:orgId', requireOrgAccess, requireOrgOwner, [
   body('name').trim().isLength({ min:1, max:200 }),

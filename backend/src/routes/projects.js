@@ -31,12 +31,19 @@ router.get('/', async (req, res, next) => {
               COALESCE(pm.role, CASE om.role WHEN 'owner' THEN 'owner' WHEN 'admin' THEN 'editor' END) AS member_role,
               u.username AS owner_username, o.name AS organization_name,
               (pm.user_id IS NULL) AS via_org,
-              (SELECT COUNT(*) FROM project_members pm2 WHERE pm2.project_id = p.id) AS member_count
+              (SELECT COUNT(*) FROM project_members pm2 WHERE pm2.project_id = p.id) AS member_count,
+              COALESCE(v.crit,0)::int AS crit_count, COALESCE(v.high,0)::int AS high_count
        FROM projects p
        LEFT JOIN project_members pm ON pm.project_id=p.id AND pm.user_id=$1
        LEFT JOIN organization_members om ON om.organization_id=p.organization_id AND om.user_id=$1 AND om.role IN ('owner','admin')
        JOIN users u ON u.id=p.owner_id
        LEFT JOIN organizations o ON o.id=p.organization_id
+       LEFT JOIN (
+         SELECT project_id,
+           COUNT(*) FILTER (WHERE severity='critical') AS crit,
+           COUNT(*) FILTER (WHERE severity='high')     AS high
+         FROM custom_vulns GROUP BY project_id
+       ) v ON v.project_id = p.id
        WHERE pm.user_id IS NOT NULL OR om.user_id IS NOT NULL
        ORDER BY p.updated_at DESC`,
       [req.user.id]

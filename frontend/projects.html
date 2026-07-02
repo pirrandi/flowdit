@@ -81,6 +81,9 @@
     </div>
   </div>
 
+  <div id="org-filter-row"></div>
+  <div id="org-filter-summary"></div>
+
   <div class="proj-grid" id="projects-grid">
     <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Loading projects...</div>
   </div>
@@ -130,6 +133,8 @@
 <script src="js/services/icons.js"></script>
 <script src="js/services/utils.js"></script>
 <script>
+let _orgFilter = null; // null = "All"
+
 // ── AUTH GUARD + BOOT ──────────────────────────────────────────────
 async function bootProjects() {
   if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
@@ -149,8 +154,34 @@ async function bootProjects() {
     state.orgs = [];
   }
 
+  const oid = new URLSearchParams(window.location.search).get('oid');
+  if (oid && state.orgs.some(o => o.id === oid)) _orgFilter = oid;
+
+  renderOrgFilter();
   renderProjects();
   hide('loading-overlay');
+}
+
+// ── ORG FILTER ────────────────────────────────────────────────────
+function renderOrgFilter() {
+  const el = document.getElementById('org-filter-row');
+  if (!state.orgs.length) { el.innerHTML = ''; return; }
+  const pill = (id, label, active) =>
+    `<button class="btn-secondary${active ? ' active' : ''}" style="padding:5px 12px;font-size:11px${active ? ';background:var(--a-dim);border-color:var(--a);color:var(--a)' : ''}" onclick="setOrgFilter(${id === null ? 'null' : `'${id}'`})">${esc(label)}</button>`;
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:16px">
+      ${pill(null, 'All', _orgFilter === null)}
+      ${state.orgs.map(o => pill(o.id, o.name, _orgFilter === o.id)).join('')}
+    </div>`;
+}
+
+function setOrgFilter(oid) {
+  _orgFilter = oid;
+  const url = new URL(window.location);
+  if (oid) url.searchParams.set('oid', oid); else url.searchParams.delete('oid');
+  history.replaceState({}, '', url);
+  renderOrgFilter();
+  renderProjects();
 }
 
 // ── USER PILL ─────────────────────────────────────────────────────
@@ -294,7 +325,20 @@ function projectHref(p) {
 }
 
 function renderProjects() {
-  const grid = document.getElementById('projects-grid');
+  const grid    = document.getElementById('projects-grid');
+  const summary = document.getElementById('org-filter-summary');
+  const visible = _orgFilter ? state.projects.filter(p => p.organization_id === _orgFilter) : state.projects;
+
+  if (_orgFilter) {
+    const totalCrit = visible.reduce((s,p) => s + (p.crit_count||0), 0);
+    const totalHigh = visible.reduce((s,p) => s + (p.high_count||0), 0);
+    summary.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:10px">
+      ${visible.length} project${visible.length!=1?'s':''} · <span style="color:${(totalCrit+totalHigh)?'var(--c-crit)':'var(--t3)'}">${totalCrit+totalHigh} critical+high finding${(totalCrit+totalHigh)!=1?'s':''}</span>
+    </div>`;
+  } else {
+    summary.innerHTML = '';
+  }
+
   if (!state.projects.length) {
     grid.innerHTML = `
       <div class="proj-add-card" onclick="openNewProjectModal()">
@@ -308,7 +352,12 @@ function renderProjects() {
     return;
   }
 
-  let html = state.projects.map(p => {
+  if (!visible.length) {
+    grid.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">No projects in this organization yet.</div>`;
+    return;
+  }
+
+  let html = visible.map(p => {
     const role = p.member_role || 'member';
     const updated = relativeDate(p.updated_at);
     const members = p.member_count || 1;
@@ -322,6 +371,10 @@ function renderProjects() {
         <span class="role-badge role-${role}">${role}</span>
       </div>
       ${p.description ? `<div class="proj-card-desc">${esc(p.description)}</div>` : ''}
+      ${(p.crit_count || p.high_count) ? `<div style="display:flex;gap:5px">
+        ${p.crit_count ? `<span class="sev-badge sev-critical" style="font-size:9px">${p.crit_count} crit</span>` : ''}
+        ${p.high_count ? `<span class="sev-badge sev-high" style="font-size:9px">${p.high_count} high</span>` : ''}
+      </div>` : ''}
       <div class="proj-card-footer">
         <span class="proj-card-meta" style="display:inline-flex;align-items:center;gap:3px"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><path d="M16 3.128a4 4 0 0 1 0 7.744" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><circle cx="9" cy="7" r="4" /></svg> ${members} member${members>1?'s':''}</span>
         <span class="proj-card-meta" style="margin-left:auto">Updated ${updated}</span>
