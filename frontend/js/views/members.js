@@ -3,7 +3,7 @@
 async function renderMembers() {
   const container = document.getElementById('view-members');
   if (!state.currentProject) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-title">No project selected</div></div>';
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No project selected</div></div>`;
     return;
   }
 
@@ -42,7 +42,7 @@ async function renderMembers() {
               </div>
             </div>
             <span class="role-badge role-${m.role}">${m.role}</span>
-            ${isOwner && m.role !== 'owner' ? `<button class="btn-icon delete" onclick="removeMember('${m.id}')">✕</button>` : ''}
+            ${isOwner && m.role !== 'owner' ? `<button class="btn-icon delete" onclick="removeMember('${m.id}')">${icon('x',{size:12})}</button>` : ''}
           </div>`).join('')}
       </div>
 
@@ -70,7 +70,7 @@ async function renderMembers() {
                 ${!used && !expired ? `
                   <button class="btn-icon" onclick="copyInviteCode('${esc(inv.token)}')" title="Copy code">copy</button>
                   ${inv.role === 'viewer' ? `<button class="btn-icon" onclick="copyInviteLink('${esc(inv.token)}')" title="Copy client portal link">copy link</button>` : ''}
-                  <button class="btn-icon delete" onclick="revokeInvite('${inv.id}')" title="Revoke">✕</button>` : ''}
+                  <button class="btn-icon delete" onclick="revokeInvite('${inv.id}')" title="Revoke">${icon('x',{size:12})}</button>` : ''}
               </div>`;
             }).join('')}
           </div>` : '<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">No invite codes yet.</div>'}
@@ -119,7 +119,7 @@ async function submitCreateInvite() {
     const inv = await api.invites.create(state.currentProject.id, role, label);
     navigator.clipboard.writeText(inv.token).catch(() => {});
     document.getElementById('invite-modal').classList.remove('open');
-    showToast(`✓ Code copied: ${inv.token}`, 'success');
+    showToast(`Code copied: ${inv.token}`, 'success');
     renderMembers();
   } catch(e) {
     showToast(e.message, 'error');
@@ -177,7 +177,7 @@ async function joinWithCode() {
     await loadProjectData(state.currentProject.id);
     if (typeof pageInit === 'function') pageInit();
     refreshTopbarProgress();
-    showToast('✓ Joined project!', 'success');
+    showToast('Joined project!', 'success');
   } catch(e) {
     err.textContent = e.message;
     err.style.display = 'block';

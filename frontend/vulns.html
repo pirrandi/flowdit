@@ -21,10 +21,10 @@
     <div class="page-header">
       <div>
         <div class="page-title">My Custom Vulns</div>
-        <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--a);text-decoration:none">add descriptions & export →</a></div>
+        <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--a);text-decoration:none">add descriptions &amp; export <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg></a></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn" onclick="openImportModal()">↑ Import Burp XML</button>
+        <button class="btn" onclick="openImportModal()"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg> Import Burp XML</button>
         <button class="btn btn-prim" onclick="openAddVulnModal()">+ Add Vulnerability</button>
       </div>
     </div>
@@ -67,7 +67,7 @@
       <div class="form-group" style="margin:0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <label class="form-label" style="margin:0">Severity</label>
-          <button type="button" class="ai-btn" id="ai-sev-btn" onclick="aiSeverity()" title="Suggest severity from name">✦ Suggest</button>
+          <button type="button" class="ai-btn" id="ai-sev-btn" onclick="aiSeverity()" title="Suggest severity from name"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
         </div>
         <select class="form-input" id="modal-vuln-sev" style="cursor:pointer">
           <option value="critical">Critical</option>
@@ -87,7 +87,7 @@
       <div class="form-group" style="margin:0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
           <label class="form-label" style="margin:0">CWE <span style="color:var(--t3);font-weight:400">(optional)</span></label>
-          <button type="button" class="ai-btn" id="ai-cwe-btn" onclick="aiCWE()" title="Suggest CWE from name & description" style="font-size:9px;padding:2px 6px">✦</button>
+          <button type="button" class="ai-btn" id="ai-cwe-btn" onclick="aiCWE()" title="Suggest CWE from name &amp; description" style="font-size:9px;padding:2px 6px"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg></button>
         </div>
         <input type="text" class="form-input" id="modal-vuln-cwe" placeholder="e.g. CWE-79">
       </div>
@@ -119,7 +119,7 @@
     <div class="form-group">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
         <label class="form-label" style="margin:0">Description <span style="color:var(--t3);font-weight:400">supports markdown</span></label>
-        <button type="button" class="ai-btn" id="ai-draft-btn" onclick="aiDraft()" title="Generate full draft from name + category">✦ Draft</button>
+        <button type="button" class="ai-btn" id="ai-draft-btn" onclick="aiDraft()" title="Generate full draft from name + category"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Draft</button>
       </div>
       <textarea class="form-input note-textarea" id="modal-vuln-desc" style="min-height:80px" placeholder="What is this vulnerability and why does it matter..."></textarea>
     </div>
@@ -127,7 +127,7 @@
     <div class="form-group">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
         <label class="form-label" style="margin:0">Remediation <span style="color:var(--t3);font-weight:400">supports markdown</span></label>
-        <button type="button" class="ai-btn" id="ai-rem-btn" onclick="aiRemediation()" title="Generate remediation from description">✦ Suggest</button>
+        <button type="button" class="ai-btn" id="ai-rem-btn" onclick="aiRemediation()" title="Generate remediation from description"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
       </div>
       <textarea class="form-input note-textarea" id="modal-vuln-rem" style="min-height:80px" placeholder="How to fix or mitigate this vulnerability..."></textarea>
     </div>
@@ -138,8 +138,8 @@
         <label class="form-label" style="margin:0">CVSS v3.1 <span style="font-size:10px;color:var(--t3);font-weight:400">(optional)</span></label>
         <div style="display:flex;align-items:center;gap:8px">
           <span id="cvss-header-pill" style="font-family:var(--mono);font-size:11px;color:var(--t3)">not scored</span>
-          <button type="button" id="cvss-clear-btn" onclick="clearCVSS()" style="font-family:var(--mono);font-size:10px;color:var(--c-crit);background:none;border:none;cursor:pointer;padding:0;display:none">✕ clear</button>
-          <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--a);background:none;border:none;cursor:pointer;padding:0">▸ open</button>
+          <button type="button" id="cvss-clear-btn" onclick="clearCVSS()" style="font-family:var(--mono);font-size:10px;color:var(--c-crit);background:none;border:none;cursor:pointer;padding:0;display:none"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> clear</button>
+          <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--a);background:none;border:none;cursor:pointer;padding:0"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="m9 18 6-6-6-6"/></svg> open</button>
         </div>
       </div>
       <div id="cvss-calc" style="display:none">
@@ -234,7 +234,7 @@
            ondragover="event.preventDefault();this.style.borderColor='var(--a)'"
            ondragleave="this.style.borderColor='var(--br1)'"
            ondrop="handleImportDrop(event)">
-        <div style="font-size:24px;margin-bottom:8px">📄</div>
+        <div style="margin-bottom:8px;opacity:.4"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg></div>
         <div style="font-size:12px;color:var(--t2)">Drop XML file here or click to browse</div>
         <div id="import-filename" style="font-size:11px;color:var(--a);margin-top:6px"></div>
       </div>
@@ -264,6 +264,7 @@
 <script src="js/services/state.js"></script>
 <script src="js/services/api.js"></script>
 <script src="js/services/ws.js"></script>
+<script src="js/services/icons.js"></script>
 <script src="js/services/utils.js"></script>
 <script src="js/components/activity.js"></script>
 <script src="js/components/csel.js"></script>

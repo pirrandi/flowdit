@@ -211,7 +211,7 @@ function _buildNode(nodeData, target) {
         `<div class="wb-ep-row" data-ep-host="${esc(target.host)}" data-ep-path="${esc(e.path)}">
            <span class="wb-ep-method" style="color:${METHOD_COLOR[e.method]||'#aaa'}">${esc(e.method)}</span>
            <span class="wb-ep-path" title="${esc(e.path)}">${esc(e.path)}</span>
-           ${e.interesting ? '<span class="wb-ep-star" title="Interesting">★</span>' : ''}
+           ${e.interesting ? `<span class="wb-ep-star" title="Interesting">${icon('star',{size:10})}</span>` : ''}
            <span class="wb-ep-copy">copy</span>
          </div>`
       ).join('')
@@ -222,7 +222,7 @@ function _buildNode(nodeData, target) {
       <span class="wb-node-type">${esc(target.type)}</span>
       <span class="wb-node-host" title="${esc(target.host)}">${esc(target.host)}</span>
       <span class="wb-node-status" style="background:${statusDot}" title="${esc(target.status)}"></span>
-      <span class="wb-node-collapse" onclick="wbToggleCollapse('${target.id}')">${nodeData.collapsed ? '▶' : '▼'}</span>
+      <span class="wb-node-collapse" onclick="wbToggleCollapse('${target.id}')">${nodeData.collapsed ? icon('chevron-right',{size:11}) : icon('chevron-down',{size:11})}</span>
       <span class="wb-node-remove" onclick="wbRemoveNode('${target.id}')" title="Remove from board">×</span>
     </div>
     <div class="wb-node-body">
@@ -314,7 +314,7 @@ function wbToggleCollapse(targetId) {
   if (el) {
     el.classList.toggle('collapsed', nd.collapsed);
     const btn = el.querySelector('.wb-node-collapse');
-    if (btn) btn.textContent = nd.collapsed ? '▶' : '▼';
+    if (btn) btn.innerHTML = nd.collapsed ? icon('chevron-right',{size:11}) : icon('chevron-down',{size:11});
   }
   _broadcast({ op: 'node_toggle', nodeId: targetId, collapsed: nd.collapsed });
   scheduleSave();
@@ -1338,7 +1338,7 @@ function _handleRemotePatch(msg) {
       if (el) {
         el.classList.toggle('collapsed', nd.collapsed);
         const btn = el.querySelector('.wb-node-collapse');
-        if (btn) btn.textContent = nd.collapsed ? '▶' : '▼';
+        if (btn) btn.innerHTML = nd.collapsed ? icon('chevron-right',{size:11}) : icon('chevron-down',{size:11});
       }
       _updateAllEdges();
       break;
@@ -1605,7 +1605,7 @@ function _updateSaveStatus(s) {
   const el = document.getElementById('wb-save-status');
   if (!el) return;
   el.className = `wb-save-status ${s}`;
-  el.textContent = s === 'saving' ? 'Saving…' : s === 'error' ? 'Save failed ✗' : 'Saved ✓';
+  el.innerHTML = s === 'saving' ? 'Saving…' : s === 'error' ? `Save failed ${icon('x',{size:11})}` : `Saved ${icon('check',{size:11})}`;
 }
 
 // ── Export PNG ─────────────────────────────────────────────────────────

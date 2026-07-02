@@ -12,14 +12,15 @@ function showToast(msg, type = 'success') {
   const c = document.getElementById('toast-container');
   const t = document.createElement('div');
   t.className = `toast ${type}`;
-  t.innerHTML = `<span>${type==='success'?'✓':type==='error'?'✕':'ℹ'}</span> ${esc(msg)}`;
+  const ic = type === 'success' ? 'circle-check' : type === 'error' ? 'circle-x' : 'info';
+  t.innerHTML = `<span>${icon(ic, { size: 14 })}</span> ${esc(msg)}`;
   c.appendChild(t);
   setTimeout(() => t.remove(), 3500);
 }
 
 function copyText(btn, encoded) {
   navigator.clipboard.writeText(decodeURIComponent(atob(encoded))).then(() => {
-    btn.textContent = '✓'; btn.classList.add('copied');
+    btn.innerHTML = icon('check', { size: 12 }); btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
   });
 }
@@ -60,8 +61,8 @@ function actionLabel(action, entityType, entityName, meta) {
   const name = `<span class="hl">${esc(entityName || '')}</span>`;
   switch (action) {
     case 'set_status':
-      if (meta?.status === 'done')    return `marked ${name} as <span class="activity-status-pill pill-done">✓ done</span>`;
-      if (meta?.status === 'fail')    return `flagged ${name} as <span class="activity-status-pill pill-fail">✕ vuln</span>`;
+      if (meta?.status === 'done')    return `marked ${name} as <span class="activity-status-pill pill-done">${icon('check',{size:10})} done</span>`;
+      if (meta?.status === 'fail')    return `flagged ${name} as <span class="activity-status-pill pill-fail">${icon('x',{size:10})} vuln</span>`;
       return `cleared status on ${name}`;
     case 'add_note':    return `added notes to ${name}`;
     case 'remediation_status_changed':

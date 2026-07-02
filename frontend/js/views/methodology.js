@@ -37,7 +37,7 @@ function renderMethodologyList() {
           <div class="progress-bar-fill" style="width:${pct}%;${fail?'background:var(--c-crit)':''}"></div>
         </div>
         <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${tests.length} tests</span>
-        ${fail ? `<span style="font-family:var(--mono);font-size:10px;color:var(--c-crit)">⚠${fail}</span>` : ''}
+        ${fail ? `<span style="color:var(--c-crit);display:inline-flex;align-items:center;gap:2px">${icon('triangle-alert',{size:10})}${fail}</span>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -83,13 +83,13 @@ function renderMethodologyRunner() {
             <div class="progress-bar-fill" style="width:${pct}%"></div>
           </div>
           <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${done+fail}/${tests.length} · ${pct}%</span>
-          ${fail ? `<span style="font-family:var(--mono);font-size:11px;color:var(--c-crit)">⚠ ${fail} vuln</span>` : ''}
+          ${fail ? `<span style="color:var(--c-crit);display:inline-flex;align-items:center;gap:3px">${icon('triangle-alert',{size:11})} ${fail} vuln</span>` : ''}
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         ${buildActivateBtn(m.id)}
-        ${isOwner ? `<button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="openEditMethodModal('${m.id}')">✎ Edit</button><button class="btn-secondary" style="font-size:11px;padding:5px 10px;color:var(--c-crit);border-color:var(--c-crit)" onclick="deleteMethodology('${m.id}')">✕ Delete</button>` : ''}
-        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="closeMethodRunner()">✕ Close</button>
+        ${isOwner ? `<button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="openEditMethodModal('${m.id}')">${icon('square-pen',{size:11})} Edit</button><button class="btn-secondary" style="font-size:11px;padding:5px 10px;color:var(--c-crit);border-color:var(--c-crit)" onclick="deleteMethodology('${m.id}')">${icon('x',{size:11})} Delete</button>` : ''}
+        <button class="btn-secondary" style="font-size:11px;padding:5px 10px" onclick="closeMethodRunner()">${icon('x',{size:11})} Close</button>
       </div>
     </div>
     ${!tests.length
@@ -119,13 +119,13 @@ function buildMethodTestItem(methodId, test, idx, prog) {
     <div class="test-header" onclick="toggleMethodTestBody('${methodId}',${idx},event)">
       <div class="test-check"
         style="${status==='done'?'background:var(--c-low);border-color:var(--c-low);color:var(--bg)':status==='fail'?'background:var(--c-crit);border-color:var(--c-crit);color:#fff':''}"
-        onclick="cycleMethodStatus('${methodId}',${idx},event)">${status==='done'?'✓':status==='fail'?'✕':''}</div>
+        onclick="cycleMethodStatus('${methodId}',${idx},event)">${status==='done'?icon('check',{size:12}):status==='fail'?icon('x',{size:12}):''}</div>
       <span class="test-name">${esc(test.name)}</span>
       ${target_host && status==='fail' ? `<span class="wstg-target-badge">${esc(target_host)}</span>` : ''}
       <div class="test-actions">
-        <button class="test-action-btn pass" onclick="setMethodStatus('${methodId}',${idx},'done',event)">✓</button>
-        <button class="test-action-btn vuln" onclick="setMethodStatus('${methodId}',${idx},'fail',event)">✕ vuln</button>
-        <button class="test-action-btn"      onclick="setMethodStatus('${methodId}',${idx},null,event)">↺</button>
+        <button class="test-action-btn pass" onclick="setMethodStatus('${methodId}',${idx},'done',event)">${icon('check',{size:12})}</button>
+        <button class="test-action-btn vuln" onclick="setMethodStatus('${methodId}',${idx},'fail',event)">${icon('x',{size:12})} vuln</button>
+        <button class="test-action-btn"      onclick="setMethodStatus('${methodId}',${idx},null,event)">${icon('rotate-ccw',{size:12})}</button>
       </div>
     </div>
     ${targetRow}
@@ -167,7 +167,7 @@ async function _applyMethodStatus(methodId, idx, status) {
     if (el) {
       el.className = `test-item ${status==='done'?'completed':''} ${status==='fail'?'failed':''}`;
       const chk = el.querySelector('.test-check');
-      chk.textContent       = status==='done'?'✓':status==='fail'?'✕':'';
+      chk.innerHTML         = status==='done'?icon('check',{size:12}):status==='fail'?icon('x',{size:12}):'';
       chk.style.background  = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':'';
       chk.style.borderColor = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':'';
       chk.style.color       = status ? (status==='done'?'var(--bg)':'#fff') : '';
@@ -189,7 +189,7 @@ async function _applyMethodStatus(methodId, idx, status) {
         el.querySelector('.wstg-target-badge')?.remove();
       }
     }
-    const label = status==='done'?'✓ Complete':status==='fail'?'⚠ Vuln logged':'↺ Cleared';
+    const label = status==='done'?'Complete':status==='fail'?'Vuln logged':'Cleared';
     showToast(label, status==='fail'?'error':'success');
     renderMethodologyList();
   } catch(err) { showToast(err.message, 'error'); }
@@ -219,7 +219,7 @@ async function saveMethodTarget(methodId, idx, targetId) {
       if (existing) existing.outerHTML = badge;
       else el?.querySelector('.test-name')?.insertAdjacentHTML('afterend', badge);
     } else { existing?.remove(); }
-    showToast('✓ Target assigned', 'success');
+    showToast('Target assigned', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -275,7 +275,7 @@ function addMethodTestRow(test={}) {
         <input type="text" class="method-test-desc dynamic-input" placeholder="Description (optional)" value="${esc(test.description||'')}">
         <input type="text" class="method-test-refs dynamic-input" placeholder="References (comma-separated URLs)" value="${esc((test.references||[]).join(', '))}">
       </div>
-      <button class="btn-remove" onclick="this.closest('.method-test-row').remove()" style="margin-top:2px;flex-shrink:0">✕</button>
+      <button class="btn-remove" onclick="this.closest('.method-test-row').remove()" style="margin-top:2px;flex-shrink:0">${icon('x',{size:11})}</button>
     </div>`;
   document.getElementById('method-tests-editor').appendChild(row);
 }
@@ -323,7 +323,7 @@ async function saveMethodology() {
     }
     closeMethodModal();
     renderMethodologyList();
-    showToast('✓ Saved', 'success');
+    showToast('Saved', 'success');
   } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   finally { btn.disabled = false; }
 }
@@ -343,7 +343,7 @@ function buildActivateBtn(methodId) {
   if (!state.currentProject) return '';
   const active = (state.currentProject.active_methodology_ids || []).includes(methodId);
   return `<button class="btn-secondary" style="font-size:11px;padding:5px 10px;${active?'border-color:var(--c-low);color:var(--c-low)':''}"
-    onclick="toggleActivate('${methodId}')">${active ? '✓ Active' : '+ Activate'}</button>`;
+    onclick="toggleActivate('${methodId}')">${active ? icon('check',{size:11}) + ' Active' : '+ Activate'}</button>`;
 }
 
 async function toggleActivate(methodId) {
@@ -362,7 +362,7 @@ async function toggleActivate(methodId) {
     state.activeMethodProgress = await api.methodologies.projectProgress(state.currentProject.id).catch(() => ({}));
     // Re-render runner header to update button
     if (_activeMethodId === methodId) renderMethodologyRunner();
-    showToast(active ? '✓ Activated for this project' : 'Deactivated', active ? 'success' : 'error');
+    showToast(active ? 'Activated for this project' : 'Deactivated', active ? 'success' : 'error');
   } catch(err) { showToast(err.message, 'error'); }
 }
 

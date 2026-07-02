@@ -409,6 +409,9 @@ body {
 .btn-icon:hover { border-color: var(--b2); color: var(--t2); }
 .btn-icon.edit:hover   { border-color: var(--c-info); color: var(--c-info); }
 .btn-icon.delete:hover { border-color: var(--c-crit); color: var(--c-crit); }
+.fd-icon { display: inline-block; vertical-align: -3px; flex-shrink: 0; }
+.fd-icon.spin { animation: fd-spin 1s linear infinite; }
+@keyframes fd-spin { to { transform: rotate(360deg); } }
 .ai-btn {
   background: var(--a-dim); border: 1px solid rgba(245,158,11,.25);
   border-radius: var(--r-sm); padding: 2px 8px; font-size: 10px; font-weight: 600;

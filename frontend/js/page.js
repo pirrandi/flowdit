@@ -167,7 +167,7 @@ function renderSidenav() {
       <span class="brand-wordmark">Flowdit</span>
       <span class="brand-tag">SELF-HOSTED</span>
     </div>
-    <a href="projects.html" class="nav-back-link">← All Projects</a>`;
+    <a href="projects.html" class="nav-back-link">${icon('arrow-left', { size: 13 })} All Projects</a>`;
 
   if (proj) {
     html += `
@@ -189,8 +189,8 @@ function renderSidenav() {
     html += `<div class="nav-group-label">${g.label}</div>`;
     g.items.forEach(item => {
       const active = current === item.href.split('?')[0];
-      const icon = _NAV_ICONS[item.href.split('?')[0]] || '';
-      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${icon}<span>${item.label}</span></a>`;
+      const navIcon = _NAV_ICONS[item.href.split('?')[0]] || '';
+      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${navIcon}<span>${item.label}</span></a>`;
     });
   });
   html += `</div>`;
@@ -222,7 +222,7 @@ function renderTopbar() {
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
       <div class="search-wrap">
-        <span class="search-icon">⌕</span>
+        <span class="search-icon">${icon('search', { size: 14 })}</span>
         <input type="text" class="search-input" placeholder="Search..." oninput="handleSearch(this.value)">
       </div>
     </div>
@@ -234,8 +234,8 @@ function renderTopbar() {
         <span>${esc(u.username)}</span>
         ${role ? `<span style="font-family:var(--mono);font-size:9px;color:${color};opacity:.8">${role}</span>` : ''}
         <div class="user-dropdown" id="user-dropdown">
-          <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">◎ Edit Profile</button>
-          <button class="dropdown-item danger" onclick="doLogout()">↪ Logout</button>
+          <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">${icon('user', { size: 13 })} Edit Profile</button>
+          <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out', { size: 13 })} Logout</button>
         </div>
       </div>
     </div>`;
@@ -253,10 +253,10 @@ function _injectProfileModal() {
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px">
         <div id="profile-avatar-preview" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0"></div>
         <label style="font-family:var(--mono);font-size:11px;color:var(--a);cursor:pointer;display:flex;align-items:center;gap:4px">
-          ↑ Change photo
+          ${icon('upload', { size: 12 })} Change photo
           <input type="file" id="profile-avatar-input" accept="image/*" style="display:none">
         </label>
-        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
+        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0">${icon('x', { size: 11 })} Remove photo</button>
       </div>
 
       <div class="form-group">
@@ -575,7 +575,7 @@ function mountAiChat() {
   const fab = document.createElement('button');
   fab.id        = 'ai-fab';
   fab.className = 'no-print';
-  fab.innerHTML = '✦';
+  fab.innerHTML = icon('sparkles', { size: 20 });
   fab.title     = 'AI Assistant';
   fab.onclick   = toggleAiPanel;
   document.body.appendChild(fab);
@@ -587,7 +587,7 @@ function mountAiChat() {
   panel.innerHTML = `
     <div class="ai-panel-header">
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="color:var(--a);font-size:14px">✦</span>
+        <span style="color:var(--a)">${icon('sparkles', { size: 14 })}</span>
         <span style="font-size:12px;font-weight:700">AI Assistant</span>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
@@ -606,7 +606,7 @@ function mountAiChat() {
         placeholder="Ej: ¿qué vulnerabilidades críticas hay?" rows="1"
         onkeydown="aiChatKeydown(event)"
         oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
-      <button class="ai-chat-send" id="ai-panel-send" onclick="aiChatSend()">↑</button>
+      <button class="ai-chat-send" id="ai-panel-send" onclick="aiChatSend()">${icon('send', { size: 14 })}</button>
     </div>
   `;
   document.body.appendChild(panel);

@@ -221,7 +221,7 @@ function toggleCVSSSection() {
   if (!body) return;
   const opening = body.style.display === 'none';
   body.style.display = opening ? 'block' : 'none';
-  if (btn) btn.textContent = opening ? '▾ close' : '▸ open';
+  if (btn) btn.innerHTML = opening ? `${icon('chevron-down',{size:11})} close` : `${icon('chevron-right',{size:11})} open`;
   if (opening) _renderCVSSCalc();
 }
 
@@ -240,7 +240,7 @@ function _initCVSS(vector) {
   const clrBtn= document.getElementById('cvss-clear-btn');
   const hp    = document.getElementById('cvss-header-pill');
   if (body) body.style.display = vector ? 'block' : 'none';
-  if (btn)  btn.textContent    = vector ? '▾ close' : '▸ open';
+  if (btn)  btn.innerHTML      = vector ? `${icon('chevron-down',{size:11})} close` : `${icon('chevron-right',{size:11})} open`;
   if (clrBtn) clrBtn.style.display = vector ? 'inline' : 'none';
   if (hp) {
     if (vector) {
@@ -263,7 +263,7 @@ function clearCVSS() {
   const clrBtn = document.getElementById('cvss-clear-btn');
   const hp     = document.getElementById('cvss-header-pill');
   if (body)   body.style.display   = 'none';
-  if (btn)    btn.textContent       = '▸ open';
+  if (btn)    btn.innerHTML         = `${icon('chevron-right',{size:11})} open`;
   if (clrBtn) clrBtn.style.display  = 'none';
   if (hp)     { hp.style.color = ''; hp.textContent = 'not scored'; }
 }
@@ -294,7 +294,7 @@ function remediationBadge(status) {
 function renderCustomVulns() {
   const container = document.getElementById('custom-content');
   if (!state.customVulns.length) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div></div>';
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div></div>`;
     return;
   }
   const bySev = {};
@@ -326,7 +326,7 @@ function buildVulnCard(v) {
     v.items.map((item, idx) => {
       const chk = v.checked_items?.[idx] || false;
       return `<div class="item-row">
-        <div class="item-checkbox ${chk?'checked':''}" onclick="toggleCustomItem('${v.id}',${idx},this)">${chk?'✓':''}</div>
+        <div class="item-checkbox ${chk?'checked':''}" onclick="toggleCustomItem('${v.id}',${idx},this)">${chk?icon('check',{size:11}):''}</div>
         <span class="item-text ${chk?'done':''}">${esc(item)}</span>
       </div>`;
     }).join('') + '</div>' : '';
@@ -396,8 +396,8 @@ function buildVulnCard(v) {
             <input type="checkbox" ${included ? 'checked' : ''} onchange="toggleHttpProofInclude('${v.id}',${i},this.checked)">
             <span>reporte</span>
           </label>
-          <button class="http-proof-edit-btn" onclick="editHttpProof('${v.id}',${i})" title="Editar">✎</button>
-          <span class="http-proof-toggle" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">▶</span>
+          <button class="http-proof-edit-btn" onclick="editHttpProof('${v.id}',${i})" title="Editar">${icon('square-pen',{size:11})}</button>
+          <span class="http-proof-toggle" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">${icon('chevron-right',{size:11})}</span>
         </div>
         <div class="http-proof-body">
           ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${numberedCode(pr.request)}</pre>` : ''}
@@ -419,7 +419,7 @@ function buildVulnCard(v) {
     <div class="vuln-header" onclick="toggleVulnBody('${v.id}',event)">
       <div class="test-check"
         style="${isDone?'background:var(--c-low);border-color:var(--c-low);color:var(--bg)':isFail?'background:var(--c-crit);border-color:var(--c-crit);color:#fff':''}"
-        onclick="cycleVulnStatus('${v.id}',event)">${isDone?'✓':isFail?'✕':''}</div>
+        onclick="cycleVulnStatus('${v.id}',event)">${isDone?icon('check',{size:12}):isFail?icon('x',{size:12}):''}</div>
       <span class="vuln-tag">${esc(v.category||'Custom')}</span>
       ${severityBadge(v.severity)}
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
@@ -429,8 +429,8 @@ function buildVulnCard(v) {
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
       <div class="vuln-actions">
-        <button class="btn-icon edit" onclick="openEditVuln('${v.id}',event)">✎</button>
-        <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">✕</button>
+        <button class="btn-icon edit" onclick="openEditVuln('${v.id}',event)">${icon('square-pen',{size:12})}</button>
+        <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">${icon('x',{size:12})}</button>
       </div>
     </div>
     <div class="vuln-body" id="vbody-${v.id}">${descH}${itemsH}${payH}${noteH}${remH}${remH2}${evidH}${httpH}</div>`;
@@ -447,7 +447,7 @@ function openEvidenceViewer(vulnId, idx) {
     <div style="display:flex;justify-content:space-between;align-items:center">
       <span style="color:#fff;font-family:var(--mono);font-size:11px">${esc(img.name||'evidence')}</span>
       <button onclick="this.closest('[style*=fixed]').remove()"
-        style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px">✕</button>
+        style="background:none;border:none;color:#fff;cursor:pointer;padding:4px 8px">${icon('x',{size:20})}</button>
     </div>
     <img src="${img.data}" style="max-width:88vw;max-height:85vh;object-fit:contain;border-radius:8px">
   </div>`;
@@ -482,7 +482,7 @@ async function setRemediationStatus(vulnId, status) {
     Object.assign(v, updated);
     renderCustomVulns();
     if (typeof updateDashboard === 'function') updateDashboard();
-    const msg = status === 'verified_closed' ? '✓ Verificado y cerrado' : status === 'remediated' ? '✓ Marcado como remediado' : '↺ Reabierto';
+    const msg = status === 'verified_closed' ? 'Verificado y cerrado' : status === 'remediated' ? 'Marcado como remediado' : 'Reabierto';
     showToast(msg, 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
@@ -518,7 +518,7 @@ async function toggleCustomItem(vulnId, idx, el) {
     await api.vulns.update(state.currentProject.id, vulnId, { checked_items: newChecked });
     v.checked_items = newChecked;
     el.classList.toggle('checked', !cur);
-    el.textContent = !cur ? '✓' : '';
+    el.innerHTML = !cur ? icon('check',{size:11}) : '';
     el.nextElementSibling?.classList.toggle('done', !cur);
   } catch(err) { showToast(err.message, 'error'); }
 }
@@ -578,7 +578,7 @@ function addModalRow(containerId, ph, isTextarea = false) {
   const field = isTextarea
     ? `<textarea class="dynamic-textarea" placeholder="${esc(ph)}"></textarea>`
     : `<input type="text" class="dynamic-input" placeholder="${esc(ph)}">`;
-  row.innerHTML = `${field}<button class="btn-remove" onclick="this.parentElement.remove()">✕</button>`;
+  row.innerHTML = `${field}<button class="btn-remove" onclick="this.parentElement.remove()">${icon('x',{size:11})}</button>`;
   document.getElementById(containerId).appendChild(row);
 }
 
@@ -624,7 +624,7 @@ async function saveVuln() {
     closeVulnModal();
     renderCustomVulns();
     if (typeof updateDashboard === 'function') updateDashboard();
-    showToast('✓ Saved', 'success');
+    showToast('Saved', 'success');
   } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
   finally { btn.disabled = false; }
 }
@@ -636,7 +636,7 @@ async function _aiGenerate(type, context, btnId, btnLabel) {
   try {
     return await request('POST', `/projects/${state.currentProject.id}/ai/generate`, { type, context });
   } finally {
-    if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = btnLabel; }
+    if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.innerHTML = `${icon('sparkles',{size:11})} ${btnLabel}`.trim(); }
   }
 }
 
@@ -659,13 +659,13 @@ async function aiDraft() {
   const ctx = _collectVulnContext();
   if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
   try {
-    const result = await _aiGenerate('vuln-draft', ctx, 'ai-draft-btn', '✦ Draft');
+    const result = await _aiGenerate('vuln-draft', ctx, 'ai-draft-btn', 'Draft');
     if (result.name)        document.getElementById('modal-vuln-name').value = result.name;
     if (result.category)    document.getElementById('modal-vuln-cat').value  = result.category;
     if (result.severity)    { document.getElementById('modal-vuln-sev').value  = result.severity; if (window.cselSync) window.cselSync(); }
     if (result.description) document.getElementById('modal-vuln-desc').value = result.description;
     if (result.remediation) document.getElementById('modal-vuln-rem').value  = result.remediation;
-    showToast('✦ Draft generated', 'success');
+    showToast('Draft generated', 'success');
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -673,9 +673,9 @@ async function aiRemediation() {
   const ctx = _collectVulnContext();
   if (!ctx.name && !ctx.description) { showToast('Add a name or description first', 'error'); return; }
   try {
-    const result = await _aiGenerate('remediation', ctx, 'ai-rem-btn', '✦ Suggest');
+    const result = await _aiGenerate('remediation', ctx, 'ai-rem-btn', 'Suggest');
     if (result.remediation) document.getElementById('modal-vuln-rem').value = result.remediation;
-    showToast('✦ Remediation generated', 'success');
+    showToast('Remediation generated', 'success');
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -683,11 +683,11 @@ async function aiSeverity() {
   const ctx = _collectVulnContext();
   if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
   try {
-    const result = await _aiGenerate('severity-suggest', { name: ctx.name, category: ctx.category }, 'ai-sev-btn', '✦ Suggest');
+    const result = await _aiGenerate('severity-suggest', { name: ctx.name, category: ctx.category }, 'ai-sev-btn', 'Suggest');
     if (result.severity) {
       document.getElementById('modal-vuln-sev').value = result.severity;
       if (window.cselSync) window.cselSync();
-      showToast(`✦ ${result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}${result.reason ? ' — ' + result.reason : ''}`, 'success');
+      showToast(`${result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}${result.reason ? ' — ' + result.reason : ''}`, 'success');
     }
   } catch(e) { showToast(e.message, 'error'); }
 }
@@ -696,10 +696,10 @@ async function aiCWE() {
   const ctx = _collectVulnContext();
   if (!ctx.name) { showToast('Enter a name first', 'error'); return; }
   try {
-    const result = await _aiGenerate('cwe', ctx, 'ai-cwe-btn', '✦');
+    const result = await _aiGenerate('cwe', ctx, 'ai-cwe-btn', '');
     if (result.cwe) {
       document.getElementById('modal-vuln-cwe').value = result.cwe;
-      showToast(`✦ ${result.cwe}${result.cwe_name ? ' — ' + result.cwe_name : ''}`, 'success');
+      showToast(`${result.cwe}${result.cwe_name ? ' — ' + result.cwe_name : ''}`, 'success');
     }
   } catch(e) { showToast(e.message, 'error'); }
 }
@@ -777,7 +777,7 @@ async function submitImport() {
     document.getElementById('import-result').style.display   = '';
 
     const toolName = { burp: 'Burp Suite', nessus: 'Nessus', zap: 'OWASP ZAP' }[res.format] || 'scanner';
-    let text = `✓ Imported <strong>${res.imported}</strong> finding${res.imported !== 1 ? 's' : ''} from ${toolName}`;
+    let text = `Imported <strong>${res.imported}</strong> finding${res.imported !== 1 ? 's' : ''} from ${toolName}`;
     if (res.targets_created > 0)
       text += ` · Created <strong>${res.targets_created}</strong> new target${res.targets_created !== 1 ? 's' : ''}`;
     document.getElementById('import-result-msg').innerHTML = text;

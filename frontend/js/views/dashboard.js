@@ -44,13 +44,13 @@ function openVulnDrawer(vulnId) {
   if (!vuln) return;
   const vid     = _vulnIdMap[vulnId] || '—';
   const sev     = vuln.severity || 'medium';
-  const stMap   = { done: { cls:'done', label:'✓ confirmed' }, fail: { cls:'fail', label:'✕ vulnerable' } };
+  const stMap   = { done: { cls:'done', label:`${icon('check',{size:11})} confirmed` }, fail: { cls:'fail', label:`${icon('x',{size:11})} vulnerable` } };
   const st      = stMap[vuln.status] || { cls:'open', label:'open' };
   const cvss    = vuln.cvss_score ? String(parseFloat(vuln.cvss_score).toFixed(1)) : null;
   const target  = (state.targets || []).find(t => t.id === vuln.target_id);
 
   document.getElementById('vuln-drw-head').innerHTML = `
-    <button class="drw-close" onclick="closeVulnDrawer()">✕</button>
+    <button class="drw-close" onclick="closeVulnDrawer()">${icon('x', { size: 16 })}</button>
     <div class="drw-id">
       <code>${vid}</code>
       <span class="sev ${sev}">${sev}</span>
@@ -127,7 +127,7 @@ function openVulnDrawer(vulnId) {
         ${items.map((item, i) => {
           const done = !!checked[i];
           return `<div style="display:flex;align-items:flex-start;gap:8px;padding:3px 0">
-            <span style="font-family:var(--mono);font-size:11px;width:14px;flex-shrink:0;color:${done ? 'var(--c-low)' : 'var(--t4)'};margin-top:1px">${done ? '✓' : '○'}</span>
+            <span style="width:14px;flex-shrink:0;color:${done ? 'var(--c-low)' : 'var(--t4)'};margin-top:1px">${done ? icon('check', { size: 12 }) : icon('circle', { size: 10 })}</span>
             <span style="font-size:12px;color:${done ? 'var(--t3)' : 'var(--t1)'};text-decoration:${done ? 'line-through' : 'none'}">${esc(item)}</span>
           </div>`;
         }).join('')}
@@ -180,7 +180,7 @@ function openVulnDrawer(vulnId) {
 
   html += `<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--b1)">
     <a href="vulns.html?pid=${esc(state.currentProject?.id)}" class="btn btn-ghost" style="font-size:11px">
-      Abrir en Findings →
+      Abrir en Findings ${icon('arrow-right', { size: 11 })}
     </a>
   </div>`;
 
@@ -293,7 +293,7 @@ function updateDashboard() {
         ${(() => {
           if (!p.date_end) return `
             <div class="stat-val" style="color:var(--t3)">—</div>
-            <div class="stat-sub"><a href="settings.html?pid=${pid}" style="color:var(--a);text-decoration:none">Set deadline →</a></div>
+            <div class="stat-sub"><a href="settings.html?pid=${pid}" style="color:var(--a);text-decoration:none">Set deadline ${icon('arrow-right', { size: 10 })}</a></div>
             <div class="stat-bar"></div>`;
           const parseDate = s => { const [y,m,d] = s.slice(0,10).split('-').map(Number); return new Date(y,m-1,d); };
           const today = new Date(); today.setHours(0,0,0,0);
@@ -320,7 +320,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Recent Findings <span class="section-count">${vulns.length}</span></div>
-            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all →</a>
+            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all ${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body bare">
             ${vulns.length === 0
@@ -354,7 +354,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Targets <span class="section-count">${inScope.length}</span></div>
-            <a href="targets.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage →</a>
+            <a href="targets.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage ${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body bare">
             ${inScope.length === 0
@@ -398,7 +398,7 @@ function updateDashboard() {
           return `<div class="section">
             <div class="section-head">
               <div class="section-title">Methodologies <span class="section-count">${entries.length}</span></div>
-              <a href="methodology.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage →</a>
+              <a href="methodology.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage ${icon('arrow-right', { size: 10 })}</a>
             </div>
             <div class="section-body">
               <div style="display:flex;flex-direction:column;gap:10px">
@@ -409,8 +409,8 @@ function updateDashboard() {
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
                       <span style="font-size:12px;font-weight:600">${esc(m.name)}</span>
                       <div style="display:flex;gap:10px;align-items:center">
-                        <span style="font-size:11px;color:var(--c-low)">${m.done} ✓</span>
-                        ${m.fail ? `<span style="font-size:11px;color:var(--c-crit)">⚠ ${m.fail}</span>` : ''}
+                        <span style="font-size:11px;color:var(--c-low);display:inline-flex;align-items:center;gap:3px">${m.done} ${icon('check',{size:11})}</span>
+                        ${m.fail ? `<span style="font-size:11px;color:var(--c-crit);display:inline-flex;align-items:center;gap:3px">${icon('triangle-alert',{size:11})} ${m.fail}</span>` : ''}
                         <span style="font-size:11px;color:var(--t3)">${pending} pending</span>
                         <span style="font-size:11px;font-weight:700;color:var(--t2)">${pct}%</span>
                       </div>
@@ -433,7 +433,7 @@ function updateDashboard() {
           return `<div class="section">
             <div class="section-head">
               <div class="section-title">Client Queries <span class="section-count">${tickets.length}</span></div>
-              <a href="tickets.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all →</a>
+              <a href="tickets.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all ${icon('arrow-right', { size: 10 })}</a>
             </div>
             <div class="section-body">
               <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
@@ -500,7 +500,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Remediation <span class="section-count">${remPct}%</span></div>
-            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">→</a>
+            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body">
             ${vulns.length === 0
@@ -522,7 +522,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">WSTG Progress <span class="section-count">${wPct}%</span></div>
-            <a href="owstg.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">→</a>
+            <a href="owstg.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body">
             <div style="display:flex;gap:16px;margin-bottom:12px">
@@ -539,7 +539,7 @@ function updateDashboard() {
                 return `<div>
                   <div style="display:flex;justify-content:space-between;margin-bottom:3px">
                     <span style="font-size:9px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(cat.name)}</span>
-                    ${f ? `<span style="font-size:9px;color:var(--c-crit);margin:0 4px">⚠${f}</span>` : ''}
+                    ${f ? `<span style="font-size:9px;color:var(--c-crit);margin:0 4px;display:inline-flex;align-items:center;gap:2px">${icon('triangle-alert',{size:9})}${f}</span>` : ''}
                     <span style="font-size:9px;color:var(--t2);font-weight:600;margin-left:6px">${pct}%</span>
                   </div>
                   <div class="pbar"><div style="width:${pct}%;${f?'background:var(--c-crit)':''}"></div></div>
@@ -553,7 +553,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Timeline</div>
-            <a href="settings.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">edit →</a>
+            <a href="settings.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">edit ${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body">
             ${(() => {
@@ -564,7 +564,7 @@ function updateDashboard() {
               ];
               const today = new Date(); today.setHours(0,0,0,0);
               if (!p.date_start && !p.date_end && !p.date_report) {
-                return `<div style="font-size:11px;color:var(--t3)">Sin fechas configuradas. <a href="settings.html?pid=${pid}" style="color:var(--a)">Configurar →</a></div>`;
+                return `<div style="font-size:11px;color:var(--t3)">Sin fechas configuradas. <a href="settings.html?pid=${pid}" style="color:var(--a)">Configurar ${icon('arrow-right', { size: 10 })}</a></div>`;
               }
               return `<div style="display:flex;flex-direction:column;gap:10px">
                 ${rows.map(r => {

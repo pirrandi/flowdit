@@ -49,11 +49,11 @@ function renderPS() {
           <div class="ps-lab-row" onclick="togglePSLabBody('${cat.id}',${i},event)">
             <div class="ps-lab-check ${chk?'done':''}"
               onclick="togglePSLab('${cat.id}',${i},'${esc(lab.title)}',this);event.stopPropagation()"
-            >${chk?'✓':''}</div>
+            >${chk?icon('check',{size:11}):''}</div>
             <span class="ps-lab-title ${chk?'done':''}">${esc(lab.title)}</span>
             <span class="diff-badge diff-${lab.difficulty}">${lab.difficulty}</span>
             <span class="ps-note-indicator" id="psnote-ind-${cat.id}-${i}" style="${note?'':'display:none'}"
-              title="Has notes">✎</span>
+              title="Has notes">${icon('square-pen',{size:10})}</span>
           </div>
           <div class="ps-lab-body" id="pslab-body-${cat.id}-${i}">
             <textarea
@@ -72,7 +72,7 @@ function renderPS() {
       <div class="ps-cat-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
         <span class="ps-cat-name">${esc(cat.name)}</span>
         <span class="ps-cat-count" id="pscount-${cat.id}">${done}/${total}</span>
-        <span class="category-chevron">▶</span>
+        <span class="category-chevron">${icon('chevron-right',{size:12})}</span>
       </div>
       <div class="ps-labs">${labsHTML}</div>`;
     container.appendChild(wrap);
@@ -93,7 +93,7 @@ async function togglePSLab(catId, idx, labTitle, el) {
       state.psProgress[key] = { done: false, note: '' };
     state.psProgress[key].done = !cur;
     el.classList.toggle('done', !cur);
-    el.textContent = !cur ? '✓' : '';
+    el.innerHTML = !cur ? icon('check',{size:11}) : '';
     const titleEl = el.nextElementSibling;
     if (titleEl) titleEl.classList.toggle('done', !cur);
     updatePSCatCount(catId);

@@ -12,7 +12,7 @@ function renderTargets() {
 
   if (!state.targets.length) {
     container.innerHTML = `<div class="empty-state">
-      <div class="empty-icon">◌</div>
+      <div class="empty-icon">${icon('inbox', { size: 28 })}</div>
       <div class="empty-title">No targets defined</div>
       <div class="empty-sub">Add IPs, domains, URLs and CIDRs in scope for this engagement</div>
     </div>`;
@@ -54,8 +54,8 @@ function buildTargetCard(t) {
       <span style="font-family:var(--mono);font-size:10px;color:${statusColor};margin-left:auto;flex-shrink:0">${statusLabel}</span>
       ${linkedVulns.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--c-crit);margin-left:8px">${linkedVulns.length} finding${linkedVulns.length>1?'s':''}</span>` : ''}
       <div class="vuln-actions">
-        <button class="btn-icon edit"   onclick="openEditTarget('${t.id}',event)">✎</button>
-        <button class="btn-icon delete" onclick="deleteTarget('${t.id}',event)">✕</button>
+        <button class="btn-icon edit"   onclick="openEditTarget('${t.id}',event)">${icon('square-pen',{size:12})}</button>
+        <button class="btn-icon delete" onclick="deleteTarget('${t.id}',event)">${icon('x',{size:12})}</button>
       </div>
     </div>
     <div class="vuln-body" id="tbody-${t.id}">
@@ -172,8 +172,8 @@ function portRowHtml(targetId, p) {
       <span class="port-num">${p.port}/${p.protocol}</span>
       <span style="font-family:var(--mono);font-size:10px;color:${PORT_STATE_COLORS[p.state]||'var(--t3)'}">${p.state}</span>
       <span style="font-family:var(--mono);font-size:11px;color:var(--t2);flex:1">${esc(p.service||'')}${p.version?` <span style="color:var(--t3)">${esc(p.version)}</span>`:''}</span>
-      <button class="btn-icon edit"   onclick="editPort('${targetId}','${p.id}',event)">✎</button>
-      <button class="btn-icon delete" onclick="deletePort('${targetId}','${p.id}',event)">✕</button>
+      <button class="btn-icon edit"   onclick="editPort('${targetId}','${p.id}',event)">${icon('square-pen',{size:12})}</button>
+      <button class="btn-icon delete" onclick="deletePort('${targetId}','${p.id}',event)">${icon('x',{size:12})}</button>
     </div>`;
 }
 
@@ -196,7 +196,7 @@ function editPort(targetId, portId, e) {
     <input type="text" class="target-inline-input" style="flex:1" placeholder="Service" id="pe-svc-${portId}" value="${esc(p.service||'')}">
     <input type="text" class="target-inline-input" style="flex:1" placeholder="Version"  id="pe-ver-${portId}" value="${esc(p.version||'')}">
     <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="savePort('${targetId}','${portId}',event)">Save</button>
-    <button class="btn-icon"   onclick="cancelPortEdit('${targetId}','${portId}',event)">✕</button>`;
+    <button class="btn-icon"   onclick="cancelPortEdit('${targetId}','${portId}',event)">${icon('x',{size:12})}</button>`;
   if (window.initCsel) {
     initCsel(`pe-proto-${portId}`, [{value:'tcp',label:'tcp'},{value:'udp',label:'udp'}]);
     initCsel(`pe-state-${portId}`, [{value:'open',label:'open'},{value:'filtered',label:'filtered'},{value:'closed',label:'closed'}]);
@@ -217,7 +217,7 @@ async function savePort(targetId, portId, e) {
     if (cache) cache.ports = cache.ports.map(p => p.id === portId ? updated : p);
     const row = document.getElementById(`port-row-${portId}`);
     if (row) row.outerHTML = portRowHtml(targetId, updated);
-    showToast('✓ Port updated', 'success');
+    showToast('Port updated', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -240,7 +240,7 @@ async function addPort(targetId) {
     if (!_targetCache[targetId]) _targetCache[targetId] = { ports: [], endpoints: [], loaded: true };
     _targetCache[targetId].ports.push(p);
     renderPortsTab(targetId);
-    showToast(`✓ ${port}/${protocol} added`, 'success');
+    showToast(`${port}/${protocol} added`, 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -279,7 +279,7 @@ function renderEndpointsTab(targetId) {
         onkeydown="if(event.key==='Enter')addEndpoint('${targetId}')">
       <input type="number" class="target-inline-input" style="width:70px" placeholder="200" id="ea-code-${targetId}" min="100" max="599">
       <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--t3);flex-shrink:0;cursor:pointer">
-        <input type="checkbox" id="ea-interesting-${targetId}"> ★
+        <input type="checkbox" id="ea-interesting-${targetId}"> ${icon('star',{size:11})}
       </label>
       <button class="btn-accent" style="padding:4px 10px;font-size:11px;flex-shrink:0" onclick="addEndpoint('${targetId}')">+ Add</button>
     </div>`;
@@ -294,9 +294,9 @@ function endpointRowHtml(targetId, ep) {
       <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${METHOD_COLORS[ep.method]||'var(--t3)'};width:56px;flex-shrink:0">${ep.method}</span>
       <span style="font-family:var(--mono);font-size:11px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ep.path)}</span>
       ${ep.status_code ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${ep.status_code}</span>` : ''}
-      ${ep.interesting ? `<span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid var(--a)44;border-radius:3px;padding:1px 5px">★</span>` : ''}
-      <button class="btn-icon edit"   onclick="editEndpoint('${targetId}','${ep.id}',event)">✎</button>
-      <button class="btn-icon delete" onclick="deleteEndpoint('${targetId}','${ep.id}',event)">✕</button>
+      ${ep.interesting ? `<span style="color:var(--a);border:1px solid var(--a)44;border-radius:3px;padding:1px 5px;display:inline-flex" title="Interesting">${icon('star',{size:10})}</span>` : ''}
+      <button class="btn-icon edit"   onclick="editEndpoint('${targetId}','${ep.id}',event)">${icon('square-pen',{size:12})}</button>
+      <button class="btn-icon delete" onclick="deleteEndpoint('${targetId}','${ep.id}',event)">${icon('x',{size:12})}</button>
     </div>`;
 }
 
@@ -312,10 +312,10 @@ function editEndpoint(targetId, epId, e) {
     <input type="text" class="target-inline-input" style="flex:1" placeholder="/path" id="ee-path-${epId}" value="${esc(ep.path)}">
     <input type="number" class="target-inline-input" style="width:70px" placeholder="200" id="ee-code-${epId}" value="${ep.status_code||''}" min="100" max="599">
     <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--t3);flex-shrink:0;cursor:pointer">
-      <input type="checkbox" id="ee-interesting-${epId}" ${ep.interesting?'checked':''}> ★
+      <input type="checkbox" id="ee-interesting-${epId}" ${ep.interesting?'checked':''}> ${icon('star',{size:11})}
     </label>
     <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="saveEndpoint('${targetId}','${epId}',event)">Save</button>
-    <button class="btn-icon"   onclick="cancelEndpointEdit('${targetId}','${epId}',event)">✕</button>`;
+    <button class="btn-icon"   onclick="cancelEndpointEdit('${targetId}','${epId}',event)">${icon('x',{size:12})}</button>`;
   if (window.initCsel) {
     initCsel(`ee-method-${epId}`, METHODS.map(m => ({value:m, label:m})));
   }
@@ -334,7 +334,7 @@ async function saveEndpoint(targetId, epId, e) {
     if (cache) cache.endpoints = cache.endpoints.map(ep => ep.id === epId ? updated : ep);
     const row = document.getElementById(`ep-row-${epId}`);
     if (row) row.outerHTML = endpointRowHtml(targetId, updated);
-    showToast('✓ Endpoint updated', 'success');
+    showToast('Endpoint updated', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -356,7 +356,7 @@ async function addEndpoint(targetId) {
     if (!_targetCache[targetId]) _targetCache[targetId] = { ports: [], endpoints: [], loaded: true };
     _targetCache[targetId].endpoints.push(ep);
     renderEndpointsTab(targetId);
-    showToast(`✓ ${method} ${path} added`, 'success');
+    showToast(`${method} ${path} added`, 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -431,7 +431,7 @@ async function saveTarget() {
     }
     closeTargetModal();
     renderTargets();
-    showToast('✓ Saved', 'success');
+    showToast('Saved', 'success');
   } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   finally { btn.disabled = false; }
 }

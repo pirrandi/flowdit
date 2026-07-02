@@ -38,7 +38,7 @@ function renderTickets() {
   if (!tickets.length) {
     main.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">◌</div>
+        <div class="empty-icon">${icon('inbox', { size: 28 })}</div>
         <div class="empty-title">No queries yet</div>
         <div class="empty-sub">Client queries will appear here once the client opens a question</div>
       </div>`;
@@ -78,7 +78,7 @@ function ticketRowHtml(t) {
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <span class="ticket-status-badge" style="color:${color};border-color:${color}44">${label}</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">→</span>
+        <span style="color:var(--t3)">${icon('chevron-right',{size:13})}</span>
       </div>
     </div>`;
 }

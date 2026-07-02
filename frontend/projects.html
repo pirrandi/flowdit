@@ -126,6 +126,7 @@
 
 <script src="js/services/state.js"></script>
 <script src="js/services/api.js"></script>
+<script src="js/services/icons.js"></script>
 <script src="js/services/utils.js"></script>
 <script>
 // ── AUTH GUARD + BOOT ──────────────────────────────────────────────
@@ -155,8 +156,8 @@ function renderUserPill() {
       ${avatarHtml(u.username, color, 24, u.avatar_url)}
       <span>${esc(u.username)}</span>
       <div class="user-dropdown" id="user-dropdown">
-        <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">◎ Edit Profile</button>
-        <button class="dropdown-item danger" onclick="doLogout()">↪ Logout</button>
+        <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> Edit Profile</button>
+        <button class="dropdown-item danger" onclick="doLogout()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></svg> Logout</button>
       </div>
     </div>`;
 }
@@ -183,10 +184,10 @@ function _injectProfileModal() {
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px">
         <div id="profile-avatar-preview" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0"></div>
         <label style="font-family:var(--mono);font-size:11px;color:var(--a);cursor:pointer;display:flex;align-items:center;gap:4px">
-          ↑ Change photo
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg> Change photo
           <input type="file" id="profile-avatar-input" accept="image/*" style="display:none">
         </label>
-        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0">✕ Remove photo</button>
+        <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg> Remove photo</button>
       </div>
       <div class="form-group">
         <label class="form-label">Display name</label>
@@ -314,7 +315,7 @@ function renderProjects() {
       </div>
       ${p.description ? `<div class="proj-card-desc">${esc(p.description)}</div>` : ''}
       <div class="proj-card-footer">
-        <span class="proj-card-meta">◎ ${members} member${members>1?'s':''}</span>
+        <span class="proj-card-meta" style="display:inline-flex;align-items:center;gap:3px"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><path d="M16 3.128a4 4 0 0 1 0 7.744" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><circle cx="9" cy="7" r="4" /></svg> ${members} member${members>1?'s':''}</span>
         <span class="proj-card-meta" style="margin-left:auto">Updated ${updated}</span>
       </div>
     </a>`;

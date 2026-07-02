@@ -3,7 +3,7 @@
 async function renderSettings() {
   const container = document.getElementById('view-settings');
   if (!state.currentProject) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">◌</div><div class="empty-title">No project selected</div></div>';
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No project selected</div></div>`;
     return;
   }
 
@@ -208,8 +208,8 @@ function buildClientSettings(p) {
 
   const bgToggle = p.logo_url ? `
     <div style="display:flex;gap:4px;margin-top:4px">
-      <button onclick="setLogoBg('light')" style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:var(--r);border:1px solid ${logoBg==='light'?'var(--a)':'var(--b1)'};background:${logoBg==='light'?'var(--a-dim)':'transparent'};color:${logoBg==='light'?'var(--a)':'var(--t3)'};cursor:pointer">☀ Light</button>
-      <button onclick="setLogoBg('dark')"  style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:var(--r);border:1px solid ${logoBg==='dark' ?'var(--a)':'var(--b1)'};background:${logoBg==='dark' ?'var(--a-dim)':'transparent'};color:${logoBg==='dark' ?'var(--a)':'var(--t3)'};cursor:pointer">◑ Dark</button>
+      <button onclick="setLogoBg('light')" style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:var(--r);border:1px solid ${logoBg==='light'?'var(--a)':'var(--b1)'};background:${logoBg==='light'?'var(--a-dim)':'transparent'};color:${logoBg==='light'?'var(--a)':'var(--t3)'};cursor:pointer">${icon('zap',{size:11})} Light</button>
+      <button onclick="setLogoBg('dark')"  style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:var(--r);border:1px solid ${logoBg==='dark' ?'var(--a)':'var(--b1)'};background:${logoBg==='dark' ?'var(--a-dim)':'transparent'};color:${logoBg==='dark' ?'var(--a)':'var(--t3)'};cursor:pointer">${icon('circle',{size:11})} Dark</button>
     </div>` : '';
 
   return `
@@ -307,9 +307,9 @@ function buildFunSettings() {
     </div>`;
   };
   return `
-    ${ft('confetti', '✦', 'Confetti at 100%', 'Confeti cuando la cobertura WSTG llega al 100%')}
-    ${ft('neon',     '◌', 'Neon mode',        'Glow en badges de severidad y barras de progreso')}
-    ${ft('hacker',   '⚙', 'Hacker vibes',     'Overlay de scanlines — máxima credibilidad en calls con el cliente')}
+    ${ft('confetti', icon('sparkles',{size:13}), 'Confetti at 100%', 'Confeti cuando la cobertura WSTG llega al 100%')}
+    ${ft('neon',     icon('zap',{size:13}), 'Neon mode',        'Glow en badges de severidad y barras de progreso')}
+    ${ft('hacker',   icon('terminal',{size:13}), 'Hacker vibes',     'Overlay de scanlines — máxima credibilidad en calls con el cliente')}
   `;
 }
 
@@ -325,7 +325,7 @@ async function saveGeneral() {
     state.currentProject = { ...state.currentProject, ...updated };
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('✓ Guardado', 'success');
+    showToast('Guardado', 'success');
     renderSidenav();
   } catch(e) { showToast(e.message, 'error'); }
 }
@@ -341,7 +341,7 @@ async function saveTimeline() {
     state.currentProject = { ...state.currentProject, ...updated };
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('✓ Fechas guardadas', 'success');
+    showToast('Fechas guardadas', 'success');
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -352,7 +352,7 @@ async function setAiProvider(provider) {
     state.currentProject = { ...state.currentProject, ...updated };
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('✓ Proveedor de IA actualizado', 'success');
+    showToast('Proveedor de IA actualizado', 'success');
     renderSettings();
   } catch(e) { showToast(e.message, 'error'); }
 }
@@ -363,7 +363,7 @@ async function setAiModel(model) {
     state.currentProject = { ...state.currentProject, ...updated };
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('✓ Modelo actualizado', 'success');
+    showToast('Modelo actualizado', 'success');
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -374,7 +374,7 @@ async function toggleProjectFlag(flag, value) {
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
     renderSettings();
-    showToast('✓ Guardado', 'success');
+    showToast('Guardado', 'success');
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -389,7 +389,7 @@ async function onLogoFileChange(input) {
       state.currentProject = { ...state.currentProject, ...updated };
       const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
       if (idx > -1) state.projects[idx] = state.currentProject;
-      showToast('✓ Logo guardado', 'success');
+      showToast('Logo guardado', 'success');
       renderSettings();
     } catch(e) { showToast(e.message, 'error'); }
   };
@@ -434,14 +434,14 @@ async function regeneratePortalLink() {
     state.currentProject = { ...state.currentProject, ...updated };
     const idx = state.projects.findIndex(p => p.id === pid);
     if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('✓ Portal link generated', 'success');
+    showToast('Portal link generated', 'success');
     renderSettings();
   } catch(e) { showToast(e.message, 'error'); }
 }
 
 function copyPortalLink(link) {
   navigator.clipboard.writeText(link)
-    .then(() => showToast('✓ Link copied', 'success'))
+    .then(() => showToast('Link copied', 'success'))
     .catch(() => showToast('Could not copy to clipboard', 'error'));
 }
 
@@ -454,7 +454,7 @@ async function savePortalPassword() {
     state.currentProject = { ...state.currentProject, ...updated };
     const idx = state.projects.findIndex(p => p.id === pid);
     if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('✓ Password set', 'success');
+    showToast('Password set', 'success');
     renderSettings();
   } catch(e) { showToast(e.message, 'error'); }
 }

@@ -36,7 +36,7 @@ function renderWSTG() {
     const hdr = document.createElement('div');
     hdr.className = 'category-header';
     hdr.innerHTML = `
-      <span class="category-chevron">▶</span>
+      <span class="category-chevron">${icon('chevron-right',{size:12})}</span>
       <span class="category-badge">${esc(cat.id)}</span>
       <span class="category-name">${esc(cat.name)}</span>
       <div class="cat-meta">
@@ -89,7 +89,7 @@ function buildTestItem(test) {
       test.items.map((item, idx) => {
         const chk = td.items?.[idx] || false;
         return `<div class="item-row">
-          <div class="item-checkbox ${chk?'checked':''}" onclick="toggleWSTGItem('${test.id}',${idx},this)">${chk?'✓':''}</div>
+          <div class="item-checkbox ${chk?'checked':''}" onclick="toggleWSTGItem('${test.id}',${idx},this)">${chk?icon('check',{size:11}):''}</div>
           <span class="item-text ${chk?'done':''}">${esc(item)}</span>
         </div>`;
       }).join('') + '</div>';
@@ -134,17 +134,17 @@ function buildTestItem(test) {
 
   el.innerHTML = `
     <div class="test-header" onclick="toggleTestBody('${test.id}',event)">
-      <div class="test-check" onclick="cycleWSTGStatus('${test.id}',event)">${status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':''}</div>
+      <div class="test-check" onclick="cycleWSTGStatus('${test.id}',event)">${status==='done'?icon('check',{size:12}):status==='fail'?icon('x',{size:12}):status==='na'?'—':''}</div>
       <span class="test-id">${esc(test.id)}</span>
       <span class="test-name">${esc(test.name)}</span>
       ${targetBadge}
       ${linkBadge}
       ${editorBadge}
       <div class="test-actions">
-        <button class="test-action-btn pass" onclick="setWSTGStatus('${test.id}','done','${esc(test.name)}',event)">✓</button>
-        <button class="test-action-btn vuln" onclick="setWSTGStatus('${test.id}','fail','${esc(test.name)}',event)">✕ vuln</button>
+        <button class="test-action-btn pass" onclick="setWSTGStatus('${test.id}','done','${esc(test.name)}',event)">${icon('check',{size:12})}</button>
+        <button class="test-action-btn vuln" onclick="setWSTGStatus('${test.id}','fail','${esc(test.name)}',event)">${icon('x',{size:12})} vuln</button>
         <button class="test-action-btn" onclick="setWSTGStatus('${test.id}','na','${esc(test.name)}',event)">N/A</button>
-        <button class="test-action-btn" onclick="setWSTGStatus('${test.id}',null,'${esc(test.name)}',event)">↺</button>
+        <button class="test-action-btn" onclick="setWSTGStatus('${test.id}',null,'${esc(test.name)}',event)">${icon('rotate-ccw',{size:12})}</button>
       </div>
     </div>
     ${targetSel}
@@ -225,7 +225,7 @@ async function _applyWSTGStatus(id, status, testName) {
       const sc = status==='done'?'completed':status==='fail'?'failed':status==='na'?'na':'';
       el.className = `test-item${sc?' '+sc:''}`;
       const chk = el.querySelector('.test-check');
-      chk.textContent       = status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':'';
+      chk.innerHTML         = status==='done'?icon('check',{size:12}):status==='fail'?icon('x',{size:12}):status==='na'?'—':'';
       chk.style.background  = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
       chk.style.borderColor = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
       chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--t3)' : '';
@@ -268,7 +268,7 @@ async function _applyWSTGStatus(id, status, testName) {
     updateCatBar(id);
     if (typeof updateDashboard === 'function') updateDashboard();
 
-    const label = status==='done'?'✓ Marked complete':status==='fail'?'⚠ Vuln logged — assign a target below':status==='na'?'— Marked as N/A':'↺ Cleared';
+    const label = status==='done'?'Marked complete':status==='fail'?'Vuln logged — assign a target below':status==='na'?'Marked as N/A':'Cleared';
     showToast(label, status==='fail'?'error':status==='na'?'info':'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
@@ -290,7 +290,7 @@ async function saveWSTGTarget(testId, targetId) {
     } else {
       existing?.remove();
     }
-    showToast('✓ Target assigned', 'success');
+    showToast('Target assigned', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -302,7 +302,7 @@ async function toggleWSTGItem(testId, idx, el) {
     if (!state.wstgProgress[testId].items) state.wstgProgress[testId].items = {};
     state.wstgProgress[testId].items[idx] = !cur;
     el.classList.toggle('checked', !cur);
-    el.textContent = !cur ? '✓' : '';
+    el.innerHTML = !cur ? icon('check',{size:11}) : '';
     el.nextElementSibling?.classList.toggle('done', !cur);
   } catch(err) { showToast(err.message, 'error'); }
 }
@@ -353,7 +353,7 @@ function patchWSTGTestDOM(testId, progress) {
 
   const chk = el.querySelector('.test-check');
   if (chk) {
-    chk.textContent       = status==='done'?'✓':status==='fail'?'✕':status==='na'?'—':'';
+    chk.innerHTML         = status==='done'?icon('check',{size:12}):status==='fail'?icon('x',{size:12}):status==='na'?'—':'';
     chk.style.background  = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
     chk.style.borderColor = status==='done'?'var(--c-low)':status==='fail'?'var(--c-crit)':status==='na'?'var(--b2)':'';
     chk.style.color       = (status==='done'||status==='fail') ? 'var(--bg)' : status==='na' ? 'var(--t3)' : '';
@@ -410,7 +410,7 @@ async function saveWSTGLink(testId, vulnId) {
     } else {
       existing?.remove();
     }
-    showToast(vulnId ? '✓ Linked to finding' : '↺ Link removed', 'success');
+    showToast(vulnId ? 'Linked to finding' : 'Link removed', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 

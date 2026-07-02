@@ -135,7 +135,7 @@ function renderClientTopbar() {
         <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">live</span>
       </div>
       <div style="width:1px;height:16px;background:var(--b1)"></div>
-      ${!isPortal ? `<a href="projects.html" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;text-decoration:none">← Projects</a>` : ''}
+      ${!isPortal ? `<a href="projects.html" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">${icon('arrow-left',{size:11})} Projects</a>` : ''}
       <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="doClientLogout()">Logout</button>
     </div>`;
 }
@@ -268,8 +268,8 @@ function buildFindingsSection(vulns) {
     const color      = SEV_COLORS[v.severity] || 'var(--t3)';
     const remStatus   = v.remediation_status || 'open';
     const statusColor = remStatus === 'verified_closed' ? 'var(--c-low)' : remStatus === 'remediated' ? 'var(--c-med)' : 'var(--t3)';
-    const statusText  = remStatus === 'verified_closed' ? '✓ resolved & verified'
-                       : remStatus === 'remediated'      ? '◐ fix applied — pending verification'
+    const statusText  = remStatus === 'verified_closed' ? icon('check',{size:10}) + ' resolved & verified'
+                       : remStatus === 'remediated'      ? icon('zap',{size:10}) + ' fix applied — pending verification'
                        : '— open';
 
     return `
@@ -280,7 +280,7 @@ function buildFindingsSection(vulns) {
           <span class="client-finding-name">${esc(v.name)}</span>
           ${target ? `<span class="client-finding-target">${esc(target.host)}</span>` : ''}
           <span style="font-family:var(--mono);font-size:10px;color:${statusColor};margin-left:auto;flex-shrink:0">${statusText}</span>
-          <span class="client-finding-chevron" id="chev-${v.id}">▸</span>
+          <span class="client-finding-chevron" id="chev-${v.id}">${icon('chevron-right',{size:12})}</span>
         </div>
         <div class="client-finding-body" id="cfbody-${v.id}">
           <div style="height:1px;background:var(--b1);margin-bottom:12px"></div>
@@ -305,7 +305,7 @@ function buildFindingsSection(vulns) {
       </div>
       ${vulns.length ? cards : `
         <div style="text-align:center;padding:28px 0;color:var(--t3)">
-          <div style="font-size:20px;margin-bottom:6px;color:var(--c-low)">✓</div>
+          <div style="margin-bottom:6px;color:var(--c-low);display:flex;justify-content:center">${icon('circle-check',{size:22})}</div>
           <div style="font-size:13px;font-weight:600;color:var(--t2);margin-bottom:2px">No findings reported yet</div>
           <div style="font-family:var(--mono);font-size:11px">The team is actively testing</div>
         </div>`}
@@ -339,11 +339,11 @@ function buildWSTGSection(pct, done, fail, total) {
       const p      = prog[t.id];
       const isDone = p.status === 'done';
       const isFail = p.status === 'fail';
-      const color  = isDone ? 'var(--c-low)' : isFail ? 'var(--c-crit)' : 'var(--t3)';
-      const icon   = isDone ? '✓' : isFail ? '⚠' : '○';
+      const color    = isDone ? 'var(--c-low)' : isFail ? 'var(--c-crit)' : 'var(--t3)';
+      const statIcon = isDone ? icon('check',{size:11}) : isFail ? icon('triangle-alert',{size:11}) : icon('circle',{size:9});
       return `
         <div class="wstg-client-test">
-          <span style="font-family:var(--mono);font-size:11px;color:${color};flex-shrink:0;width:14px">${icon}</span>
+          <span style="color:${color};flex-shrink:0;width:14px;display:inline-flex">${statIcon}</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--t2)">${esc(t.name)}</div>
             ${showNotes && p.note ? `<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-top:3px;white-space:pre-wrap">${esc(p.note)}</div>` : ''}
@@ -356,12 +356,12 @@ function buildWSTGSection(pct, done, fail, total) {
       <div class="wstg-client-cat" onclick="this.classList.toggle('open')">
         <div class="wstg-client-cat-header">
           <span style="flex:1;font-size:12px;font-weight:600;color:var(--t1)">${esc(cat.name)}</span>
-          ${catFail ? `<span style="font-family:var(--mono);font-size:10px;color:var(--c-crit)">⚠ ${catFail}</span>` : ''}
+          ${catFail ? `<span style="color:var(--c-crit);display:inline-flex;align-items:center;gap:3px">${icon('triangle-alert',{size:10})} ${catFail}</span>` : ''}
           <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${catDone+catFail}/${cat.tests.length}</span>
           <div style="width:60px;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;flex-shrink:0">
             <div style="height:100%;width:${catPct}%;background:${barColor};border-radius:2px"></div>
           </div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">▸</span>
+          <span style="color:var(--t3)">${icon('chevron-right',{size:11})}</span>
         </div>
         ${notableTests.length ? `<div class="wstg-client-tests">${testRows}</div>` : ''}
       </div>`;
@@ -507,7 +507,7 @@ async function submitTicket() {
     state.tickets = [ticket, ...(state.tickets||[])];
     closeTicketModal();
     renderClientDashboard();
-    showToast('✓ Query submitted', 'success');
+    showToast('Query submitted', 'success');
   } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   finally { btn.disabled = false; }
 }
@@ -569,7 +569,7 @@ async function submitReply(ticketId) {
     const extra = {};
     if (api.portal.session.has() && api.portal.session.name) extra.client_name = api.portal.session.name;
     await api.tickets.reply(state.currentProject.id, ticketId, body, extra);
-    showToast('✓ Reply sent', 'success');
+    showToast('Reply sent', 'success');
     closeTicketDetail();
     await openTicketDetail(ticketId);
   } catch(err) { showToast(err.message, 'error'); }
