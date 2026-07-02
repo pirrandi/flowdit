@@ -76,7 +76,7 @@
 <script src="js/services/utils.js"></script>
 <script>
 const ORG_ID = new URLSearchParams(window.location.search).get('oid');
-let _org = null, _members = [], _invites = [];
+let _org = null, _members = [], _invites = [], _projects = [];
 
 document.querySelector('.org-back').innerHTML = `${icon('arrow-left',{size:11})} All Organizations`;
 
@@ -102,9 +102,10 @@ async function bootOrgManage() {
 
 async function loadAndRender() {
   const isAdmin = _org.member_role === 'owner' || _org.member_role === 'admin';
-  [_members, _invites] = await Promise.all([
+  [_members, _invites, _projects] = await Promise.all([
     api.organizations.members.list(ORG_ID).catch(() => []),
     isAdmin ? api.organizations.invites.list(ORG_ID).catch(() => []) : Promise.resolve([]),
+    isAdmin ? api.organizations.projects(ORG_ID).catch(() => []) : Promise.resolve([]),
   ]);
   render();
 }
@@ -149,6 +150,8 @@ function render() {
     </div>
 
     <div style="display:flex;flex-direction:column;gap:12px">
+
+      ${isAdmin ? renderProjectsSection() : ''}
 
       ${isOwner ? `
       <div class="members-card">
@@ -222,6 +225,48 @@ function render() {
 
     </div>
   `;
+}
+
+function renderProjectsSection() {
+  const totalCrit = _projects.reduce((s,p) => s + p.crit_count, 0);
+  const totalHigh = _projects.reduce((s,p) => s + p.high_count, 0);
+
+  return `
+    <div class="members-card">
+      <div class="members-card-title">
+        Projects
+        <span style="font-family:var(--mono);font-size:11px;color:var(--t3);font-weight:400">${_projects.length} total</span>
+      </div>
+
+      ${_projects.length ? `
+        <div style="display:flex;gap:20px;padding:10px 0 16px;border-bottom:1px solid var(--b1);margin-bottom:2px">
+          <div>
+            <div style="font-size:20px;font-weight:800">${_projects.length}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">projects</div>
+          </div>
+          <div>
+            <div style="font-size:20px;font-weight:800;color:var(--c-crit)">${totalCrit + totalHigh}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">critical + high findings</div>
+          </div>
+        </div>
+
+        ${_projects.map(p => `
+          <a href="dashboard.html?pid=${p.id}" class="member-row" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div class="member-info" style="flex:1;min-width:0">
+              <div class="member-username">${esc(p.name)}</div>
+              <div class="member-meta">
+                Owned by ${esc(p.owner_username)} · ${p.member_count} member${p.member_count!=1?'s':''} · updated ${relativeDate(p.updated_at)}
+              </div>
+            </div>
+            <div style="display:flex;gap:5px;flex-shrink:0">
+              ${p.crit_count ? `<span class="sev-badge sev-critical" style="font-size:9px">${p.crit_count} crit</span>` : ''}
+              ${p.high_count ? `<span class="sev-badge sev-high" style="font-size:9px">${p.high_count} high</span>` : ''}
+              ${!p.crit_count && !p.high_count ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">no crit/high</span>` : ''}
+            </div>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:capitalize">${esc(p.status)}</span>
+          </a>`).join('')}
+      ` : '<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">No projects in this organization yet.</div>'}
+    </div>`;
 }
 
 // ── ACTIONS ───────────────────────────────────────────────────────
