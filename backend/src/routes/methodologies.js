@@ -4,6 +4,7 @@ const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { targetBelongsToProject } = require('../services/ownership');
 
 router.use(requireAuth);
 
@@ -114,7 +115,10 @@ router.patch('/:methodId/progress/:projectId/:testIdx', requireProjectAccess, re
 
     if (status !== undefined) { fields.push('status'); vals.push(status||null); updates.push(`status=$${vals.length}`); }
     if (note   !== undefined) { fields.push('note');   vals.push(note);         updates.push(`note=$${vals.length}`); }
-    if (target_id !== undefined) { fields.push('target_id'); vals.push(target_id||null); updates.push(`target_id=$${vals.length}`); }
+    if (target_id !== undefined) {
+      const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
+      fields.push('target_id'); vals.push(validTargetId); updates.push(`target_id=$${vals.length}`);
+    }
 
     await db.query(
       `INSERT INTO methodology_progress (${fields.join(',')})

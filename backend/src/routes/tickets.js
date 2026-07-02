@@ -4,6 +4,7 @@ const db       = require('../db');
 const mailer   = require('../services/mailer');
 const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { vulnBelongsToProject } = require('../services/ownership');
 
 router.use(requireAuth, requireProjectAccess);
 
@@ -73,7 +74,8 @@ router.post('/', [
     return res.status(403).json({ error: 'Tickets are not enabled for this project' });
   }
 
-  const { title, description = '', vuln_id = null } = req.body;
+  const { title, description = '' } = req.body;
+  const validVulnId = await vulnBelongsToProject(req.body.vuln_id, req.params.projectId);
 
   if (req.isPortal) {
     // Portal user — no user account, store client_name/email instead
@@ -83,7 +85,7 @@ router.post('/', [
       const { rows } = await db.query(
         `INSERT INTO tickets (project_id, vuln_id, title, description, client_name, client_email)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [req.params.projectId, vuln_id || null, title, description, clientName, clientEmail]
+        [req.params.projectId, validVulnId, title, description, clientName, clientEmail]
       );
       return res.status(201).json(rows[0]);
     } catch (err) { return next(err); }
@@ -95,7 +97,7 @@ router.post('/', [
     const { rows } = await db.query(
       `INSERT INTO tickets (project_id, vuln_id, title, description, opened_by)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [req.params.projectId, vuln_id || null, title, description, req.user.id]
+      [req.params.projectId, validVulnId, title, description, req.user.id]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -216,6 +218,12 @@ router.post('/:ticketId/replies', [
 // DELETE reply (author or editor)
 router.delete('/:ticketId/replies/:replyId', async (req, res, next) => {
   try {
+    const { rows: ticket } = await db.query(
+      `SELECT id FROM tickets WHERE id=$1 AND project_id=$2`,
+      [req.params.ticketId, req.params.projectId]
+    );
+    if (!ticket.length) return res.status(404).json({ error: 'Ticket not found' });
+
     const isEditor = ['owner', 'editor'].includes(req.memberRole);
     const { rows } = await db.query(
       `DELETE FROM ticket_replies

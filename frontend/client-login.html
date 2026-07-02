@@ -160,13 +160,6 @@ async function boot() {
     const data = await api.portal.auth(_portalToken, null);
     _projectName = data.projectName;
 
-    if (!data.portalOpen) {
-      show('cl-no-token');
-      document.querySelector('.cl-no-token').innerHTML =
-        '<strong>Portal not yet available</strong>The security team hasn\'t opened the portal yet. Check back soon.';
-      return;
-    }
-
     // No password needed — show enter button
     document.getElementById('cl-proj-name').textContent = data.projectName;
     // Store the token immediately — enter just redirects
@@ -181,6 +174,10 @@ async function boot() {
       document.getElementById('cl-proj-name-pw').textContent = 'Security Assessment';
       show('cl-password');
       setTimeout(() => document.getElementById('cl-pw-input').focus(), 100);
+    } else if (e.data?.portalOpen === false) {
+      show('cl-no-token');
+      document.querySelector('.cl-no-token').innerHTML =
+        '<strong>Portal not yet available</strong>The security team hasn\'t opened the portal yet. Check back soon.';
     } else {
       show('cl-no-token');
       document.querySelector('.cl-no-token').innerHTML =

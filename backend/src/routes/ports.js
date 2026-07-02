@@ -3,9 +3,9 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireEditor, requireTargetAccess } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireProjectAccess, requireTargetAccess);
 
 // GET all ports for a target
 router.get('/', async (req, res, next) => {

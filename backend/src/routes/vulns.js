@@ -4,6 +4,7 @@ const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { targetBelongsToProject } = require('../services/ownership');
 
 router.use(requireAuth, requireProjectAccess);
 
@@ -36,10 +37,11 @@ router.post('/', requireEditor, [
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null, cwe=null } = req.body;
   try {
+    const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
     const { rows } = await db.query(
       `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, cwe, created_by, updated_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`,
-      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), target_id||null, cvss_vector||null, cvss_score||null, cwe||null, req.user.id]
+      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), validTargetId, cvss_vector||null, cvss_score||null, cwe||null, req.user.id]
     );
     await activity.log({
       projectId:  req.params.projectId,
@@ -55,7 +57,7 @@ router.post('/', requireEditor, [
 });
 
 router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','target_id','cvss_vector','cvss_score','cwe'];
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','cvss_vector','cvss_score','cwe'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
@@ -65,6 +67,11 @@ router.patch('/:vulnId', requireEditor, async (req, res, next) => {
       values.push(val);
     }
   });
+  if (req.body.target_id !== undefined) {
+    const validTargetId = await targetBelongsToProject(req.body.target_id, req.params.projectId);
+    updates.push(`target_id=$${values.length+1}`);
+    values.push(validTargetId);
+  }
   if (!updates.length) return res.status(400).json({ error:'Nothing to update' });
   updates.push(`updated_by=$${values.length+1}`);
   values.push(req.user.id);

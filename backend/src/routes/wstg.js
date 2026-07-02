@@ -3,6 +3,7 @@ const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { targetBelongsToProject, vulnBelongsToProject } = require('../services/ownership');
 
 router.use(requireAuth, requireProjectAccess);
 
@@ -121,12 +122,13 @@ router.patch('/:testId/items/:itemIdx', requireEditor, async (req, res, next) =>
 router.patch('/:testId/target', requireEditor, async (req, res, next) => {
   const { target_id } = req.body;
   try {
+    const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
     await db.query(
       `INSERT INTO wstg_progress (project_id, test_id, target_id, updated_by)
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (project_id, test_id) DO UPDATE
          SET target_id=$3, updated_by=$4, updated_at=NOW()`,
-      [req.params.projectId, req.params.testId, target_id||null, req.user.id]
+      [req.params.projectId, req.params.testId, validTargetId, req.user.id]
     );
     res.json({ ok:true });
   } catch (err) { next(err); }
@@ -136,12 +138,13 @@ router.patch('/:testId/target', requireEditor, async (req, res, next) => {
 router.patch('/:testId/link', requireEditor, async (req, res, next) => {
   const { linked_vuln_id } = req.body;
   try {
+    const validVulnId = await vulnBelongsToProject(linked_vuln_id, req.params.projectId);
     await db.query(
       `INSERT INTO wstg_progress (project_id, test_id, linked_vuln_id, updated_by)
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (project_id, test_id) DO UPDATE
          SET linked_vuln_id=$3, updated_by=$4, updated_at=NOW()`,
-      [req.params.projectId, req.params.testId, linked_vuln_id||null, req.user.id]
+      [req.params.projectId, req.params.testId, validVulnId, req.user.id]
     );
     res.json({ ok:true });
   } catch (err) { next(err); }

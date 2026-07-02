@@ -17,6 +17,13 @@ router.post('/auth', async (req, res, next) => {
     if (!rows.length) return res.status(401).json({ error: 'Invalid or expired link' });
     const proj = rows[0];
 
+    // Don't mint a working token at all when the owner has the portal switched off —
+    // the frontend gate can be bypassed by reading the accessToken straight off this
+    // response, so the check has to happen here, not just client-side on `portalOpen`.
+    if (!proj.client_view_enabled) {
+      return res.status(403).json({ error: 'Client portal is not enabled for this project', portalOpen: false });
+    }
+
     if (proj.portal_require_password) {
       if (!password) return res.status(401).json({ error: 'Password required', passwordRequired: true });
       const match = proj.portal_password_hash && await bcrypt.compare(password, proj.portal_password_hash);
