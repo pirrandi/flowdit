@@ -282,6 +282,15 @@ function severityBadge(sev) {
   return `<span class="sev-badge sev-${s}">${SEVERITY_LABELS[s]||s}</span>`;
 }
 
+const REMEDIATION_LABELS = { open: 'Open', remediated: 'Remediated', verified_closed: 'Verified Closed' };
+const REMEDIATION_COLORS = { open: 'var(--t3)', remediated: 'var(--c-med)', verified_closed: 'var(--c-low)' };
+
+function remediationBadge(status) {
+  const s = status || 'open';
+  const c = REMEDIATION_COLORS[s] || REMEDIATION_COLORS.open;
+  return `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}33;border-radius:4px;padding:1px 7px;flex-shrink:0">${REMEDIATION_LABELS[s]||s}</span>`;
+}
+
 function renderCustomVulns() {
   const container = document.getElementById('custom-content');
   if (!state.customVulns.length) {
@@ -330,6 +339,38 @@ function buildVulnCard(v) {
 
   const noteH = v.notes ? `<div class="items-section"><div class="items-label">Notes</div>
     <div class="payload-code" style="color:var(--t2);white-space:pre-wrap">${esc(v.notes)}</div></div>` : '';
+
+  const remStatus = v.remediation_status || 'open';
+  const remActionsH = remStatus === 'open'
+    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','remediated')">Marcar como remediado</button>`
+    : remStatus === 'remediated'
+    ? `<button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','verified_closed')">Verificar y cerrar</button>
+       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`
+    : `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`;
+
+  const remTrailH = [
+    v.remediated_at ? `Remediado: ${new Date(v.remediated_at).toLocaleDateString()}` : '',
+    v.verified_at   ? `Verificado: ${new Date(v.verified_at).toLocaleDateString()}${v.verifier_username ? ' por ' + esc(v.verifier_username) : ''}` : '',
+  ].filter(Boolean).join(' · ');
+
+  const remH2 = `<div class="items-section">
+    <div class="items-label">Remediation Status</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      ${remediationBadge(remStatus)}
+      ${remActionsH}
+    </div>
+    ${remTrailH ? `<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:8px">${remTrailH}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Fecha retest</div>
+        <input type="date" class="form-input" style="font-size:11px" value="${v.retest_date ? v.retest_date.slice(0,10) : ''}" onchange="setRetestDate('${v.id}', this.value)">
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Notas retest</div>
+        <input type="text" class="form-input" style="font-size:11px" placeholder="Notas del reintento..." value="${esc(v.retest_notes||'')}" onblur="setRetestNotes('${v.id}', this.value)">
+      </div>
+    </div>
+  </div>`;
 
   const descH = v.description ? `<div class="items-section"><div class="items-label">Description</div>
     <div class="md-body" style="color:var(--t2)">${renderMd(v.description)}</div></div>` : '';
@@ -384,6 +425,7 @@ function buildVulnCard(v) {
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
       ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
+      ${(v.remediation_status && v.remediation_status !== 'open') ? remediationBadge(v.remediation_status) : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
       <div class="vuln-actions">
@@ -391,7 +433,7 @@ function buildVulnCard(v) {
         <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">✕</button>
       </div>
     </div>
-    <div class="vuln-body" id="vbody-${v.id}">${descH}${itemsH}${payH}${noteH}${remH}${evidH}${httpH}</div>`;
+    <div class="vuln-body" id="vbody-${v.id}">${descH}${itemsH}${payH}${noteH}${remH}${remH2}${evidH}${httpH}</div>`;
   return card;
 }
 
@@ -428,6 +470,42 @@ async function cycleVulnStatus(id, e) {
     Object.assign(v, updated);
     renderCustomVulns();
     if (typeof updateDashboard === 'function') updateDashboard();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function setRemediationStatus(vulnId, status) {
+  const v = state.customVulns.find(x => x.id === vulnId);
+  if (!v) return;
+  try {
+    const updated = await api.vulns.setRemediation(state.currentProject.id, vulnId, { remediation_status: status });
+    updated.verifier_username = status === 'verified_closed' ? state.user.username : null;
+    Object.assign(v, updated);
+    renderCustomVulns();
+    if (typeof updateDashboard === 'function') updateDashboard();
+    const msg = status === 'verified_closed' ? '✓ Verificado y cerrado' : status === 'remediated' ? '✓ Marcado como remediado' : '↺ Reabierto';
+    showToast(msg, 'success');
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function setRetestDate(vulnId, date) {
+  const v = state.customVulns.find(x => x.id === vulnId);
+  if (!v) return;
+  try {
+    const updated = await api.vulns.setRemediation(state.currentProject.id, vulnId, {
+      remediation_status: v.remediation_status || 'open', retest_date: date || null, retest_notes: v.retest_notes || null,
+    });
+    Object.assign(v, updated);
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function setRetestNotes(vulnId, notes) {
+  const v = state.customVulns.find(x => x.id === vulnId);
+  if (!v) return;
+  try {
+    const updated = await api.vulns.setRemediation(state.currentProject.id, vulnId, {
+      remediation_status: v.remediation_status || 'open', retest_date: v.retest_date || null, retest_notes: notes,
+    });
+    Object.assign(v, updated);
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -806,6 +884,9 @@ window.openEvidenceViewer = openEvidenceViewer;
 window.toggleVulnBody     = toggleVulnBody;
 window.cycleVulnStatus    = cycleVulnStatus;
 window.toggleCustomItem   = toggleCustomItem;
+window.setRemediationStatus = setRemediationStatus;
+window.setRetestDate         = setRetestDate;
+window.setRetestNotes        = setRetestNotes;
 window.openAddVulnModal   = openAddVulnModal;
 window.openEditVuln       = openEditVuln;
 window.addModalRow        = addModalRow;

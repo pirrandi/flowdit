@@ -151,10 +151,11 @@ const api = {
     saveNote: (pid, catId, idx, note)        => request('PATCH', `/projects/${pid}/ps/${catId}/${idx}/note`, { note }),
   },
   vulns: {
-    list:   (pid)       => request('GET',    `/projects/${pid}/vulns`),
-    create: (pid, d)    => request('POST',   `/projects/${pid}/vulns`, d),
-    update: (pid, id,d) => request('PATCH',  `/projects/${pid}/vulns/${id}`, d),
-    delete: (pid, id)   => request('DELETE', `/projects/${pid}/vulns/${id}`),
+    list:          (pid)       => request('GET',    `/projects/${pid}/vulns`),
+    create:        (pid, d)    => request('POST',   `/projects/${pid}/vulns`, d),
+    update:        (pid, id,d) => request('PATCH',  `/projects/${pid}/vulns/${id}`, d),
+    delete:        (pid, id)   => request('DELETE', `/projects/${pid}/vulns/${id}`),
+    setRemediation:(pid, id,d) => request('PATCH',  `/projects/${pid}/vulns/${id}/remediation`, d),
   },
   methodologies: {
     list:        ()                        => request('GET',    '/methodologies'),

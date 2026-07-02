@@ -228,6 +228,11 @@ function buildStatsRow(proj, vulns, targets, wstgPct) {
     push('Findings', vulns.length,
       crit ? `<span class="stat-crit">${crit} critical</span>` : high ? `<span style="color:#f97316">${high} high</span>` : 'no critical',
       crit ? 'crit' : high ? 'high' : '');
+    if (vulns.length) {
+      const remClosed = vulns.filter(v => v.remediation_status === 'verified_closed').length;
+      const remPct = Math.round(remClosed / vulns.length * 100);
+      push('Remediated', `${remPct}%`, `${remClosed}/${vulns.length} verified closed`, remPct === 100 ? 'low' : '');
+    }
   }
   if (proj.show_wstg_progress) {
     push('Coverage', `${wstgPct}%`,
@@ -261,10 +266,11 @@ function buildFindingsSection(vulns) {
   const cards = sorted.map(v => {
     const target     = state.targets.find(t => t.id === v.target_id);
     const color      = SEV_COLORS[v.severity] || 'var(--t3)';
-    const isDone     = v.status === 'done';
-    const isFail     = v.status === 'fail';
-    const statusColor = isDone ? 'var(--c-low)' : isFail ? 'var(--c-crit)' : 'var(--t3)';
-    const statusText  = isDone ? '✓ resolved' : isFail ? '⚠ open' : '— pending';
+    const remStatus   = v.remediation_status || 'open';
+    const statusColor = remStatus === 'verified_closed' ? 'var(--c-low)' : remStatus === 'remediated' ? 'var(--c-med)' : 'var(--t3)';
+    const statusText  = remStatus === 'verified_closed' ? '✓ resolved & verified'
+                       : remStatus === 'remediated'      ? '◐ fix applied — pending verification'
+                       : '— open';
 
     return `
       <div class="client-finding-card" onclick="toggleClientFinding('${v.id}')" style="border-left:2px solid ${color}">

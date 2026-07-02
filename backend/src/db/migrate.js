@@ -375,6 +375,17 @@ const migrations = [
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ai_usage_project ON ai_usage(project_id)`,
+
+  // ── REMEDIATION / RETEST WORKFLOW ────────────────────────────────────
+  // Separate from the legacy `status` column (done/fail — a confirmed/vulnerable
+  // toggle inherited from the checklist model). This tracks the finding's
+  // real-world lifecycle through the client's fix.
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediation_status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (remediation_status IN ('open','remediated','verified_closed'))`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediated_at  TIMESTAMPTZ`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS retest_date    DATE`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS retest_notes   TEXT`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS verified_at    TIMESTAMPTZ`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS verified_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
 ];
 
 const BUILTIN_TEMPLATES = [

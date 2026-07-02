@@ -215,6 +215,11 @@ function updateDashboard() {
   const sevCount = { critical:0, high:0, medium:0, low:0, info:0 };
   vulns.forEach(v => { const s = v.severity||'medium'; if(sevCount[s]!==undefined) sevCount[s]++; });
 
+  // ── Remediation progress ───────────────────────────────────────
+  const remCount = { open:0, remediated:0, verified_closed:0 };
+  vulns.forEach(v => { const s = v.remediation_status||'open'; if(remCount[s]!==undefined) remCount[s]++; });
+  const remPct = vulns.length ? Math.round((remCount.remediated + remCount.verified_closed) / vulns.length * 100) : 0;
+
   // ── Sorted vulns + sequential IDs (VLN-01 = most critical) ────
   const _sevOrder = { critical:0, high:1, medium:2, low:3, info:4 };
   const sortedVulns = [...vulns].sort((a, b) =>
@@ -486,6 +491,28 @@ function updateDashboard() {
                       <span style="font-size:10px;color:var(--t2);width:14px;text-align:right;flex-shrink:0">${c}</span>
                     </div>`;
                   }).join('')}
+                </div>`
+            }
+          </div>
+        </div>
+
+        <!-- Remediation progress -->
+        <div class="section">
+          <div class="section-head">
+            <div class="section-title">Remediation <span class="section-count">${remPct}%</span></div>
+            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">→</a>
+          </div>
+          <div class="section-body">
+            ${vulns.length === 0
+              ? `<div style="color:var(--t3);font-size:11px">No findings.</div>`
+              : `<div style="display:flex;gap:16px;margin-bottom:12px">
+                  <div><span style="font-size:18px;font-weight:700;color:var(--c-low)">${remCount.verified_closed}</span> <span style="font-size:9px;color:var(--t3)">verified</span></div>
+                  <div><span style="font-size:18px;font-weight:700;color:var(--c-med)">${remCount.remediated}</span> <span style="font-size:9px;color:var(--t3)">remediated</span></div>
+                  <div><span style="font-size:18px;font-weight:700;color:var(--t3)">${remCount.open}</span> <span style="font-size:9px;color:var(--t3)">open</span></div>
+                </div>
+                <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--b1)">
+                  <div style="width:${vulns.length ? remCount.verified_closed/vulns.length*100 : 0}%;background:var(--c-low)"></div>
+                  <div style="width:${vulns.length ? remCount.remediated/vulns.length*100 : 0}%;background:var(--c-med)"></div>
                 </div>`
             }
           </div>

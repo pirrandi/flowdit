@@ -64,6 +64,10 @@ function actionLabel(action, entityType, entityName, meta) {
       if (meta?.status === 'fail')    return `flagged ${name} as <span class="activity-status-pill pill-fail">✕ vuln</span>`;
       return `cleared status on ${name}`;
     case 'add_note':    return `added notes to ${name}`;
+    case 'remediation_status_changed':
+      if (meta?.remediation_status === 'remediated')       return `marked ${name} as <span class="activity-status-pill pill-done">remediated</span>`;
+      if (meta?.remediation_status === 'verified_closed')  return `verified ${name} as <span class="activity-status-pill pill-done">closed</span>`;
+      return `reopened ${name}`;
     case 'lab_completed': return `completed lab ${name}`;
     case 'vuln_created':  return `added custom vuln ${name}`;
     case 'vuln_deleted':  return `deleted ${name}`;
