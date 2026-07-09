@@ -198,6 +198,126 @@ function closeVulnDrawer() {
   document.getElementById('vuln-drw')?.classList.remove('open');
 }
 
+// ── FINDINGS OVER TIME (stacked area, cumulative by severity) ─────────
+const SEV_COLOR = { critical:'var(--c-crit)', high:'var(--c-high)', medium:'var(--c-med)', low:'var(--c-low)', info:'var(--c-info)' };
+const SEV_STACK = ['critical','high','medium','low','info']; // bottom → top
+const TREND_W = 760, TREND_H = 150, TREND_PAD_TOP = 10, TREND_PAD_BOTTOM = 26, TREND_PAD_X = 4;
+const TREND_PLOT_W = TREND_W - TREND_PAD_X * 2;
+const TREND_PLOT_H = TREND_H - TREND_PAD_TOP - TREND_PAD_BOTTOM;
+
+let _trendPoints = [];
+
+function _dayKey(d) { return d.toISOString().slice(0, 10); }
+function _fmtDay(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+}
+function _trendX(i, n) { return TREND_PAD_X + (n === 1 ? 0 : (TREND_PLOT_W * i) / (n - 1)); }
+function _trendY(v, maxY) { return TREND_PAD_TOP + TREND_PLOT_H - (v / maxY) * TREND_PLOT_H; }
+
+function renderSeverityTrend(vulns) {
+  if (!vulns.length) return '';
+
+  const byDay = {};
+  vulns.forEach(v => {
+    const key = _dayKey(v.created_at ? new Date(v.created_at) : new Date());
+    if (!byDay[key]) byDay[key] = { critical:0, high:0, medium:0, low:0, info:0 };
+    const s = v.severity || 'medium';
+    if (byDay[key][s] !== undefined) byDay[key][s]++;
+  });
+
+  let days = Object.keys(byDay).sort();
+  if (days.length === 1) {
+    // pad a zero day before the only bucket so the area has visible width
+    const prev = new Date(days[0] + 'T00:00:00');
+    prev.setDate(prev.getDate() - 1);
+    const prevKey = _dayKey(prev);
+    byDay[prevKey] = { critical:0, high:0, medium:0, low:0, info:0 };
+    days = [prevKey, days[0]];
+  }
+
+  const cum = { critical:0, high:0, medium:0, low:0, info:0 };
+  const points = days.map((day, i) => {
+    const added = byDay[day];
+    SEV_STACK.forEach(s => cum[s] += added[s]);
+    return { day, added, cum: { ...cum }, x: _trendX(i, days.length) };
+  });
+  _trendPoints = points;
+
+  const total = SEV_STACK.reduce((sum, s) => sum + cum[s], 0);
+  const maxY  = Math.max(1, Math.ceil(total * 1.15));
+
+  let baseAcc = points.map(() => 0);
+  const bands = SEV_STACK.map(s => {
+    const topAcc = points.map((p, i) => baseAcc[i] + p.cum[s]);
+    const topPath  = points.map((p, i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${_trendY(topAcc[i], maxY).toFixed(1)}`).join(' ');
+    const basePath = points.map((p, i) => `L${points[points.length-1-i].x.toFixed(1)},${_trendY(baseAcc[points.length-1-i], maxY).toFixed(1)}`).join(' ');
+    const hasData  = topAcc.some((v, i) => v > baseAcc[i]);
+    const band = { s, areaD: `${topPath} ${basePath} Z`, lineD: topPath, hasData };
+    baseAcc = topAcc;
+    return band;
+  });
+
+  const labelCount = Math.min(points.length, 5);
+  const labelIdxs  = new Set();
+  for (let i = 0; i < labelCount; i++) labelIdxs.add(Math.round(i * (points.length - 1) / (labelCount - 1 || 1)));
+
+  const hitW = TREND_PLOT_W / points.length;
+
+  return `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Findings Over Time</div>
+        <span style="font-size:10px;color:var(--t3)">${total} total</span>
+      </div>
+      <div class="section-body" style="position:relative">
+        <svg class="trend-chart-svg" viewBox="0 0 ${TREND_W} ${TREND_H}" preserveAspectRatio="none" onmouseleave="hideTrendTooltip()">
+          ${bands.map(b => b.hasData ? `
+            <path class="trend-band" d="${b.areaD}" fill="${SEV_COLOR[b.s]}"></path>
+            <path class="trend-line" d="${b.lineD}" stroke="${SEV_COLOR[b.s]}"></path>
+          ` : '').join('')}
+          <line class="trend-cursor" id="trend-cursor" x1="0" y1="${TREND_PAD_TOP}" x2="0" y2="${TREND_PAD_TOP + TREND_PLOT_H}"></line>
+          ${points.map((p, i) => `<rect class="trend-hit" x="${(p.x - hitW/2).toFixed(1)}" y="0" width="${hitW.toFixed(1)}" height="${TREND_H}" onmouseenter="showTrendTooltip(${i}, event)"></rect>`).join('')}
+          ${[...labelIdxs].map(i => `<text class="trend-axis-label" x="${points[i].x.toFixed(1)}" y="${TREND_H-6}" text-anchor="${i===0?'start':i===points.length-1?'end':'middle'}">${_fmtDay(points[i].day)}</text>`).join('')}
+        </svg>
+        <div class="trend-legend">
+          ${SEV_STACK.filter(s => cum[s] > 0).map(s => `<span class="trend-legend-item"><span class="trend-legend-dot" style="background:${SEV_COLOR[s]}"></span>${s} (${cum[s]})</span>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="chart-tooltip" id="trend-tooltip"></div>
+  `;
+}
+
+function showTrendTooltip(i, evt) {
+  const p = _trendPoints[i];
+  const tip = document.getElementById('trend-tooltip');
+  const cursor = document.getElementById('trend-cursor');
+  if (!p || !tip) return;
+  const rows = SEV_STACK.filter(s => p.cum[s] > 0).map(s =>
+    `<div class="chart-tooltip-row"><span><span class="dot" style="background:${SEV_COLOR[s]}"></span>${s}</span><span>${p.added[s] ? '+'+p.added[s]+' · ' : ''}${p.cum[s]} total</span></div>`
+  ).join('');
+  tip.innerHTML = `<div class="chart-tooltip-date">${_fmtDay(p.day)}</div>${rows || '<div class="chart-tooltip-row">No findings yet</div>'}`;
+  tip.classList.add('show');
+  const tipW = tip.offsetWidth, tipH = tip.offsetHeight;
+  const left = (evt.clientX + 14 + tipW > window.innerWidth) ? evt.clientX - tipW - 14 : evt.clientX + 14;
+  const top  = (evt.clientY + 14 + tipH > window.innerHeight) ? evt.clientY - tipH - 14 : evt.clientY + 14;
+  tip.style.left = Math.max(4, left) + 'px';
+  tip.style.top  = Math.max(4, top) + 'px';
+  if (cursor) {
+    cursor.setAttribute('x1', p.x); cursor.setAttribute('x2', p.x);
+    cursor.classList.add('active');
+  }
+}
+function hideTrendTooltip() {
+  const tip = document.getElementById('trend-tooltip');
+  if (tip) tip.classList.remove('show');
+  const cursor = document.getElementById('trend-cursor');
+  if (cursor) cursor.classList.remove('active');
+}
+window.showTrendTooltip = showTrendTooltip;
+window.hideTrendTooltip = hideTrendTooltip;
+
 function updateDashboard() {
   if (!state.currentProject) return;
 
@@ -312,6 +432,8 @@ function updateDashboard() {
       </div>
     </div>
 
+    ${renderSeverityTrend(vulns)}
+
     <!-- Two-column grid -->
     <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;align-items:start">
 
@@ -324,7 +446,7 @@ function updateDashboard() {
           </div>
           <div class="section-body bare">
             ${vulns.length === 0
-              ? `<div style="padding:14px;color:var(--t3);font-size:11px">No findings yet.</div>`
+              ? `<div class="empty-state" style="padding:28px 0"><div class="empty-icon">${icon('inbox', { size: 22 })}</div><div class="empty-sub">No findings yet — add one from the Findings page</div></div>`
               : `<table class="tbl">
                   <thead><tr>
                     <th>ID</th><th>Severity</th><th>Name</th><th>CVSS</th><th>Status</th>
@@ -358,7 +480,7 @@ function updateDashboard() {
           </div>
           <div class="section-body bare">
             ${inScope.length === 0
-              ? `<div style="padding:14px;color:var(--t3);font-size:11px">No targets in scope.</div>`
+              ? `<div class="empty-state" style="padding:28px 0"><div class="empty-icon">${icon('inbox', { size: 22 })}</div><div class="empty-sub">No targets in scope — add one from the Targets page</div></div>`
               : `<table class="tbl">
                   <thead><tr>
                     <th>Host</th>
@@ -473,7 +595,7 @@ function updateDashboard() {
           </div>
           <div class="section-body">
             ${vulns.length === 0
-              ? `<div style="color:var(--t3);font-size:11px">No findings.</div>`
+              ? `<div class="empty-state" style="padding:20px 0"><div class="empty-icon">${icon('inbox', { size: 20 })}</div><div class="empty-sub">No findings yet</div></div>`
               : `<div style="text-align:center;margin-bottom:16px">
                   <div style="font-size:56px;font-weight:700;line-height:1;color:${riskColor};letter-spacing:-0.03em">${maxCvss > 0 ? maxCvss.toFixed(1) : '—'}</div>
                   <div style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-top:4px">Max CVSS Score</div>
@@ -504,7 +626,7 @@ function updateDashboard() {
           </div>
           <div class="section-body">
             ${vulns.length === 0
-              ? `<div style="color:var(--t3);font-size:11px">No findings.</div>`
+              ? `<div class="empty-state" style="padding:20px 0"><div class="empty-icon">${icon('inbox', { size: 20 })}</div><div class="empty-sub">No findings yet</div></div>`
               : `<div style="display:flex;gap:16px;margin-bottom:12px">
                   <div><span style="font-size:18px;font-weight:700;color:var(--c-low)">${remCount.verified_closed}</span> <span style="font-size:9px;color:var(--t3)">verified</span></div>
                   <div><span style="font-size:18px;font-weight:700;color:var(--c-med)">${remCount.remediated}</span> <span style="font-size:9px;color:var(--t3)">remediated</span></div>

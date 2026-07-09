@@ -15,6 +15,7 @@ function renderTargets() {
       <div class="empty-icon">${icon('inbox', { size: 28 })}</div>
       <div class="empty-title">No targets defined</div>
       <div class="empty-sub">Add IPs, domains, URLs and CIDRs in scope for this engagement</div>
+      <button class="btn btn-prim" style="margin-top:14px" onclick="openAddTargetModal()">+ Add Target</button>
     </div>`;
     return;
   }

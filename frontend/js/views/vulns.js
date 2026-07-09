@@ -294,7 +294,7 @@ function remediationBadge(status) {
 function renderCustomVulns() {
   const container = document.getElementById('custom-content');
   if (!state.customVulns.length) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div></div>`;
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div><button class="btn btn-prim" style="margin-top:14px" onclick="openAddVulnModal()">+ Add Vulnerability</button></div>`;
     return;
   }
   const bySev = {};

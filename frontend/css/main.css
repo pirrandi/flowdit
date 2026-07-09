@@ -485,6 +485,28 @@ body {
 .stat-bar-fill.high { background: var(--c-high); }
 .stat-bar-fill.low  { background: var(--c-low); }
 
+/* ── TREND CHART (severity over time) ──────────────────────────────── */
+.trend-chart-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.trend-band { opacity: 0.12; }
+.trend-line { fill: none; stroke-width: 2; }
+.trend-hit { fill: transparent; cursor: crosshair; }
+.trend-cursor { opacity: 0; stroke: var(--b3); stroke-width: 1; pointer-events: none; transition: opacity .1s; }
+.trend-cursor.active { opacity: 1; }
+.trend-axis-label { font-family: var(--mono); font-size: 9px; fill: var(--t4); }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--b1); }
+.trend-legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--t3); }
+.trend-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.chart-tooltip {
+  position: fixed; z-index: 900; pointer-events: none;
+  background: var(--bg2); border: 1px solid var(--b2); border-radius: var(--r);
+  box-shadow: var(--shadow); padding: 8px 10px; font-size: 11px; color: var(--t1);
+  min-width: 140px; display: none;
+}
+.chart-tooltip.show { display: block; }
+.chart-tooltip-date { font-weight: 700; margin-bottom: 5px; color: var(--t2); }
+.chart-tooltip-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: 10px; padding: 1px 0; }
+.chart-tooltip-row .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
 /* old stat card — still used by dashboard.js render functions */
 .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
 .stat-card {
@@ -835,6 +857,27 @@ body {
   display: flex; align-items: center; justify-content: center;
   flex-direction: column; gap: 16px;
 }
+/* On pages with a sidenav+topbar shell, the overlay only covers the content
+   area — the nav renders synchronously (no API wait), so it should be visible
+   immediately instead of hidden behind a full-screen blocker. */
+#loading-overlay.ovl-shell { left: var(--sidenav-w); top: var(--topbar-h); align-items: flex-start; justify-content: flex-start; }
+@media (max-width: 900px) { #loading-overlay.ovl-shell { left: 0; } }
+
+/* ── LOADING SKELETON ───────────────────────────────────────────── */
+.skel-wrap { width: 100%; max-width: 960px; padding: 28px; display: flex; flex-direction: column; gap: 14px; align-self: flex-start; }
+.skel-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.skel-block {
+  background: var(--bg1); border: 1px solid var(--b1); border-radius: var(--r);
+  position: relative; overflow: hidden; height: 64px;
+}
+.skel-block.skel-tall { height: 160px; }
+.skel-block::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--bg3), transparent);
+  transform: translateX(-100%); animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer { 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .skel-block::after { animation: none; } }
 .spinner {
   width: 36px; height: 36px;
   border: 2px solid var(--b1); border-top-color: var(--a);

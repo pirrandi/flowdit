@@ -174,7 +174,7 @@
 .rpt-vuln-header { display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--bg2); }
 .rpt-vuln-name { font-weight:600;font-size:13px;flex:1; }
 .rpt-vuln-cat  { font-family:var(--mono);font-size:10px;color:var(--t3); }
-.rpt-vuln-status { font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px; }
+.rpt-vuln-status { font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;white-space:nowrap; }
 .rpt-status-done { color:var(--c-low);background:var(--c-low)18;border:1px solid var(--c-low)30; }
 .rpt-status-fail { color:var(--c-crit);background:var(--c-crit)18;border:1px solid var(--c-crit)30; }
 .rpt-status-pending { color:var(--t3);background:var(--bg3);border:1px solid var(--b1); }
@@ -550,7 +550,7 @@
 </head>
 <body>
 
-<div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading report...</div></div>
+<div id="loading-overlay" class="ovl-shell"><div class="skel-wrap"><div class="skel-stats"><div class="skel-block"></div><div class="skel-block"></div><div class="skel-block"></div><div class="skel-block"></div></div><div class="skel-block skel-tall"></div><div class="skel-block skel-tall"></div></div></div>
 <nav class="sidenav" id="sidenav"></nav>
 <header class="topbar" id="topbar"></header>
 <div class="workarea no-activity">
