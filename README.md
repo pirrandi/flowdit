@@ -24,6 +24,8 @@ Flowdit is a self-hosted platform built for penetration testers and security con
 
 No more delivering a PDF at the end and hoping the client trusts the process. With Flowdit, they see it as it happens.
 
+> **Language:** the product UI and AI-generated reports are Spanish-only (built for the LatAm/Spain pentest market). This documentation is in English for reach, but expect Spanish strings throughout the app itself.
+
 ---
 
 ## Features

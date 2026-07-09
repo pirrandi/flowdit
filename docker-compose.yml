@@ -2,9 +2,9 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: pirra
-      POSTGRES_PASSWORD: REDACTED
-      POSTGRES_DB: flowdit_dev
+      POSTGRES_USER: ${DB_USER:-flowdit}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-flowdit_dev}
     ports:
       - "5432:5432"
     volumes:
@@ -24,10 +24,10 @@ services:
       PORT: 4000
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: flowdit_dev
-      DB_USER: pirra
-      DB_PASSWORD: REDACTED
-      JWT_SECRET: dev_jwt_secret_change_in_production_00000000000000000000000000000000
+      DB_NAME: ${DB_NAME:-flowdit_dev}
+      DB_USER: ${DB_USER:-flowdit}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_00000000000000000000000000000000}
       JWT_EXPIRES_IN: 7d
       JWT_REFRESH_EXPIRES_IN: 30d
       CORS_ORIGIN: http://localhost
