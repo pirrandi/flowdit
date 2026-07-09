@@ -41,6 +41,27 @@ frontend/
   css/main.css       — Signal design system tokens + all component styles
 ```
 
+## Running tests
+
+Tests are integration tests that hit a real PostgreSQL database — no mocks. They run against a **separate database whose name contains `test`** (never your dev database — `resetDb()` truncates every table between tests).
+
+```bash
+# One-time setup: create the test database and run migrations against it
+docker exec flowdit-db-1 createdb -U pirra flowdit_test   # adjust user if yours differs
+cd backend && DB_NAME=flowdit_test node src/db/migrate.js
+
+# Run the suite
+cd backend && DB_NAME=flowdit_test DB_USER=pirra DB_PASSWORD=<your-db-password> npm test
+```
+
+`test/helpers.js` refuses to run if `DB_NAME` doesn't contain `test`, as a safety net against accidentally wiping real data.
+
+## Linting
+
+```bash
+cd backend && npm run lint
+```
+
 ## Guidelines
 
 **Backend**
