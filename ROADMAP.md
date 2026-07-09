@@ -20,7 +20,7 @@ Tres capas: adopción, producto, monetización.
 - [x] **IA multi-proveedor** — Groq y Anthropic seleccionables por proyecto (modelo también configurable), con tracking de gasto estimado por proyecto reutilizando los tokens que cada respuesta ya devuelve (sin costo extra de API).
 - [x] **Aislamiento de datos entre proyectos** — auditoría de seguridad dedicada; se encontraron y corrigieron varios IDOR reales (acceso cruzado entre proyectos vía `target_id`/`ticket_id` no validados) antes de que esto fuera un problema en producción.
 - [ ] **Importación de Nessus** — `.nessus` es el formato del scanner enterprise estándar. Sin esto, Flowdit queda fuera del flujo de trabajo de equipos corporativos.
-- [ ] **Tests de integración** — sin tests nadie contribuye con confianza. 20-30 tests en endpoints críticos (auth, vulns, export) ya cambian la percepción del proyecto. Se pospone a propósito hasta tener la versión pública lista.
+- [x] **Tests de integración** — 25 tests (`node:test` + `supertest`, sin mocks, contra Postgres real) cubriendo auth, aislamiento de datos entre proyectos (regresión directa de los IDOR de `a582e20`) y export (PDF/DOCX). Corren en CI en cada push/PR.
 - [ ] **Importación de Nmap XML** — complementa Nessus para el inventario de puertos/servicios.
 - [ ] **Notificaciones por email** — cuando el cliente responde un ticket o se crea un hallazgo crítico.
 - [ ] **2FA** — segundo factor de autenticación para todos los usuarios. Expectativa básica de seguridad, independiente de organizations.
@@ -52,6 +52,6 @@ Tres capas: adopción, producto, monetización.
 | 9 | Demo en vivo con seed data | Pendiente | Adopción masiva | Bajo |
 | 10 | Importación Nessus | Pendiente | Mercado enterprise | Medio |
 | 11 | 2FA | Pendiente | Credibilidad de seguridad | Bajo |
-| 12 | Tests de integración | Pendiente (a propósito) | Credibilidad open source | Alto |
+| 12 | Tests de integración | ✅ Hecho | Credibilidad open source | Alto |
 | 13 | Hosting gestionado | Pendiente | Primera monetización | Alto |
 | 14 | SSO / SAML | Pendiente (ya desbloqueado) | Contratos enterprise | Alto |
