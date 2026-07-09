@@ -1,9 +1,8 @@
 const router = require('express').Router();
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { decrypt } = require('../utils/crypto');
-const { signAccess } = require('../utils/tokens');
+const { mintSession } = require('../utils/tokens');
 const {
   saveFlow, takeFlow, saveExchange, takeExchange,
   getOidcConfig, provisionSsoUser,
@@ -11,6 +10,11 @@ const {
 
 // No requireAuth anywhere in this file — these routes exist precisely because
 // the caller doesn't have a session yet (mirrors /auth/login, /auth/register).
+//
+// Note: SSO login never checks users.totp_enabled — the identity provider
+// (Entra ID) owns MFA policy for that leg, so a local TOTP secret (if the
+// user separately opted into one) is orthogonal, not additionally enforced
+// here. Only password login (/auth/login) checks it.
 
 function apiOrigin() {
   return (process.env.PUBLIC_API_URL || '').replace(/\/$/, '');
@@ -23,19 +27,6 @@ function redirectUri() {
 }
 function loginErrorRedirect(res, message) {
   res.redirect(`${frontendOrigin()}/index.html?ssoError=${encodeURIComponent(message)}`);
-}
-
-async function mintSession(user) {
-  const accessToken  = signAccess(user);
-  const refreshToken = uuidv4() + uuidv4().replace(/-/g, '');
-  await db.query(
-    `INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1,$2, NOW() + INTERVAL '30 days')`,
-    [user.id, refreshToken]
-  );
-  return {
-    accessToken, refreshToken,
-    user: { id: user.id, username: user.username, email: user.email, avatar_color: user.avatar_color },
-  };
 }
 
 // POST /auth/sso/check {email} — does an SSO-enabled org claim this domain?

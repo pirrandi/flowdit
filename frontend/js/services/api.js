@@ -114,6 +114,13 @@ const api = {
       check:    (email)    => request('POST', '/auth/sso/check', { email }),
       exchange: (code)     => request('POST', '/auth/sso/exchange', { code }),
     },
+    mfa: {
+      status:  ()                     => request('GET',  '/auth/mfa/status'),
+      setup:   ()                     => request('POST', '/auth/mfa/setup'),
+      enable:  (code)                 => request('POST', '/auth/mfa/enable', { code }),
+      disable: (password)             => request('POST', '/auth/mfa/disable', { password }),
+      verify:  (challengeToken, code) => request('POST', '/auth/mfa/verify', { challengeToken, code }),
+    },
   },
   projects: {
     list:    ()       => request('GET',    '/projects'),

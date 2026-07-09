@@ -23,7 +23,7 @@ Tres capas: adopción, producto, monetización.
 - [x] **Tests de integración** — 25 tests (`node:test` + `supertest`, sin mocks, contra Postgres real) cubriendo auth, aislamiento de datos entre proyectos (regresión directa de los IDOR de `a582e20`) y export (PDF/DOCX). Corren en CI en cada push/PR.
 - [ ] **Importación de Nmap XML** — complementa Nessus para el inventario de puertos/servicios.
 - [ ] **Notificaciones por email** — cuando el cliente responde un ticket o se crea un hallazgo crítico.
-- [ ] **2FA** — segundo factor de autenticación para todos los usuarios. Expectativa básica de seguridad, independiente de organizations.
+- [x] **2FA** — TOTP opt-in por usuario (compatible con Google Authenticator, Authy, etc.), independiente de organizations. Setup con QR + secreto manual, 10 códigos de respaldo de un solo uso mostrados una única vez al activar, y `/auth/mfa/disable` exige repetir la contraseña de la cuenta (downgrade de seguridad, misma vara que cambiarla). El login por SSO no lo exige — el IdP (Entra ID) ya gestiona su propia política de MFA para ese camino; solo el login por contraseña lo chequea. Secreto cifrado en reposo (AES-256-GCM, reutilizando `SSO_ENCRYPTION_KEY`); códigos de respaldo solo se persisten como hash bcrypt. 11 tests de integración nuevos.
 - [ ] **CVSS v4.0** — la industria está migrando.
 
 ---
@@ -32,7 +32,7 @@ Tres capas: adopción, producto, monetización.
 
 - [x] **Organizations — cuentas de empresa** — capa fundacional sobre `projects`: una organización agrupa proyectos con membresía propia (owner/admin/member); owners/admins ven y administran todos los proyectos de la empresa sin invitación manual proyecto por proyecto. Migración con backfill retrocompatible (cero regresión en accesos existentes), panel con resumen de hallazgos críticos/altos por proyecto integrado en `projects.html` filtrable por organización. Es el prerequisito real de SSO y de un panel de admin — ninguno de los dos tenía sentido antes sin este modelo de datos.
 - [ ] **Hosting gestionado** — `app.flowdit.space` con plan free (1 proyecto) y plan Pro (~$30/mes ilimitado). El modelo más directo sin cambiar el core open source.
-- [ ] **SSO / SAML** — las empresas no usan herramientas que no se integren con Okta, Azure AD o Google Workspace. Con Organizations ya en producción, esto ya es técnicamente viable de construir (se loguea a nivel organización, no a nivel proyecto suelto) — sigue siendo la pieza más grande que queda, pero ya no está bloqueada.
+- [x] **SSO — Microsoft Entra ID (OIDC), por organización** — login vía Entra ID configurable por organización (issuer/client id/secret cifrado, dominio de email vinculado, enforce opcional que bloquea login por contraseña para ese dominio). Aprovisionamiento JIT de usuarios en el primer login SSO. Queda pendiente Okta/Google Workspace y SAML puro, pero el patrón OIDC ya está probado en producción.
 - [ ] **White-label** — consultoras medianas quieren el logo y dominio propio. Flowdit ya tiene soporte de logo por proyecto; el salto a white-label completo es relativamente pequeño.
 
 ---
@@ -51,7 +51,7 @@ Tres capas: adopción, producto, monetización.
 | 8 | Organizations (cuentas de empresa) | ✅ Hecho | Desbloquea mercado enterprise | Alto |
 | 9 | Demo en vivo con seed data | Pendiente | Adopción masiva | Bajo |
 | 10 | Importación Nessus | Pendiente | Mercado enterprise | Medio |
-| 11 | 2FA | Pendiente | Credibilidad de seguridad | Bajo |
+| 11 | 2FA | ✅ Hecho | Credibilidad de seguridad | Bajo |
 | 12 | Tests de integración | ✅ Hecho | Credibilidad open source | Alto |
 | 13 | Hosting gestionado | Pendiente | Primera monetización | Alto |
-| 14 | SSO / SAML | Pendiente (ya desbloqueado) | Contratos enterprise | Alto |
+| 14 | SSO — Entra ID (OIDC) | ✅ Hecho (falta Okta/Google/SAML) | Contratos enterprise | Alto |

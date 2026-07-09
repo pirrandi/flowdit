@@ -462,6 +462,18 @@ const migrations = [
       CREATE TRIGGER trg_org_sso_configs_updated_at BEFORE UPDATE ON organization_sso_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at();
     END IF;
   END $$`,
+
+  // ── TOTP 2FA (per-user, opt-in) ────────────────────────────────────
+  // totp_secret_enc is AES-256-GCM (utils/crypto.js, reusing SSO_ENCRYPTION_KEY)
+  // rather than plaintext — same trust boundary as the SSO client secret.
+  // totp_enabled flips true only after the user proves possession of the
+  // secret via /auth/mfa/enable, so a `setup` call that's never confirmed
+  // leaves a dead secret in place but never blocks login.
+  // totp_backup_codes holds bcrypt hashes only, one-time-use (removed from
+  // the array on redemption) — never the plaintext codes.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret_enc TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes JSONB NOT NULL DEFAULT '[]'`,
 ];
 
 const BUILTIN_TEMPLATES = [

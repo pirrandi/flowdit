@@ -64,6 +64,8 @@ function continueWithSso() {
   window.location.href = `${window.FLOWDIT_API}${_ssoStartUrl}`;
 }
 
+let _mfaChallengeToken = null;
+
 async function doLogin() {
   const login = document.getElementById('login-user').value.trim();
   const pass  = document.getElementById('login-pass').value;
@@ -73,6 +75,15 @@ async function doLogin() {
   btn.disabled = true; btn.textContent = 'Connecting...';
   try {
     const data = await api.auth.login(login, pass);
+    if (data.mfaRequired) {
+      _mfaChallengeToken = data.challengeToken;
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('login-mfa-form').style.display = '';
+      document.getElementById('login-mfa-code').value = '';
+      document.getElementById('login-mfa-error').style.display = 'none';
+      document.getElementById('login-mfa-code').focus();
+      return;
+    }
     api.auth.setTokens(data.accessToken, data.refreshToken);
     localStorage.setItem('fd_user', JSON.stringify(data.user));
     window.location.href = await resolveHome();
@@ -81,6 +92,33 @@ async function doLogin() {
     err.style.display = 'block';
   } finally {
     btn.disabled = false; btn.textContent = 'Access Terminal';
+  }
+}
+
+function cancelMfaChallenge() {
+  _mfaChallengeToken = null;
+  document.getElementById('login-mfa-form').style.display = 'none';
+  document.getElementById('login-form').style.display = '';
+  document.getElementById('login-pass').value = '';
+}
+
+async function doVerifyMfa() {
+  const code = document.getElementById('login-mfa-code').value.trim();
+  const err  = document.getElementById('login-mfa-error');
+  const btn  = document.getElementById('login-mfa-btn');
+  err.style.display = 'none';
+  if (!code) return;
+  btn.disabled = true; btn.textContent = 'Verifying...';
+  try {
+    const data = await api.auth.mfa.verify(_mfaChallengeToken, code);
+    api.auth.setTokens(data.accessToken, data.refreshToken);
+    localStorage.setItem('fd_user', JSON.stringify(data.user));
+    window.location.href = await resolveHome();
+  } catch(e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Verify';
   }
 }
 
@@ -113,5 +151,7 @@ window.doRegister              = doRegister;
 window.onLoginIdentifierChange = onLoginIdentifierChange;
 window.checkSsoForIdentifier   = checkSsoForIdentifier;
 window.continueWithSso         = continueWithSso;
+window.doVerifyMfa             = doVerifyMfa;
+window.cancelMfaChallenge      = cancelMfaChallenge;
 
 boot();

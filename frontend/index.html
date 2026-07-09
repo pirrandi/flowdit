@@ -47,6 +47,17 @@
       <div class="form-error" id="login-error"></div>
       <button class="btn-primary" id="login-btn" onclick="doLogin()">Access Terminal</button>
     </div>
+    <div id="login-mfa-form" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Authentication code</label>
+        <input type="text" class="form-input" id="login-mfa-code" placeholder="123456" inputmode="numeric" autocomplete="one-time-code"
+          onkeydown="if(event.key==='Enter')doVerifyMfa()">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">From your authenticator app, or a backup code.</div>
+      </div>
+      <div class="form-error" id="login-mfa-error"></div>
+      <button class="btn-primary" id="login-mfa-btn" onclick="doVerifyMfa()">Verify</button>
+      <button class="btn-secondary" style="width:100%;margin-top:8px" onclick="cancelMfaChallenge()">Back</button>
+    </div>
     <div id="register-form" style="display:none">
       <div class="form-group">
         <label class="form-label">Username</label>

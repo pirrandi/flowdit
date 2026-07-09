@@ -6,6 +6,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const wsService = require('../services/ws');
 const { signAccess } = require('../utils/tokens');
+const { createChallenge } = require('../services/mfa');
 
 // Palette for auto-assigned avatar colors
 const COLORS = ['#7c3aed','#2563eb','#059669','#dc2626','#d97706','#0891b2','#7c3aed','#be185d'];
@@ -119,6 +120,13 @@ router.post('/login', [
 
     if (!(await bcrypt.compare(password, user.password)))
       return res.status(401).json({ error: 'Invalid credentials' });
+
+    // Password verified but 2FA is on for this account — don't mint a
+    // session yet. The frontend collects a TOTP/backup code and completes
+    // the login via /auth/mfa/verify, which is where the real tokens issue.
+    if (user.totp_enabled) {
+      return res.json({ mfaRequired: true, challengeToken: createChallenge(user.id) });
+    }
 
     const accessToken  = signAccess(user);
     const refreshToken = uuidv4() + uuidv4().replace(/-/g,'');

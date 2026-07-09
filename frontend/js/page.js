@@ -268,6 +268,11 @@ function _injectProfileModal() {
 
       <div class="form-error" id="profile-error"></div>
 
+      <div style="border-top:1px solid var(--b1);margin:18px 0 4px;padding-top:16px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Security</div>
+        <div id="profile-mfa-section"></div>
+      </div>
+
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeProfileModal()">Cancel</button>
         <button class="btn-save" id="profile-save-btn" onclick="saveProfile()">Save changes</button>
@@ -294,6 +299,7 @@ function openProfileModal() {
   document.getElementById('profile-error').textContent = '';
   _refreshAvatarPreview(u.avatar_url || null);
   document.getElementById('profile-modal').classList.add('open');
+  _loadMfaStatus();
 }
 
 function closeProfileModal() {
@@ -369,6 +375,150 @@ async function saveProfile() {
   }
 }
 
+// ── PROFILE MODAL — 2FA (TOTP) ───────────────────────────────────────
+// Sub-states rendered inside #profile-mfa-section: idle (toggle row) ->
+// setup (QR + confirm code) -> backup-codes (shown once) back to idle,
+// or idle -> disable (password re-entry) -> idle.
+let _mfaSetup = null; // { secret, qrCodeDataUrl } while a setup is in flight
+
+async function _loadMfaStatus() {
+  _renderMfaSection('idle', { enabled: null }); // loading placeholder
+  try {
+    const { enabled } = await api.auth.mfa.status();
+    _renderMfaSection('idle', { enabled });
+  } catch {
+    _renderMfaSection('idle', { enabled: false });
+  }
+}
+
+function _renderMfaSection(view, ctx = {}) {
+  const el = document.getElementById('profile-mfa-section');
+  if (!el) return;
+
+  if (view === 'idle') {
+    if (ctx.enabled === null) { el.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Checking...</div>`; return; }
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-size:13px;font-weight:600">Two-factor authentication</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${ctx.enabled ? 'Enabled — an authenticator app is required at login.' : 'Off — add an extra step to your login.'}</div>
+        </div>
+        <button class="setting-toggle ${ctx.enabled ? 'on' : ''}" onclick="${ctx.enabled ? 'mfaPromptDisable()' : 'mfaStartSetup()'}">
+          <span class="setting-toggle-knob"></span>
+        </button>
+      </div>`;
+    return;
+  }
+
+  if (view === 'setup') {
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">Scan with Google Authenticator, Authy, or similar.</div>
+        <img src="${ctx.qrCodeDataUrl}" alt="2FA QR code" style="width:160px;height:160px;border-radius:8px;background:#fff;padding:8px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t2);word-break:break-all;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;padding:6px 10px">${esc(ctx.secret)}</div>
+        <input type="text" class="form-input" id="mfa-setup-code" placeholder="123456" inputmode="numeric" maxlength="6"
+          style="text-align:center;letter-spacing:2px" onkeydown="if(event.key==='Enter')mfaConfirmEnable()">
+        <div class="form-error" id="mfa-setup-error" style="display:none"></div>
+        <div style="display:flex;gap:8px;width:100%">
+          <button class="btn-secondary" style="flex:1" onclick="mfaCancelSetup()">Cancel</button>
+          <button class="btn-primary" style="flex:1" id="mfa-setup-confirm-btn" onclick="mfaConfirmEnable()">Confirm</button>
+        </div>
+      </div>`;
+    document.getElementById('mfa-setup-code').focus();
+    return;
+  }
+
+  if (view === 'backup-codes') {
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:13px;font-weight:600;color:var(--green)">${icon('check', { size: 13 })} Two-factor authentication enabled</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">Save these one-time backup codes — each works once if you lose access to your authenticator app. They won't be shown again.</div>
+        <div style="font-family:var(--mono);font-size:12px;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          ${ctx.codes.map(c => `<span>${esc(c)}</span>`).join('')}
+        </div>
+        <button class="btn-primary" onclick="mfaAcknowledgeBackupCodes()">I've saved these codes</button>
+      </div>`;
+    return;
+  }
+
+  if (view === 'disable') {
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">Enter your password to turn off two-factor authentication.</div>
+        <input type="password" class="form-input" id="mfa-disable-password" placeholder="••••••••"
+          onkeydown="if(event.key==='Enter')mfaConfirmDisable()">
+        <div class="form-error" id="mfa-disable-error" style="display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" style="flex:1" onclick="_loadMfaStatus()">Cancel</button>
+          <button class="btn-primary" style="flex:1" id="mfa-disable-confirm-btn" onclick="mfaConfirmDisable()">Disable</button>
+        </div>
+      </div>`;
+    document.getElementById('mfa-disable-password').focus();
+    return;
+  }
+}
+
+async function mfaStartSetup() {
+  _renderMfaSection('idle', { enabled: null });
+  try {
+    _mfaSetup = await api.auth.mfa.setup();
+    _renderMfaSection('setup', _mfaSetup);
+  } catch (e) {
+    showToast(e.message, 'error');
+    _loadMfaStatus();
+  }
+}
+
+function mfaCancelSetup() {
+  _mfaSetup = null;
+  _loadMfaStatus();
+}
+
+async function mfaConfirmEnable() {
+  const code = document.getElementById('mfa-setup-code').value.trim();
+  const errEl = document.getElementById('mfa-setup-error');
+  const btn = document.getElementById('mfa-setup-confirm-btn');
+  errEl.style.display = 'none';
+  if (!code) return;
+  btn.disabled = true;
+  try {
+    const { backupCodes } = await api.auth.mfa.enable(code);
+    _mfaSetup = null;
+    _renderMfaSection('backup-codes', { codes: backupCodes });
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function mfaAcknowledgeBackupCodes() {
+  _loadMfaStatus();
+  showToast('Two-factor authentication enabled', 'success');
+}
+
+function mfaPromptDisable() {
+  _renderMfaSection('disable');
+}
+
+async function mfaConfirmDisable() {
+  const password = document.getElementById('mfa-disable-password').value;
+  const errEl = document.getElementById('mfa-disable-error');
+  const btn = document.getElementById('mfa-disable-confirm-btn');
+  errEl.style.display = 'none';
+  if (!password) return;
+  btn.disabled = true;
+  try {
+    await api.auth.mfa.disable(password);
+    _loadMfaStatus();
+    showToast('Two-factor authentication disabled', 'success');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
 
 // ── SEARCH ────────────────────────────────────────────────────────
 function handleSearch(q) {
@@ -627,6 +777,13 @@ window.openNewProjectModal  = openNewProjectModal;
 window.saveProfile          = saveProfile;
 window.openProfileModal     = openProfileModal;
 window.closeProfileModal    = closeProfileModal;
+window.mfaStartSetup            = mfaStartSetup;
+window.mfaCancelSetup           = mfaCancelSetup;
+window.mfaConfirmEnable         = mfaConfirmEnable;
+window.mfaAcknowledgeBackupCodes = mfaAcknowledgeBackupCodes;
+window.mfaPromptDisable         = mfaPromptDisable;
+window.mfaConfirmDisable        = mfaConfirmDisable;
+window._loadMfaStatus           = _loadMfaStatus;
 window.saveProject          = saveProject;
 window.mountAiChat          = mountAiChat;
 window.toggleAiPanel        = toggleAiPanel;
