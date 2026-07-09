@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "migrate": "node src/db/migrate.js"
+    "migrate": "node src/db/migrate.js",
+    "lint": "eslint src",
+    "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.1",
@@ -30,6 +32,9 @@
     "ws": "^8.17.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "nodemon": "^3.1.4",
+    "supertest": "^7.2.2"
   }
 }

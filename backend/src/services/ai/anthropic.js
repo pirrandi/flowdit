@@ -28,7 +28,7 @@ async function chatCompletion({ systemPrompt, messages, maxTokens = 1024, model 
     });
   } catch (err) {
     console.error('Anthropic error:', err.message);
-    throw new Error('AI service error');
+    throw new Error('AI service error', { cause: err });
   }
 
   if (response.stop_reason === 'refusal') throw new Error('AI declined to respond');

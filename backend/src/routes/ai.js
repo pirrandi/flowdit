@@ -265,7 +265,7 @@ router.post('/chat', async (req, res) => {
   const ctx = context;
   const p   = ctx.project || {};
 
-  let contextBlock = '';
+  let contextBlock;
   try {
     const activityLines = (ctx.activity || []).map(e => {
       const d  = new Date(e && e.when);

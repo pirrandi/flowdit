@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: flowdit
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: flowdit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowdit -d flowdit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: flowdit_test
+      DB_USER: flowdit
+      DB_PASSWORD: ci_test_password
+      JWT_SECRET: ci_test_jwt_secret_do_not_use_in_prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Run migrations against the test database
+        working-directory: backend
+        run: npm run migrate
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test
