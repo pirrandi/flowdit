@@ -2,7 +2,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
 const { requireOrgAccess, requireOrgAdmin, requireOrgOwner } = require('../middleware/organization');
 const { encrypt } = require('../utils/crypto');
 const { invalidateDiscovery } = require('../services/sso');
@@ -64,7 +64,7 @@ router.patch('/:orgId', requireOrgAccess, requireOrgOwner, [
 });
 
 // DELETE /organizations/:orgId
-router.delete('/:orgId', requireOrgAccess, requireOrgOwner, async (req, res, next) => {
+router.delete('/:orgId', requireOrgAccess, requireOrgOwner, blockDemoDestructive, async (req, res, next) => {
   try {
     await db.query(`DELETE FROM organizations WHERE id=$1`, [req.params.orgId]);
     res.json({ ok:true });

@@ -5,7 +5,7 @@ const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor, requireOwner } = require('../middleware/project');
 
 router.use(requireAuth);
@@ -122,7 +122,7 @@ router.post('/:projectId/portal/token', requireProjectAccess, requireOwner, asyn
 });
 
 // DELETE /projects/:projectId
-router.delete('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
+router.delete('/:projectId', requireProjectAccess, requireOwner, blockDemoDestructive, async (req, res, next) => {
   try {
     await db.query('DELETE FROM projects WHERE id=$1', [req.params.projectId]);
     res.json({ ok:true });

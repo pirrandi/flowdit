@@ -38,4 +38,18 @@ function requireUser(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireUser };
+// Guards the handful of actions that would leave the public demo instance
+// unusable for the next visitor until the periodic reset job runs (project
+// delete, org delete, enabling 2FA on the shared login and locking everyone
+// else out) — deliberately NOT a blanket "demo is read-only" block, since
+// editing findings/targets/tickets is the point of a hands-on demo.
+// Only active when DEMO_MODE=true (the demo.flowdit.space deploy), so a real
+// user on production choosing the username "demo" is never affected.
+function blockDemoDestructive(req, res, next) {
+  if (process.env.DEMO_MODE === 'true' && req.user?.username === 'demo') {
+    return res.status(403).json({ error: 'Disabled on the public demo — this resets automatically anyway.' });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireUser, blockDemoDestructive };

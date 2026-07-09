@@ -2,7 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
 const { mintSession } = require('../utils/tokens');
 const {
   peekChallenge, consumeChallenge,
@@ -34,7 +34,7 @@ router.post('/setup', requireAuth, async (req, res, next) => {
 
 // POST /auth/mfa/enable {code} — confirms the pending secret from /setup and
 // turns 2FA on. Returns the plaintext backup codes exactly once.
-router.post('/enable', requireAuth, [
+router.post('/enable', requireAuth, blockDemoDestructive, [
   body('code').trim().isLength({ min: 6, max: 6 }).isNumeric(),
 ], async (req, res, next) => {
   const errors = validationResult(req);

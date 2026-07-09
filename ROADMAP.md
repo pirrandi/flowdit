@@ -9,7 +9,7 @@ Tres capas: adopción, producto, monetización.
 - [x] **Docker Compose todo-en-uno** — `docker compose --profile full up -d --build` levanta backend + PostgreSQL + Nginx (Chromium/Ghostscript incluidos para el export PDF). El `docker compose up` normal (sin profile) sigue siendo solo DB + Nginx para no romper el flujo de dev local con nodemon.
 - [x] **Screenshots en el README** — capturas reales de dashboard, hallazgos, targets, WSTG, reportes y portal de cliente. Falta el GIF del flujo completo (proyecto → vuln → PDF), que sigue siendo una mejora menor pendiente.
 - [x] **Sistema de íconos SVG** — reemplazo de los símbolos Unicode usados como íconos improvisados (✦ ⚙ ✓ etc.) por SVGs reales vendorizados de Lucide, sin CDN. Cubre sidenav, dashboard, hallazgos, targets, members, methodology, WSTG, PortSwigger, portal de cliente, tickets, settings y whiteboard. **Pendiente:** la toolbar de texto enriquecido de `export.html` (el editor de reportes), dejada afuera a propósito por ser la zona más densa/riesgosa de tocar.
-- [ ] **Demo en vivo** — instancia pública en `demo.flowdit.space` con datos de ejemplo precargados. Sin demo, la mayoría no llega a instalarlo.
+- [ ] **Demo en vivo** — instancia pública en `demo.flowdit.space` con datos de ejemplo precargados. Sin demo, la mayoría no llega a instalarlo. **Listo:** login único compartido (`demo`/`demo`), script de seed/reset (`backend/src/db/seed-demo.js` — proyecto "Acme Corp" con 5 targets, 10 findings de severidad y estado de remediación mixtos, progreso WSTG/PortSwigger y 3 tickets, reusando la biblioteca de templates existente; idempotente, pensado para correr por cron cada ~30 min) y un guard (`DEMO_MODE=true`) que bloquea solo las acciones que dejarían la demo inutilizable para el próximo visitante (borrar el proyecto/org demo, activar 2FA en la cuenta compartida) sin volverla de solo lectura. **Pendiente:** el despliegue real — subdominio + nginx + crontab en el VPS (caído al momento de escribir esto).
 
 ---
 
@@ -49,7 +49,7 @@ Tres capas: adopción, producto, monetización.
 | 6 | Aislamiento de datos entre proyectos | ✅ Hecho | Credibilidad de seguridad | Medio |
 | 7 | Sistema de íconos SVG | ✅ Hecho (falta export.html) | Percepción profesional | Medio |
 | 8 | Organizations (cuentas de empresa) | ✅ Hecho | Desbloquea mercado enterprise | Alto |
-| 9 | Demo en vivo con seed data | Pendiente | Adopción masiva | Bajo |
+| 9 | Demo en vivo con seed data | Código listo, falta desplegar | Adopción masiva | Bajo |
 | 10 | Importación Nessus | Pendiente | Mercado enterprise | Medio |
 | 11 | 2FA | ✅ Hecho | Credibilidad de seguridad | Bajo |
 | 12 | Tests de integración | ✅ Hecho | Credibilidad open source | Alto |

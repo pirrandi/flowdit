@@ -11,6 +11,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_only_jwt_secret_do_not_
 
 const app = require('../src/app');
 const db  = require('../src/db');
+const { seedTemplates } = require('../src/db/vuln-templates');
 
 const TABLES = [
   'organization_sso_configs', 'organization_invites', 'organization_members',
@@ -21,9 +22,14 @@ const TABLES = [
   'targets', 'projects', 'refresh_tokens', 'organizations', 'users',
 ];
 
-// vuln_templates is seed data (50 built-in templates), never truncated.
+// vuln_templates is meant to be permanent seed data (50 built-in templates),
+// but vuln_templates.created_by REFERENCES users(id) — TRUNCATE CASCADE
+// truncates the *entire* dependent table regardless of which rows would
+// actually be orphaned, so truncating `users` above wipes it too even though
+// every built-in row has created_by=NULL. Reseed it every time to compensate.
 async function resetDb() {
   await db.query(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`);
+  await seedTemplates(db);
 }
 
 let userCounter = 0;
