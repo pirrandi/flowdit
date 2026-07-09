@@ -475,6 +475,34 @@ const migrations = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret_enc TEXT`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes JSONB NOT NULL DEFAULT '[]'`,
+
+  // ── GitHub Issues integration (v1 — one-way push, per project) ──────
+  // github_pat_enc is AES-256-GCM (utils/crypto.js, same key as the SSO
+  // client secret / TOTP secret) — a GitHub PAT is as sensitive as either.
+  // v1 is deliberately one-directional: a ticket is pushed to GitHub once
+  // and the link is kept for reference, nothing is pulled back. See
+  // GITHUB_INTEGRATION.md for the full design and the path to a future
+  // bidirectional (webhook-based) sync.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_repo VARCHAR(255)`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_pat_enc TEXT`,
+
+  // external_status exists now but is unwritten in v1 — reserved for a
+  // future webhook handler to record GitHub's side of the issue without a
+  // schema change. provider is already a column (not assumed to be
+  // "github") so Jira/Linear can be added as siblings later, one row per
+  // (ticket, provider).
+  `CREATE TABLE IF NOT EXISTS ticket_integrations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id       UUID NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    provider        VARCHAR(20) NOT NULL DEFAULT 'github' CHECK (provider IN ('github')),
+    external_id     VARCHAR(100) NOT NULL,
+    external_url    TEXT NOT NULL,
+    external_status VARCHAR(30),
+    created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (ticket_id, provider)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ticket_integrations_ticket ON ticket_integrations(ticket_id)`,
 ];
 
 

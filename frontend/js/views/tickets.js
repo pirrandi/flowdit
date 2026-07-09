@@ -68,6 +68,7 @@ function ticketRowHtml(t) {
           <span class="ticket-row-title">${esc(t.title)}</span>
           ${t.vuln_name ? `<span class="ticket-row-tag">${esc(t.vuln_name)}</span>` : ''}
           ${isPortal ? `<span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:1px 5px">portal</span>` : ''}
+          ${t.github_url ? `<span style="font-family:var(--mono);font-size:9px;color:var(--t2);border:1px solid var(--b1);border-radius:var(--r-sm);padding:1px 5px">GH</span>` : ''}
         </div>
         <div class="ticket-row-meta">
           <span>opened by <strong>${esc(author)}</strong></span>
@@ -109,8 +110,12 @@ async function openTicketModal(ticketId) {
       onclick="changeTicketStatus('${s}',event)">${STATUS_LABEL[s]}</button>`
   ).join('');
 
+  const githubBtn = t.github_url
+    ? `<a href="${esc(t.github_url)}" target="_blank" rel="noopener" class="btn-secondary" style="font-size:10px;padding:3px 9px;text-decoration:none">${icon('link',{size:11})} View on GitHub</a>`
+    : `<button class="btn-secondary" style="font-size:10px;padding:3px 9px" id="ticket-github-btn" onclick="sendTicketToGithub(event)">Send to GitHub</button>`;
+
   document.getElementById('ticket-modal-status-btns').innerHTML =
-    `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${color};background:${color}18;border:1px solid ${color}44;border-radius:4px;padding:2px 8px">${STATUS_LABEL[t.status]}</span>${btns}`;
+    `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${color};background:${color}18;border:1px solid ${color}44;border-radius:4px;padding:2px 8px">${STATUS_LABEL[t.status]}</span>${btns}${githubBtn}`;
 
   renderTicketThread(t.replies || []);
   document.getElementById('ticket-reply-input').value = '';
@@ -181,6 +186,23 @@ async function changeTicketStatus(status, e) {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+async function sendTicketToGithub(e) {
+  e?.stopPropagation();
+  if (!_openTicketId) return;
+  const btn = document.getElementById('ticket-github-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    await api.tickets.sendToGithub(state.currentProject.id, _openTicketId);
+    state.tickets = await api.tickets.list(state.currentProject.id).catch(() => state.tickets);
+    renderTickets();
+    openTicketModal(_openTicketId);
+    showToast('Sent to GitHub', 'success');
+  } catch(e) {
+    showToast(e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Send to GitHub'; }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('ticket-modal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeTicketModal();
@@ -193,3 +215,4 @@ window.openTicketModal     = openTicketModal;
 window.closeTicketModal    = closeTicketModal;
 window.submitTicketReply   = submitTicketReply;
 window.changeTicketStatus  = changeTicketStatus;
+window.sendTicketToGithub  = sendTicketToGithub;

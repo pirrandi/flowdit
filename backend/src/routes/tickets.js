@@ -5,6 +5,8 @@ const mailer   = require('../services/mailer');
 const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
 const { vulnBelongsToProject } = require('../services/ownership');
+const { decrypt } = require('../utils/crypto');
+const github    = require('../services/github');
 
 router.use(requireAuth, requireProjectAccess);
 
@@ -17,10 +19,12 @@ router.get('/', async (req, res, next) => {
       `SELECT t.*,
               u.username AS opened_by_username, u.avatar_color AS opened_by_color,
               v.name AS vuln_name,
+              gi.external_url AS github_url,
               (SELECT COUNT(*) FROM ticket_replies r WHERE r.ticket_id = t.id)::int AS reply_count
        FROM tickets t
        LEFT JOIN users u ON u.id = t.opened_by
        LEFT JOIN custom_vulns v ON v.id = t.vuln_id
+       LEFT JOIN ticket_integrations gi ON gi.ticket_id = t.id AND gi.provider = 'github'
        WHERE t.project_id = $1
        ORDER BY t.updated_at DESC`,
       [req.params.projectId]
@@ -35,10 +39,12 @@ router.get('/:ticketId', async (req, res, next) => {
     const { rows: tickets } = await db.query(
       `SELECT t.*,
               u.username AS opened_by_username, u.avatar_color AS opened_by_color,
-              v.name AS vuln_name
+              v.name AS vuln_name,
+              gi.external_url AS github_url
        FROM tickets t
        LEFT JOIN users u ON u.id = t.opened_by
        LEFT JOIN custom_vulns v ON v.id = t.vuln_id
+       LEFT JOIN ticket_integrations gi ON gi.ticket_id = t.id AND gi.provider = 'github'
        WHERE t.id = $1 AND t.project_id = $2`,
       [req.params.ticketId, req.params.projectId]
     );
@@ -141,6 +147,63 @@ router.delete('/:ticketId', requireEditor, async (req, res, next) => {
     if (!rows.length) return res.status(404).json({ error: 'Ticket not found' });
     res.json({ ok: true });
   } catch (err) { next(err); }
+});
+
+// ── GITHUB INTEGRATION (v1 — one-way push) ──────────────────────────
+// See GITHUB_INTEGRATION.md for the design and the path to bidirectional
+// sync. requireEditor matches the bar for every other ticket mutation.
+router.post('/:ticketId/github', requireEditor, async (req, res, next) => {
+  try {
+    const { rows: proj } = await db.query(
+      `SELECT github_repo, github_pat_enc FROM projects WHERE id=$1`, [req.params.projectId]
+    );
+    if (!proj[0]?.github_repo || !proj[0]?.github_pat_enc) {
+      return res.status(400).json({ error: 'GitHub is not configured for this project (Settings → GitHub Integration)' });
+    }
+
+    const existing = await db.query(
+      `SELECT external_url FROM ticket_integrations WHERE ticket_id=$1 AND provider='github'`,
+      [req.params.ticketId]
+    );
+    if (existing.rows.length) {
+      return res.status(409).json({ error: 'Already linked to GitHub', external_url: existing.rows[0].external_url });
+    }
+
+    const { rows: tickets } = await db.query(
+      `SELECT t.title, t.description, v.name AS vuln_name, v.severity, v.description AS vuln_description, v.remediation
+       FROM tickets t
+       LEFT JOIN custom_vulns v ON v.id = t.vuln_id
+       WHERE t.id=$1 AND t.project_id=$2`,
+      [req.params.ticketId, req.params.projectId]
+    );
+    if (!tickets.length) return res.status(404).json({ error: 'Ticket not found' });
+    const ticket = tickets[0];
+
+    const bodyParts = [];
+    if (ticket.description) bodyParts.push(ticket.description);
+    if (ticket.vuln_name) {
+      bodyParts.push(`\n---\n**Linked finding:** ${ticket.vuln_name}${ticket.severity ? ` (${ticket.severity})` : ''}`);
+      if (ticket.vuln_description) bodyParts.push(`\n${ticket.vuln_description}`);
+      if (ticket.remediation) bodyParts.push(`\n**Remediation:** ${ticket.remediation}`);
+    }
+    bodyParts.push(`\n\n_Pushed from Flowdit — this issue is not synced back; status changes here don't reflect in Flowdit._`);
+
+    const pat = decrypt(proj[0].github_pat_enc);
+    const issue = await github.createIssue(proj[0].github_repo, pat, {
+      title: ticket.title,
+      body: bodyParts.join('\n'),
+    });
+
+    const { rows: inserted } = await db.query(
+      `INSERT INTO ticket_integrations (ticket_id, provider, external_id, external_url, created_by)
+       VALUES ($1,'github',$2,$3,$4) RETURNING external_id, external_url`,
+      [req.params.ticketId, issue.id, issue.url, req.user.id]
+    );
+    res.status(201).json(inserted[0]);
+  } catch (err) {
+    if (err.message?.startsWith('GitHub')) return res.status(502).json({ error: err.message });
+    next(err);
+  }
 });
 
 // ── REPLIES ───────────────────────────────────────────────────────

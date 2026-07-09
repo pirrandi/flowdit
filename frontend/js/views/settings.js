@@ -83,6 +83,28 @@ async function renderSettings() {
         </div>
 
         <div class="members-card">
+          <div class="members-card-title">GitHub Integration</div>
+          <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 14px">
+            Envía un ticket como issue de GitHub con un click. Es de una sola vía — el estado no se sincroniza de vuelta, solo queda el link como referencia.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="form-label" style="margin-bottom:4px">Repositorio</div>
+              <input type="text" class="form-input" id="cfg-github-repo" placeholder="owner/repo"
+                value="${esc(p.github_repo || '')}" onchange="saveGithubRepo(this.value)">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="password" class="form-input" id="cfg-github-pat"
+                placeholder="Personal access token" style="flex:1;font-size:12px">
+              <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="saveGithubPat()">Set</button>
+            </div>
+            <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:0;line-height:1.5">
+              ${p.has_github_pat ? 'Token configurado. Ingresá uno nuevo para reemplazarlo.' : 'Sin token todavía — necesita permiso "Issues: Read and write" sobre el repo.'}
+            </p>
+          </div>
+        </div>
+
+        <div class="members-card">
           <div class="members-card-title">AI Usage</div>
           <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 14px">
             Consumo estimado de IA en este proyecto, calculado localmente a partir de los tokens que reporta cada respuesta. No es el saldo de tu cuenta — para eso, mirá el dashboard del proveedor.
@@ -367,6 +389,30 @@ async function setAiModel(model) {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+async function saveGithubRepo(repo) {
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { github_repo: repo.trim() || null });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    showToast('Repositorio actualizado', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function saveGithubPat() {
+  const input = document.getElementById('cfg-github-pat');
+  const pat   = input?.value.trim();
+  if (!pat) return;
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { github_pat: pat });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    showToast('Token guardado', 'success');
+    renderSettings();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function toggleProjectFlag(flag, value) {
   try {
     const updated = await api.projects.update(state.currentProject.id, { [flag]: value });
@@ -476,6 +522,8 @@ window.saveTimeline         = saveTimeline;
 window.toggleProjectFlag    = toggleProjectFlag;
 window.setAiProvider        = setAiProvider;
 window.setAiModel           = setAiModel;
+window.saveGithubRepo       = saveGithubRepo;
+window.saveGithubPat        = saveGithubPat;
 window.onLogoFileChange     = onLogoFileChange;
 window.removeLogo           = removeLogo;
 window.setLogoBg            = setLogoBg;

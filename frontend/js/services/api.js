@@ -228,6 +228,7 @@ const api = {
     update: (pid, tid, d)      => request('PATCH',  `/projects/${pid}/tickets/${tid}`, d),
     delete: (pid, tid)         => request('DELETE', `/projects/${pid}/tickets/${tid}`),
     reply:  (pid, tid, body, extra) => request('POST', `/projects/${pid}/tickets/${tid}/replies`, { body, ...extra }),
+    sendToGithub: (pid, tid) => request('POST', `/projects/${pid}/tickets/${tid}/github`),
   },
   activity: {
     list: (pid, limit=50) => request('GET', `/projects/${pid}/activity?limit=${limit}`),

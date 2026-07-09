@@ -7,14 +7,17 @@ const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor, requireOwner } = require('../middleware/project');
+const { encrypt } = require('../utils/crypto');
 
 router.use(requireAuth);
 
-// Strip the bcrypt hash from project objects — frontend only needs a boolean flag
+// Strip secrets from project objects — frontend only needs boolean flags
 function sanitizeProject(p) {
   const out = { ...p };
   out.has_portal_password = !!out.portal_password_hash;
+  out.has_github_pat = !!out.github_pat_enc;
   delete out.portal_password_hash;
+  delete out.github_pat_enc;
   return out;
 }
 
@@ -90,7 +93,7 @@ router.get('/:projectId', requireProjectAccess, (req, res) => res.json(sanitizeP
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model'];
+  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model','github_repo'];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
 
@@ -102,6 +105,13 @@ router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res,
     } else {
       updates.push(`portal_password_hash=NULL`);
     }
+  }
+
+  // github_pat — encrypted at rest, same as portal_password's hash-not-store
+  // pattern: omitted = untouched, empty string = cleared, non-empty = set.
+  if (req.body.github_pat !== undefined) {
+    updates.push(`github_pat_enc=$${values.length+1}`);
+    values.push(req.body.github_pat ? encrypt(req.body.github_pat) : null);
   }
 
   if (!updates.length) return res.json(req.project);

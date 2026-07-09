@@ -70,6 +70,7 @@ No more delivering a PDF at the end and hoping the client trusts the process. Wi
 - Read-only view for clients, accessible via invite link
 - Configurable visibility: findings, WSTG progress, targets, activity feed
 - Ticket system — clients can open queries linked to specific findings; team responds in thread
+- Push a ticket to GitHub Issues with one click (per-project repo + token, see [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md))
 
 ### Collaboration & Platform
 
