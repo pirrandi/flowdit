@@ -1,7 +1,10 @@
 const groq      = require('./groq');
 const anthropic = require('./anthropic');
+const deepseek  = require('./deepseek');
+const kimi      = require('./kimi');
+const custom    = require('./custom');
 
-const PROVIDERS = { groq, anthropic };
+const PROVIDERS = { groq, anthropic, deepseek, kimi, custom };
 const DEFAULT_PROVIDER = 'groq';
 
 function resolve(provider) {
@@ -16,4 +19,8 @@ function chat(provider, opts) {
   return resolve(provider).chat(opts);
 }
 
-module.exports = { generateJSON, chat, PROVIDERS: Object.keys(PROVIDERS) };
+function chatWithTools(provider, opts) {
+  return resolve(provider).chatWithTools(opts);
+}
+
+module.exports = { generateJSON, chat, chatWithTools, PROVIDERS: Object.keys(PROVIDERS) };

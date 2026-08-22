@@ -62,6 +62,7 @@ projectRouter.use('/tickets',    require('./routes/tickets'));
 projectRouter.use('/whiteboard', require('./routes/whiteboard'));
 projectRouter.use('/import',    require('./routes/import'));
 projectRouter.use('/ai',        require('./routes/ai'));
+projectRouter.use('/ai-scan',   require('./routes/ai-scan'));
 
 // Ports & endpoints nested under a specific target
 const targetRouter = express.Router({ mergeParams: true });

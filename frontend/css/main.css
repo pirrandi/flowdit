@@ -242,6 +242,12 @@ body {
 .nav-item-count { font-size: 10px; color: var(--t3); font-variant-numeric: tabular-nums; }
 .nav-item.active .nav-item-count { color: var(--a); }
 .nav-divider { height: 1px; background: var(--b1); margin: 6px 14px; }
+/* Punto vivo en "AI Agent" — visible desde cualquier página, no solo esa
+   (page.js), para que un scan corriendo no quede invisible mientras el
+   pentester trabaja en otra parte. Reusa @keyframes livePulse (arriba). */
+.nav-ai-badge { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-left: auto; }
+.nav-ai-badge.running { background: var(--c-low); animation: livePulse 1.4s ease-in-out infinite; }
+.nav-ai-badge.waiting { background: var(--a); }
 
 .nav-foot {
   border-top: 1px solid var(--b1); padding: 10px 14px;

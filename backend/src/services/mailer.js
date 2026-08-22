@@ -54,6 +54,49 @@ async function sendTicketReplyNotification({ toEmail, toName, projectName, ticke
   });
 }
 
+// ROADMAP.md § "Notificación al celular cuando el AI Agent necesita
+// atención" — el feed de Activity (ai_scan_needs_attention, ver
+// notifyNeedsAttention() en agentLoop.js) es solo in-app/WS, nada llega
+// afuera del navegador. Reusa esta misma infra de SMTP (ya configurable vía
+// env vars, no-op si no está seteado) en vez de levantar un canal nuevo —
+// no es push nativo al celular, pero cualquier app de mail con
+// notificaciones activadas se acerca bastante, y es el canal de menor
+// esfuerzo dado lo que ya existe.
+async function sendAiScanNeedsAttentionNotification({ toEmail, toName, projectName, message, appUrl }) {
+  const transport = createTransport();
+  if (!transport) return; // SMTP not configured — silently skip
+
+  const displayName = toName || toEmail;
+
+  await transport.sendMail({
+    from:    FROM,
+    to:      toEmail,
+    subject: `AI Agent needs your attention — ${projectName}`,
+    text: [
+      `Hi ${displayName},`,
+      '',
+      `The AI Pentest Agent on "${projectName}" needs your attention:`,
+      '',
+      message,
+      '',
+      appUrl ? `Open the session: ${appUrl}` : '',
+      '',
+      '— Flowdit',
+    ].join('\n'),
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;color:#111">
+        <p>Hi <strong>${esc(displayName)}</strong>,</p>
+        <p>The AI Pentest Agent on <strong>${esc(projectName)}</strong> needs your attention:</p>
+        <blockquote style="border-left:3px solid #f59e0b;margin:16px 0;padding:8px 16px;background:#fafafa;color:#333">
+          ${esc(message)}
+        </blockquote>
+        ${appUrl ? `<p><a href="${appUrl}" style="color:#f59e0b">Open the session →</a></p>` : ''}
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+        <p style="font-size:12px;color:#999">Sent by Flowdit · Do not reply to this email</p>
+      </div>`,
+  });
+}
+
 function esc(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -62,4 +105,4 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-module.exports = { sendTicketReplyNotification };
+module.exports = { sendTicketReplyNotification, sendAiScanNeedsAttentionNotification };

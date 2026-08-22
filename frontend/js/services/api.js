@@ -237,6 +237,14 @@ const api = {
     get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),
     save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
   },
+  aiScan: {
+    listSessions:  (pid)          => request('GET',    `/projects/${pid}/ai-scan/sessions`),
+    getSession:    (pid, sid)     => request('GET',    `/projects/${pid}/ai-scan/sessions/${sid}`),
+    createSession: (pid, data)    => request('POST',   `/projects/${pid}/ai-scan/sessions`, data),
+    deleteSession: (pid, sid)     => request('DELETE', `/projects/${pid}/ai-scan/sessions/${sid}`),
+    renameSession: (pid, sid, name) => request('PATCH', `/projects/${pid}/ai-scan/sessions/${sid}`, { name }),
+    updateSession: (pid, sid, data) => request('PATCH', `/projects/${pid}/ai-scan/sessions/${sid}`, data),
+  },
   import: {
     scan: (pid, file) => {
       const fd = new FormData();

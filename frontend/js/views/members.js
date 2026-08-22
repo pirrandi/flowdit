@@ -134,7 +134,7 @@ async function copyInviteCode(token) {
 }
 
 async function copyInviteLink(token) {
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login.html`;
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login`;
   const link = `${base}?invite=${encodeURIComponent(token)}`;
   await navigator.clipboard.writeText(link);
   showToast('Client portal link copied', 'info');
@@ -171,7 +171,7 @@ async function joinWithCode() {
     state.currentProject = state.projects.find(p => p.id === res.projectId) || state.projects[0];
     localStorage.setItem('fd_project', state.currentProject.id);
     if (state.currentProject.member_role === 'viewer') {
-      window.location.href = 'client.html';
+      window.location.href = 'client';
       return;
     }
     await loadProjectData(state.currentProject.id);

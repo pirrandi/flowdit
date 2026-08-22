@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flowdit — My Vulns</title>
+<title>My Vulns</title>
 <link rel="stylesheet" href="css/main.css">
   <link rel="icon" type="image/x-icon" href="img/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
@@ -21,7 +21,7 @@
     <div class="page-header">
       <div>
         <div class="page-title">My Custom Vulns</div>
-        <div class="page-subtitle">// personal findings · <a href="export.html" style="color:var(--a);text-decoration:none">add descriptions &amp; export <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg></a></div>
+        <div class="page-subtitle">// personal findings · <a href="export" style="color:var(--a);text-decoration:none">add descriptions &amp; export <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg></a></div>
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn" onclick="openImportModal()"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg> Import Burp XML</button>
@@ -221,13 +221,14 @@
 
     <div id="import-idle">
       <p style="font-size:12px;color:var(--t2);margin:0 0 12px">
-        Supports <strong>Burp Suite</strong>, <strong>Nessus</strong>, and <strong>OWASP ZAP</strong> XML exports.
+        Supports <strong>Burp Suite</strong>, <strong>Nessus</strong>, <strong>OWASP ZAP</strong>, and <strong>Nmap</strong> XML exports.
         The format is detected automatically. Hosts are matched to existing targets or created if missing.
       </p>
       <div style="font-size:11px;color:var(--t3);margin-bottom:14px;display:flex;flex-direction:column;gap:3px">
         <span>· Burp Suite → <em>Issue activity → Report selected issues → XML</em></span>
         <span>· Nessus → <em>Export → Nessus XML (.nessus)</em></span>
         <span>· OWASP ZAP → <em>Report → Export Report → XML</em></span>
+        <span>· Nmap → <em>nmap -oX scan.xml &lt;hosts&gt;</em> (imports open ports/services, not findings)</span>
       </div>
       <div id="import-drop-zone" style="border:2px dashed var(--br1);border-radius:8px;padding:32px 16px;text-align:center;cursor:pointer;transition:border-color .15s"
            onclick="document.getElementById('import-file-input').click()"

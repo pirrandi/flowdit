@@ -18,6 +18,8 @@ const ICONS = {
   'layout-grid':    '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
   'link':           '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   'log-out':        '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
+  'pause':          '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="6" y="3" width="5" height="18" rx="1"/>',
+  'play':           '<polygon points="6 3 20 12 6 21 6 3"/>',
   'plus':           '<path d="M5 12h14"/><path d="M12 5v14"/>',
   'rotate-ccw':     '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
   'search':         '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',

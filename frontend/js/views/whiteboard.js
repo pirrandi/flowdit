@@ -250,7 +250,7 @@ function _buildNode(nodeData, target) {
         ${epRows}
       </div>
       <div class="wb-node-footer">
-        <a href="targets.html?pid=${pid}" target="_blank">View in Targets →</a>
+        <a href="targets?pid=${pid}" target="_blank">View in Targets →</a>
       </div>
     </div>`;
 

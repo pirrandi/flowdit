@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Client Portal — Flowdit</title>
+<title>Client Portal</title>
 <link rel="stylesheet" href="css/main.css">
 <link rel="icon" type="image/x-icon" href="img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
@@ -124,7 +124,7 @@
     <button class="cl-btn" id="cl-pw-btn" onclick="clEnterWithPassword()">Access Portal</button>
   </div>
 
-  <a href="index.html" class="cl-back">Team member? Sign in here</a>
+  <a href="/" class="cl-back">Team member? Sign in here</a>
 </div>
 
 <div class="toast-container" id="toast-container"></div>
@@ -141,7 +141,7 @@ let _needsPassword = false;
 async function boot() {
   // Already have a valid portal session → go straight in
   if (api.portal.session.has()) {
-    window.location.href = 'client.html';
+    window.location.href = 'client';
     return;
   }
 
@@ -194,7 +194,7 @@ function clEnter() {
   const token = api.portal.session.token;
   const pid   = api.portal.session.projectId;
   api.portal.session.set(token, pid, name, email);
-  window.location.href = 'client.html';
+  window.location.href = 'client';
 }
 
 async function clEnterWithPassword() {
@@ -210,7 +210,7 @@ async function clEnterWithPassword() {
   try {
     const data = await api.portal.auth(_portalToken, pw);
     api.portal.session.set(data.accessToken, data.projectId, name, email);
-    window.location.href = 'client.html';
+    window.location.href = 'client';
   } catch (e) {
     err.textContent = e.message || 'Incorrect password';
     err.style.display = 'block';

@@ -31,11 +31,24 @@ services:
       JWT_EXPIRES_IN: 7d
       JWT_REFRESH_EXPIRES_IN: 30d
       CORS_ORIGIN: http://localhost
+      INTERNAL_APP_URL: http://nginx
       RATE_LIMIT_MAX: 500
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-k3}
+      # Proveedor "custom" — modelos locales (Ollama, LM Studio, vLLM...).
+      # CUSTOM_API_URL debe ser un endpoint de chat-completions OpenAI-compatible,
+      # p.ej. http://host.docker.internal:11434/v1/chat/completions para Ollama en
+      # el host (puede requerir agregar `extra_hosts` en Linux). Sin CUSTOM_API_KEY
+      # funciona igual — la mayoría de estos servidores no la exigen.
+      CUSTOM_API_URL: ${CUSTOM_API_URL:-}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY:-}
+      CUSTOM_MODEL: ${CUSTOM_MODEL:-}
     ports:
       - "4000:4000"
     depends_on:

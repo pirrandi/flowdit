@@ -17,6 +17,7 @@ const state = {
   currentView:    'dashboard',
   wstgFilter:     'all',
   psFilter:       'all',
+  navAiBadge:     null, // 'running' | 'waiting_approval' | null — sobrevive a renders del sidenav, ver setNavAiBadge() en page.js
 };
 
 window.state = state;

@@ -2,12 +2,12 @@
 // Loaded by dashboard.html, owstg.html, portswigger.html, vulns.html, members.html
 
 // ── AUTH GUARD ────────────────────────────────────────────────────
-window.addEventListener('fd:logout', () => { window.location.href = 'index.html'; });
+window.addEventListener('fd:logout', () => { window.location.href = '/'; });
 
 async function bootPage(viewName) {
-  if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
+  if (!api.auth.hasSession()) { window.location.href = '/'; return; }
   try { state.user = await api.auth.me(); }
-  catch { window.location.href = 'index.html'; return; }
+  catch { window.location.href = '/'; return; }
 
   state.currentView = viewName;
   renderTopbar();
@@ -31,11 +31,11 @@ async function bootPage(viewName) {
   if (!state.currentProject && state.projects.length) state.currentProject = state.projects[0];
 
   // No project at all → go to project list
-  if (!state.currentProject) { window.location.href = 'projects.html'; return; }
+  if (!state.currentProject) { window.location.href = 'projects'; return; }
 
   // Viewers always go to the client portal
   if (state.currentProject.member_role === 'viewer') {
-    window.location.href = `client.html?pid=${state.currentProject.id}`;
+    window.location.href = `client?pid=${state.currentProject.id}`;
     return;
   }
 
@@ -47,7 +47,55 @@ async function bootPage(viewName) {
   mountAiChat();
   if (typeof pageInit === 'function') pageInit();
   refreshTopbarProgress();
+  initNavAiBadge(); // no await — punto vivo en "AI Agent" del nav, visible desde cualquier página
 }
+
+// ── Badge del AI Agent en el nav — "que se complemente con el ecosistema" ─
+// Un scan puede quedar corriendo mientras el pentester trabaja en Targets,
+// Findings, etc. — sin esto, no había ninguna señal de que el agente
+// seguía activo fuera de la propia página de AI Agent. Chequeo inicial
+// liviano (reusa GET /sessions, lo mismo que ya pide ai-agent.html) +
+// actualización en vivo por WS, disponible en TODAS las páginas porque
+// page.js se carga en todas.
+async function initNavAiBadge() {
+  if (!state.currentProject) return;
+  try {
+    const sessions = await api.aiScan.listSessions(state.currentProject.id);
+    const active = sessions.find(s => ['running', 'waiting_approval'].includes(s.status));
+    setNavAiBadge(active ? active.status : null);
+  } catch {}
+}
+
+function setNavAiBadge(status) {
+  // Persistido en `state` (no solo en el DOM) para que sobreviva a un
+  // renderSidenav() disparado por otra razón (ej. settings.js guardando el
+  // nombre del proyecto) — sin esto, ese re-render pisaba el badge con el
+  // template oculto por defecto y quedaba invisible hasta el próximo evento WS.
+  state.navAiBadge = ['running', 'waiting_approval'].includes(status) ? status : null;
+  const badge = document.getElementById('nav-ai-badge');
+  if (!badge) return;
+  if (status === 'running') {
+    badge.style.display = 'inline-block';
+    badge.className = 'nav-ai-badge running';
+    badge.title = 'El AI Agent está trabajando';
+  } else if (status === 'waiting_approval') {
+    badge.style.display = 'inline-block';
+    badge.className = 'nav-ai-badge waiting';
+    badge.title = 'El AI Agent espera tu aprobación';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Room-scoped por proyecto (ver ws.js backend) — cualquier ai_scan:event
+// que llega acá ya es de ESTE proyecto, no hace falta filtrar por
+// session_id. Simplificación deliberada: asume una sola sesión realmente
+// activa a la vez por proyecto (mismo supuesto que ya usa ai-agent.js al
+// elegir qué sesión mostrar al entrar) — si hubiera varias en paralelo, el
+// badge refleja la última que emitió un evento, no un agregado de todas.
+wsClient.on('ai_scan:event', (msg) => {
+  setNavAiBadge(['running', 'waiting_approval'].includes(msg.status) ? msg.status : null);
+});
 
 // ── PROJECT LOADING ───────────────────────────────────────────────
 async function loadProjectData(pid) {
@@ -67,7 +115,7 @@ async function loadProjectData(pid) {
 
 function switchProject(id) {
   localStorage.setItem('fd_project', id);
-  window.location.href = `dashboard.html?pid=${id}`;
+  window.location.href = `dashboard?pid=${id}`;
 }
 
 // ── PROGRESS — always computed from full WSTG+PS totals ──────────
@@ -105,21 +153,22 @@ function updateTopbarProgress(done, total) {
 
 // ── SIDENAV ───────────────────────────────────────────────────────
 const _NAV_ICONS = {
-  'dashboard.html':   `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>`,
-  'targets.html':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="1" x2="8" y2="4"/><line x1="8" y1="12" x2="8" y2="15"/><line x1="1" y1="8" x2="4" y2="8"/><line x1="12" y1="8" x2="15" y2="8"/></svg>`,
-  'vulns.html':       `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L14 5v4c0 3.5-2.8 5.5-6 6.5C5.8 14.5 2 12.5 2 9V5z"/><line x1="8" y1="7" x2="8" y2="9.5"/><circle cx="8" cy="11.5" r=".7" fill="currentColor" stroke="none"/></svg>`,
-  'export.html':      `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1h6l4 4v10H4z"/><path d="M10 1v4h4"/><line x1="6" y1="8" x2="11" y2="8"/><line x1="6" y1="11" x2="11" y2="11"/></svg>`,
-  'whiteboard.html':  `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="11" rx="1.5"/><path d="M5 10.5L6.5 9l3-3L11 4.5l1 1-1.5 1.5-3 3L6 11.5z"/></svg>`,
-  'owstg.html':        `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="12" height="14" rx="1.5"/><path d="M5.5 5.5L7 7l3.5-3.5"/><line x1="5" y1="10" x2="11" y2="10"/><line x1="5" y1="13" x2="9" y2="13"/></svg>`,
-  'methodology.html': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3" width="9" height="12" rx="1"/><path d="M7 3V1.5a1.5 1.5 0 013 0V3"/><line x1="6.5" y1="8" x2="9.5" y2="8"/><line x1="6.5" y1="11" x2="9.5" y2="11"/></svg>`,
-  'members.html':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5.5" r="2.5"/><path d="M1 14c0-3 2-4.5 5-4.5s5 1.5 5 4.5"/><circle cx="12.5" cy="5" r="2"/><path d="M12.5 11c2.5.2 3.5 1.5 3.5 3"/></svg>`,
-  'settings.html':    `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.5 3.5l1 1M11.5 11.5l1 1M3.5 12.5l1-1M11.5 4.5l1-1"/></svg>`,
-  'tickets.html':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h12v9H9l-2.5 3L4 11H2z"/></svg>`,
-  'portswigger.html': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1v5L2 14h12L10 6V1"/><line x1="5.5" y1="1" x2="10.5" y2="1"/><circle cx="7" cy="11" r="1" fill="currentColor" stroke="none"/></svg>`,
+  'dashboard':   `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>`,
+  'targets':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="1" x2="8" y2="4"/><line x1="8" y1="12" x2="8" y2="15"/><line x1="1" y1="8" x2="4" y2="8"/><line x1="12" y1="8" x2="15" y2="8"/></svg>`,
+  'vulns':       `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L14 5v4c0 3.5-2.8 5.5-6 6.5C5.8 14.5 2 12.5 2 9V5z"/><line x1="8" y1="7" x2="8" y2="9.5"/><circle cx="8" cy="11.5" r=".7" fill="currentColor" stroke="none"/></svg>`,
+  'export':      `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1h6l4 4v10H4z"/><path d="M10 1v4h4"/><line x1="6" y1="8" x2="11" y2="8"/><line x1="6" y1="11" x2="11" y2="11"/></svg>`,
+  'whiteboard':  `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="11" rx="1.5"/><path d="M5 10.5L6.5 9l3-3L11 4.5l1 1-1.5 1.5-3 3L6 11.5z"/></svg>`,
+  'ai-agent':    `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="10" height="8" rx="2"/><line x1="8" y1="5.5" x2="8" y2="2.5"/><circle cx="8" cy="1.5" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="10" cy="9.5" r=".8" fill="currentColor" stroke="none"/><line x1="5.5" y1="12.5" x2="10.5" y2="12.5"/></svg>`,
+  'owstg':        `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="12" height="14" rx="1.5"/><path d="M5.5 5.5L7 7l3.5-3.5"/><line x1="5" y1="10" x2="11" y2="10"/><line x1="5" y1="13" x2="9" y2="13"/></svg>`,
+  'methodology': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3" width="9" height="12" rx="1"/><path d="M7 3V1.5a1.5 1.5 0 013 0V3"/><line x1="6.5" y1="8" x2="9.5" y2="8"/><line x1="6.5" y1="11" x2="9.5" y2="11"/></svg>`,
+  'members':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5.5" r="2.5"/><path d="M1 14c0-3 2-4.5 5-4.5s5 1.5 5 4.5"/><circle cx="12.5" cy="5" r="2"/><path d="M12.5 11c2.5.2 3.5 1.5 3.5 3"/></svg>`,
+  'settings':    `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.5 3.5l1 1M11.5 11.5l1 1M3.5 12.5l1-1M11.5 4.5l1-1"/></svg>`,
+  'tickets':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h12v9H9l-2.5 3L4 11H2z"/></svg>`,
+  'portswigger': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1v5L2 14h12L10 6V1"/><line x1="5.5" y1="1" x2="10.5" y2="1"/><circle cx="7" cy="11" r="1" fill="currentColor" stroke="none"/></svg>`,
 };
 
 function renderSidenav() {
-  const current = window.location.pathname.split('/').pop() || 'dashboard.html';
+  const current = window.location.pathname.split('/').pop() || 'dashboard';
   const proj = state.currentProject;
   const pid  = proj ? `?pid=${proj.id}` : '';
   const u    = state.user;
@@ -128,32 +177,33 @@ function renderSidenav() {
     {
       label: 'Engagement',
       items: [
-        { href:`dashboard.html${pid}`,   label:'Overview'      },
-        { href:`targets.html${pid}`,     label:'Targets'       },
-        { href:`vulns.html${pid}`,       label:'Findings'      },
-        { href:`export.html${pid}`,      label:'Report'        },
-        { href:`whiteboard.html${pid}`,  label:'Whiteboard'    },
+        { href:`dashboard${pid}`,   label:'Overview'      },
+        { href:`targets${pid}`,     label:'Targets'       },
+        { href:`vulns${pid}`,       label:'Findings'      },
+        { href:`export${pid}`,      label:'Report'        },
+        { href:`whiteboard${pid}`,  label:'Whiteboard'    },
+        { href:`ai-agent${pid}`,    label:'AI Agent'      },
       ]
     },
     {
       label: 'Testing',
       items: [
-        { href:`owstg.html${pid}`,        label:'OWASP WSTG'    },
-        { href:`methodology.html${pid}`, label:'Methodologies' },
+        { href:`owstg${pid}`,        label:'OWASP WSTG'    },
+        { href:`methodology${pid}`, label:'Methodologies' },
       ]
     },
     {
       label: 'Team',
       items: [
-        { href:`members.html${pid}`,     label:'Members'       },
-        { href:`settings.html${pid}`,    label:'Settings'      },
-        ...(proj?.tickets_enabled ? [{ href:`tickets.html${pid}`, label:'Queries' }] : []),
+        { href:`members${pid}`,     label:'Members'       },
+        { href:`settings${pid}`,    label:'Settings'      },
+        ...(proj?.tickets_enabled ? [{ href:`tickets${pid}`, label:'Queries' }] : []),
       ]
     },
     {
       label: 'Practice',
       items: [
-        { href:`portswigger.html${pid}`, label:'PortSwigger'   },
+        { href:`portswigger${pid}`, label:'PortSwigger'   },
       ]
     },
   ];
@@ -167,7 +217,7 @@ function renderSidenav() {
       <span class="brand-wordmark">Flowdit</span>
       <span class="brand-tag">SELF-HOSTED</span>
     </div>
-    <a href="projects.html" class="nav-back-link">${icon('arrow-left', { size: 13 })} All Projects</a>`;
+    <a href="projects" class="nav-back-link">${icon('arrow-left', { size: 13 })} All Projects</a>`;
 
   if (proj) {
     html += `
@@ -190,7 +240,19 @@ function renderSidenav() {
     g.items.forEach(item => {
       const active = current === item.href.split('?')[0];
       const navIcon = _NAV_ICONS[item.href.split('?')[0]] || '';
-      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${navIcon}<span>${item.label}</span></a>`;
+      // Badge del AI Agent — punto vivo cuando hay un scan corriendo o
+      // esperando aprobación en ESTE proyecto, visible desde cualquier
+      // página (no solo estando en ai-agent.html). Vacío/oculto por
+      // default, `initNavAiBadge()` lo llena después del render inicial —
+      // ver ese comentario para el porqué (no bloquea el render del nav).
+      // Arranca con el último estado conocido (state.navAiBadge) en vez de
+      // siempre oculto — así un renderSidenav() disparado por otra vista
+      // (ej. saveGeneral() en settings.js) no apaga el punto de un scan
+      // que sigue corriendo; setNavAiBadge() mantiene ese estado al día.
+      const badgeStatus = state.navAiBadge;
+      const aiBadge = item.href.split('?')[0] === 'ai-agent'
+        ? `<span class="nav-ai-badge${badgeStatus ? ' '+badgeStatus : ''}" id="nav-ai-badge" style="${badgeStatus ? '' : 'display:none'}"></span>` : '';
+      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${navIcon}<span>${item.label}</span>${aiBadge}</a>`;
     });
   });
   html += `</div>`;
@@ -235,7 +297,7 @@ function renderTopbar() {
         ${role ? `<span style="font-family:var(--mono);font-size:9px;color:${color};opacity:.8">${role}</span>` : ''}
         <div class="user-dropdown" id="user-dropdown">
           <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">${icon('user', { size: 13 })} Edit Profile</button>
-          <button class="dropdown-item" onclick="window.location.href='orgs.html'">${icon('building-2', { size: 13 })} Organizations</button>
+          <button class="dropdown-item" onclick="window.location.href='orgs'">${icon('building-2', { size: 13 })} Organizations</button>
           <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out', { size: 13 })} Logout</button>
         </div>
       </div>
@@ -543,7 +605,7 @@ async function doLogout() {
   wsClient.disconnect();
   await api.auth.logout().catch(() => {});
   localStorage.removeItem('fd_project');
-  window.location.href = 'index.html';
+  window.location.href = '/';
 }
 
 // ── WEBSOCKET EVENTS ──────────────────────────────────────────────
@@ -590,7 +652,7 @@ async function saveProject() {
     const proj = await api.projects.create({ name, target, description: desc });
     localStorage.setItem('fd_project', proj.id);
     document.getElementById('project-modal')?.classList.remove('open');
-    window.location.href = `dashboard.html?pid=${proj.id}`;
+    window.location.href = `dashboard?pid=${proj.id}`;
   } catch(e) { showToast(e.message, 'error'); }
   finally { btn.disabled = false; }
 }

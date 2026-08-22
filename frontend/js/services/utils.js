@@ -70,13 +70,29 @@ function actionLabel(action, entityType, entityName, meta) {
       if (meta?.remediation_status === 'verified_closed')  return `verified ${name} as <span class="activity-status-pill pill-done">closed</span>`;
       return `reopened ${name}`;
     case 'lab_completed': return `completed lab ${name}`;
-    case 'vuln_created':  return `added custom vuln ${name}`;
+    case 'vuln_created':
+      // Pedido explícito: en un entorno colaborativo, "dvalencia added
+      // custom vuln X" sin más hace parecer que lo escribió a mano — este
+      // badge distingue que lo encontró el AI Agent (dvalencia solo
+      // aprobó), sin sacarle el crédito de la aprobación al actor. Mismo
+      // estilo que el badge "AI" ya usado en la lista de Findings (vulns.js).
+      return `added custom vuln ${name}` + (meta?.ai_generated
+        ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;margin-left:6px;display:inline-flex;align-items:center;gap:3px" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>`
+        : '');
     case 'vuln_deleted':  return `deleted ${name}`;
     case 'target_added': return `added target ${name}`
     case 'target_removed': return `deleted target ${name}`
     case 'target_updated': return `updated target ${name}`
     case 'invite_created': return `created an invite link`;
     case 'member_joined':  return `joined the project`;
+    case 'ai_scan_started':  return `started an AI Agent scan`;
+    case 'ai_scan_deleted':  return `deleted an AI Agent scan session`;
+    // El único aviso real que dispara el modo autónomo del agente (ver
+    // AI_PENTEST_AGENT.md § Notificaciones) — se frenó de verdad y
+    // necesita que alguien mire. `meta.message` trae el motivo puntual
+    // (gate pendiente, o se acabó el presupuesto de auto-continues).
+    case 'ai_scan_needs_attention':
+      return `<span style="color:var(--a)">${icon('triangle-alert',{size:10})} ${esc(meta?.message || 'El AI Agent necesita tu atención')}</span>`;
     default: return `updated ${name}`;
   }
 }

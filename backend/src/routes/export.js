@@ -25,6 +25,24 @@ function findChrome() {
   });
 }
 
+// Puppeteer runs inside the backend container, so the browser-supplied pageUrl
+// (window.location.href, e.g. http://localhost/export?...) is not reachable from
+// there — "localhost" resolves to the backend container itself, not the nginx
+// container serving the frontend. INTERNAL_APP_URL lets ops point Puppeteer at
+// the nginx service's internal address while keeping path/query intact.
+function resolveInternalPageUrl(pageUrl) {
+  if (!process.env.INTERNAL_APP_URL) return pageUrl;
+  try {
+    const url = new URL(pageUrl);
+    const internal = new URL(process.env.INTERNAL_APP_URL);
+    url.protocol = internal.protocol;
+    url.host = internal.host;
+    return url.toString();
+  } catch {
+    return pageUrl;
+  }
+}
+
 const SOFFICE_CANDIDATES = [
   '/usr/bin/soffice',
   '/usr/bin/libreoffice',
@@ -103,13 +121,23 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
 
+    // Pin the API base before config.js's dev/prod hostname heuristic runs — the
+    // page is navigated through the internal nginx hostname (see
+    // resolveInternalPageUrl), which that heuristic doesn't recognize.
+    // Puppeteer's browser runs inside the backend container itself, so its own
+    // "localhost:4000" reaches this same process.
+    await page.evaluateOnNewDocument(() => {
+      window.FLOWDIT_API = 'http://localhost:4000/api';
+      window.FLOWDIT_WS  = 'ws://localhost:4000/ws';
+    });
+
     // Inject auth token + report data into localStorage before page loads
     await page.evaluateOnNewDocument((t, key, data) => {
       if (t)    localStorage.setItem('fd_access', t);
       if (key && data) localStorage.setItem(key, data);
     }, token || '', rptKey || '', rptData || '');
 
-    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.goto(resolveInternalPageUrl(pageUrl), { waitUntil: 'networkidle0', timeout: 30000 });
 
     // Wait for fonts and report content to be ready
     await page.evaluateHandle('document.fonts.ready');

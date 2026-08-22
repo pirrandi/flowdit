@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flowdit — Signing in...</title>
+<title>Signing in...</title>
 <link rel="stylesheet" href="css/main.css">
 <link rel="icon" type="image/x-icon" href="img/favicon.ico">
 <script src="js/config.js"></script>
@@ -17,14 +17,14 @@
 <script>
 (async () => {
   const code = new URLSearchParams(window.location.search).get('xchg');
-  if (!code) { window.location.href = 'index.html?ssoError=' + encodeURIComponent('Missing sign-in code'); return; }
+  if (!code) { window.location.href = '/?ssoError=' + encodeURIComponent('Missing sign-in code'); return; }
   try {
     const data = await api.auth.sso.exchange(code);
     api.auth.setTokens(data.accessToken, data.refreshToken);
     localStorage.setItem('fd_user', JSON.stringify(data.user));
-    window.location.href = 'projects.html';
+    window.location.href = 'projects';
   } catch (e) {
-    window.location.href = 'index.html?ssoError=' + encodeURIComponent(e.message || 'Sign-in failed');
+    window.location.href = '/?ssoError=' + encodeURIComponent(e.message || 'Sign-in failed');
   }
 })();
 </script>

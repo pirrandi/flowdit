@@ -425,6 +425,7 @@ function buildVulnCard(v) {
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
       ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
+      ${v.ai_generated ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;flex-shrink:0;display:inline-flex;align-items:center;gap:3px" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>` : ''}
       ${(v.remediation_status && v.remediation_status !== 'open') ? remediationBadge(v.remediation_status) : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
@@ -776,16 +777,25 @@ async function submitImport() {
     document.getElementById('import-loading').style.display  = 'none';
     document.getElementById('import-result').style.display   = '';
 
-    const toolName = { burp: 'Burp Suite', nessus: 'Nessus', zap: 'OWASP ZAP' }[res.format] || 'scanner';
-    let text = `Imported <strong>${res.imported}</strong> finding${res.imported !== 1 ? 's' : ''} from ${toolName}`;
+    const toolName = { burp: 'Burp Suite', nessus: 'Nessus', zap: 'OWASP ZAP', nmap: 'Nmap' }[res.format] || 'scanner';
+    // Nmap no reporta vulnerabilidades — a diferencia de los otros 3
+    // formatos, puebla puertos/servicios directamente (ver import.js
+    // parseNmap), así que "imported" cuenta puertos, no findings.
+    const unit = res.format === 'nmap' ? 'port' : 'finding';
+    let text = `Imported <strong>${res.imported}</strong> ${unit}${res.imported !== 1 ? 's' : ''} from ${toolName}`;
     if (res.targets_created > 0)
       text += ` · Created <strong>${res.targets_created}</strong> new target${res.targets_created !== 1 ? 's' : ''}`;
     document.getElementById('import-result-msg').innerHTML = text;
 
-    const fresh = await api.vulns.list(pid);
-    state.customVulns = fresh.vulns || fresh;
+    // Reportado tarde en revisión: un import podía crear targets nuevos
+    // (cualquiera de los 4 formatos) sin que state.targets se enterara —
+    // quedaban invisibles en el resto de la app (selector de la AI Agent,
+    // conteos del dashboard, etc.) hasta un reload completo de la página.
+    const [freshVulns, freshTargets] = await Promise.all([api.vulns.list(pid), api.targets.list(pid)]);
+    state.customVulns = freshVulns.vulns || freshVulns;
+    state.targets = freshTargets;
     renderCustomVulns();
-    showToast(`Imported ${res.imported} findings from ${toolName}`, 'success');
+    showToast(`Imported ${res.imported} ${unit}${res.imported !== 1 ? 's' : ''} from ${toolName}`, 'success');
   } catch (err) {
     document.getElementById('import-loading').style.display    = 'none';
     document.getElementById('import-idle').style.display       = '';

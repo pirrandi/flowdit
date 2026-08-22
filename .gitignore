@@ -9,3 +9,7 @@ dist/
 ideas.md
 handoff/
 Screenshot_*.png
+
+# Local dev tooling (Claude Code, skill registry cache)
+.claude/
+.atl/

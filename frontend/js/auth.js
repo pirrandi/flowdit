@@ -22,7 +22,7 @@ async function boot() {
 }
 
 async function resolveHome() {
-  return 'projects.html';
+  return 'projects';
 }
 
 function switchAuthTab(tab, btn) {

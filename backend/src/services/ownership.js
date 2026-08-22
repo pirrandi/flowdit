@@ -21,4 +21,22 @@ async function vulnBelongsToProject(vulnId, projectId) {
   return rows.length ? vulnId : null;
 }
 
-module.exports = { targetBelongsToProject, vulnBelongsToProject };
+// Misma query que requireProjectAccess (middleware/project.js) — membership
+// directa (project_members) O implícita vía ser owner/admin de la
+// organización dueña del proyecto. Extraída acá para poder reusarla fuera
+// de Express (ver ws.js: un socket no pasa por el middleware REST, así que
+// nada validaba membership al conectar — ver ROADMAP.md § "WebSocket —
+// validar membership de proyecto al conectar").
+async function userBelongsToProject(userId, projectId) {
+  const { rows } = await db.query(
+    `SELECT 1
+     FROM projects p
+     LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $2
+     LEFT JOIN organization_members om ON om.organization_id = p.organization_id AND om.user_id = $2 AND om.role IN ('owner','admin')
+     WHERE p.id = $1 AND (pm.user_id IS NOT NULL OR om.user_id IS NOT NULL)`,
+    [projectId, userId]
+  );
+  return rows.length > 0;
+}
+
+module.exports = { targetBelongsToProject, vulnBelongsToProject, userBelongsToProject };
