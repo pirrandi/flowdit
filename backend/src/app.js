@@ -30,7 +30,12 @@ app.use(express.json({ limit: '4mb' }));
 
 // Rate limiting (disabled in local dev)
 if (process.env.NODE_ENV === 'production') {
-  app.use(rateLimit({ windowMs:15*60*1000, max:500, standardHeaders:true, legacyHeaders:false }));
+  // RATE_LIMIT_MAX is documented in .env.example and set in docker-compose, but
+  // the global limit ignored it and always used 500. The auth limits below stay
+  // fixed on purpose — they guard credential stuffing, not general throughput,
+  // and shouldn't loosen when an operator raises the app-wide ceiling.
+  const globalMax = Number(process.env.RATE_LIMIT_MAX) || 500;
+  app.use(rateLimit({ windowMs:15*60*1000, max:globalMax, standardHeaders:true, legacyHeaders:false }));
   app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
   app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
   app.use('/api/portal/auth',   rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));

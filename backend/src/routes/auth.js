@@ -5,11 +5,12 @@ const { body, validationResult } = require('express-validator');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const wsService = require('../services/ws');
-const { signAccess } = require('../utils/tokens');
+const { signAccess, refreshExpiryDays, REFRESH_INSERT } = require('../utils/tokens');
 const { createChallenge } = require('../services/mfa');
 
 // Palette for auto-assigned avatar colors
 const COLORS = ['#7c3aed','#2563eb','#059669','#dc2626','#d97706','#0891b2','#7c3aed','#be185d'];
+
 
 // POST /auth/register
 router.post('/register', [
@@ -71,9 +72,8 @@ router.post('/register', [
     const accessToken  = signAccess(user);
     const refreshToken = uuidv4() + uuidv4().replace(/-/g,'');
     await client.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1,$2, NOW() + INTERVAL '30 days')`,
-      [user.id, refreshToken]
+      REFRESH_INSERT,
+      [user.id, refreshToken, refreshExpiryDays()]
     );
 
     await client.query('COMMIT');
@@ -131,9 +131,8 @@ router.post('/login', [
     const accessToken  = signAccess(user);
     const refreshToken = uuidv4() + uuidv4().replace(/-/g,'');
     await db.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1,$2, NOW() + INTERVAL '30 days')`,
-      [user.id, refreshToken]
+      REFRESH_INSERT,
+      [user.id, refreshToken, refreshExpiryDays()]
     );
 
     res.json({ accessToken, refreshToken,
@@ -158,9 +157,8 @@ router.post('/refresh', async (req, res, next) => {
     await db.query('DELETE FROM refresh_tokens WHERE id=$1', [row.id]);
     const newRefresh = uuidv4() + uuidv4().replace(/-/g,'');
     await db.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1,$2, NOW() + INTERVAL '30 days')`,
-      [row.uid, newRefresh]
+      REFRESH_INSERT,
+      [row.uid, newRefresh, refreshExpiryDays()]
     );
 
     const accessToken = signAccess({ id:row.uid, username:row.username });

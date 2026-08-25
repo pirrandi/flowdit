@@ -9,7 +9,10 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <script src="js/config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- Vendored, not CDN — see js/vendor/README.md. DOMPurify is required here:
+     whiteboard notes are rendered as markdown, and marked does not strip HTML. -->
+<script src="js/vendor/marked.umd.js"></script>
+<script src="js/vendor/purify.min.js"></script>
 <style>
   /* Whiteboard overrides — full-height canvas layout */
   .workarea         { overflow: hidden; }
