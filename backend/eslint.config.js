@@ -27,6 +27,11 @@ module.exports = [
         globalThis: 'readonly',
         TextEncoder: 'readonly',
         TextDecoder: 'readonly',
+        // Web-standard globals Node exposes alongside fetch() — the AI scan
+        // tools use them for per-request timeouts and cancellation.
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        DOMException: 'readonly',
       },
     },
     rules: {

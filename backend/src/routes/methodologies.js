@@ -1,7 +1,6 @@
 const router = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db       = require('../db');
-const activity = require('../services/activity');
 const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');

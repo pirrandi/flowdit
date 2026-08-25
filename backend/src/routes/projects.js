@@ -1,12 +1,11 @@
 const router = require('express').Router();
-const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor, requireOwner } = require('../middleware/project');
+const { requireProjectAccess, requireOwner } = require('../middleware/project');
 const { encrypt } = require('../utils/crypto');
 
 router.use(requireAuth);
