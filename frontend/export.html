@@ -3302,25 +3302,23 @@ function buildReport() {
       _secNum++;
       const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       const REM_LABEL = { open:'Abierto', remediated:'Remediado', verified_closed:'Verificado' };
-      md('## Índice de Hallazgos'); md('| ID | Severidad | Vulnerabilidad | Categoría | Estado | Remediación |'); md('|----|-----------|----------------|-----------|--------|-------------|');
+      md('## Índice de Hallazgos'); md('| ID | Severidad | Vulnerabilidad | Categoría | Remediación |'); md('|----|-----------|----------------|-----------|-------------|');
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
         <table class="rpt-table" style="table-layout:fixed;width:100%"><thead><tr>
           <th style="width:45px">ID</th><th style="width:80px">Severidad</th>
-          <th>Vulnerabilidad</th><th style="width:18%">Categoría</th><th style="width:85px">Estado</th><th style="width:90px">Remediación</th>
+          <th>Vulnerabilidad</th><th style="width:18%">Categoría</th><th style="width:90px">Remediación</th>
         </tr></thead><tbody>`;
       SEV_ORDER.forEach(sev => {
         bySev[sev].forEach(v => {
-          const sl   = v.status==='done'?'Confirmado':v.status==='fail'?'Reproducido':'Pendiente';
           const rs   = v.remediation_status || 'open';
           const rl   = REM_LABEL[rs] || rs;
           const num  = vulnNumMap[v.id];
-          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${v.category||'Custom'} | ${sl} | ${rl} |`);
+          md(`| ${num} | ${SEV_LABEL[sev]} | ${v.name} | ${v.category||'Custom'} | ${rl} |`);
           html += `<tr>
             <td class="num"><div class="rpt-cell" style="font-family:var(--mono);font-weight:700;color:var(--t2);white-space:nowrap">${num}</div></td>
             <td><div class="rpt-cell"><span class="sev-badge sev-${sev}">${SEV_LABEL[sev]}</span></div></td>
             <td style="font-weight:600;color:var(--t1);word-break:break-word"><div class="rpt-cell">${esc(v.name)}</div></td>
             <td style="font-family:var(--mono);font-size:11px"><div class="rpt-cell">${esc(v.category||'Custom')}</div></td>
-            <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${v.status||'pending'}">${sl}</span></div></td>
             <td><div class="rpt-cell"><span class="rpt-vuln-status rpt-status-${rs}">${rl}</span></div></td>
           </tr>`;
         });
