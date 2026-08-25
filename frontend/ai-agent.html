@@ -9,15 +9,18 @@
   <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <script src="js/config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+<!-- Vendored, not CDN: pentesters routinely work on air-gapped or egress-filtered
+     networks, and DOMPurify silently missing is exactly when its absence hurts most.
+     See js/vendor/README.md for versions and how to update them. -->
+<script src="js/vendor/marked.umd.js"></script>
+<script src="js/vendor/purify.min.js"></script>
 <style>
   /* Layout tipo consola — sin scroll de página, el transcript scrollea
      adentro. Mismo patrón que whiteboard.html. */
   .workarea { overflow: hidden; }
   .main.scan-main { padding: 0 !important; overflow: hidden !important; display: flex; flex-direction: column; }
   .scan-main .page-header { padding: 18px 24px 14px; flex-shrink: 0; }
-  .scan-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 24px 18px; gap: 10px; }
+  .scan-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 24px 18px; gap: 10px; }
 
   .scan-status-badge { font-family: var(--mono); font-size: 10px; padding: 3px 9px; border-radius: 999px; letter-spacing: .03em; text-transform: uppercase; border: 1px solid transparent; }
   .scan-status-badge.idle       { color: var(--t3); background: var(--bg3); border-color: var(--b1); }
@@ -103,7 +106,8 @@
      largo adentro, la fila crece mucho y "center" empujaba el tier-badge y
      el check al medio de todo ese alto en vez de dejarlos pegados arriba,
      al lado del nombre (reportado: "el ticket verde se corre al centro"). */
-  .scan-tool { display: flex; align-items: flex-start; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--t2); padding: 6px 10px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r-sm); }
+  .scan-tool { display: flex; align-items: flex-start; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--t2); padding: 6px 10px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r-sm); transition: border-color .15s ease, background .15s ease; }
+  .scan-tool:hover { border-color: var(--b2); }
   .scan-tool .tier-badge { font-size: 9px; padding: 1px 6px; border-radius: 999px; background: var(--bg3); color: var(--t3); flex-shrink: 0; cursor: help; }
   .scan-tool details { flex: 1; min-width: 0; }
   .scan-tool summary { cursor: pointer; }
@@ -115,11 +119,11 @@
   @keyframes scan-pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
   .scan-tool pre { margin: 6px 0 0; font-size: 10.5px; white-space: pre-wrap; word-break: break-all; color: var(--t3); max-height: 220px; overflow-y: auto; }
 
-  .scan-msg { display: flex; flex-direction: column; gap: 4px; max-width: 80%; }
+  .scan-msg { display: flex; flex-direction: column; gap: 4px; max-width: 80%; min-width: 0; }
   .scan-msg.user { align-self: flex-end; align-items: flex-end; }
   .scan-msg.assistant { align-self: flex-start; max-width: 94%; } /* los reportes del agente son largos — 80% quedaba angosto y forzaba mucho wrap */
   .scan-msg .who { font-family: var(--mono); font-size: 9.5px; color: var(--t3); text-transform: uppercase; letter-spacing: .04em; }
-  .scan-msg .bubble { padding: 10px 14px; border-radius: var(--r); font-size: 13px; line-height: 1.6; }
+  .scan-msg .bubble { padding: 10px 14px; border-radius: var(--r); font-size: 13px; line-height: 1.6; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
   .scan-msg.user .bubble { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.25); color: var(--t1); }
   .scan-msg.assistant .bubble { background: var(--bg2); border: 1px solid var(--b1); color: var(--t1); }
   .scan-msg .bubble p:first-child, .scan-msg .bubble h1:first-child, .scan-msg .bubble h2:first-child, .scan-msg .bubble h3:first-child { margin-top: 0; }
@@ -142,6 +146,15 @@
   .scan-msg .bubble code { font-family: var(--mono); font-size: 11.5px; background: var(--bg3); padding: 1px 5px; border-radius: 3px; color: var(--a); word-break: break-all; }
   .scan-msg .bubble pre { background: var(--bg3); padding: 8px 10px; border-radius: var(--r-sm); overflow-x: auto; margin: 8px 0; }
   .scan-msg .bubble pre code { background: none; padding: 0; color: inherit; }
+
+  /* Entrada suave de cada mensaje nuevo — la clase la agrega appendLiveEvent()
+     SOLO a lo que llega en vivo, nunca al rebuild completo (renderTranscript),
+     así al abrir una sesión no parpadea todo el historial de golpe. */
+  @keyframes scanMsgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .scan-msg-enter { animation: scanMsgIn .26s cubic-bezier(.22,.61,.36,1); }
+  /* La burbuja en sí tiene una transición sutil de fondo/borde para hovers
+     y cambios de estado, sin afectar el layout. */
+  .scan-msg .bubble { transition: border-color .2s ease, background .2s ease; }
 
   /* Burbuja de "escribiendo..." — pedido explícito: animación en el chat
      mismo que indique que la IA está formulando la respuesta. */
@@ -214,9 +227,10 @@
   .scan-hl-chip {
     display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px;
     padding: 7px 12px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r);
-    cursor: pointer; color: var(--t2); transition: border-color .15s, color .15s;
+    cursor: pointer; color: var(--t2); transition: border-color .15s, color .15s, transform .12s ease, background .15s;
   }
-  .scan-hl-chip:hover { border-color: var(--b2); color: var(--t1); }
+  .scan-hl-chip:hover { border-color: var(--b2); color: var(--t1); transform: translateY(-1px); }
+  .scan-hl-chip:active { transform: translateY(0); }
   .scan-hl-chip.expanded { border-color: var(--a); color: var(--t1); }
   .scan-hl-chip .scan-hl-count { background: var(--bg3); color: var(--t1); padding: 1px 8px; border-radius: 999px; font-weight: 600; }
   .scan-hl-chip.review .scan-hl-count    { background: rgba(245,158,11,.15); color: var(--a); }
@@ -237,6 +251,22 @@
   .scan-hl-item pre { font-family: var(--mono); font-size: 10.5px; color: var(--t2); background: var(--bg3); padding: 8px; border-radius: var(--r-sm); white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; margin: 4px 0 8px; }
   .scan-hl-warning { display: flex; align-items: flex-start; gap: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--a); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3); border-radius: var(--r-sm); padding: 8px 10px; margin: 6px 0; }
 
+  /* Píldora "nuevos mensajes" — aparece flotando sobre el input cuando la IA
+     responde mientras estás scrolleado hacia arriba leyendo historial. Sin
+     esto no había ninguna señal de que llegó respuesta si no estabas al fondo. */
+  .scan-jump-btn {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 70px; z-index: 5;
+    display: none; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    background: var(--a); color: #1a1206; border: none;
+    font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35);
+    animation: scanJumpIn .18s ease;
+  }
+  .scan-jump-btn.show { display: inline-flex; }
+  .scan-jump-btn:hover { filter: brightness(1.08); }
+  @keyframes scanJumpIn { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
   .scan-input-row { flex-shrink: 0; display: flex; gap: 8px; align-items: flex-end; }
   .scan-input-row textarea { flex: 1; resize: none; font-family: inherit; font-size: 13px; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r); color: var(--t1); max-height: 120px; }
   /* Sin esto quedaba el outline nativo del navegador al hacer foco (celeste/
@@ -253,6 +283,26 @@
   .scan-lang-btn { font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 3px; border: none; background: none; color: var(--t3); cursor: pointer; transition: background .12s, color .12s; }
   .scan-lang-btn:hover { color: var(--t1); }
   .scan-lang-btn.active { background: var(--bg2); color: var(--t1); }
+
+  /* Micro-feedback al presionar Enviar — un hundido apenas perceptible, nada
+     exagerado. El textarea del chat también anima suave su enfoque. */
+  .scan-input-row .btn-prim { transition: filter .12s ease, transform .1s ease; }
+  .scan-input-row .btn-prim:active { transform: translateY(1px); }
+  .scan-input-row textarea { transition: border-color .15s ease, box-shadow .15s ease; }
+  .scan-input-row textarea:focus { box-shadow: 0 0 0 3px rgba(245,158,11,.08); }
+
+  /* Accesibilidad: quien pide menos movimiento no recibe ninguno de estos
+     efectos (los pulsos/typing tampoco). */
+  @media (prefers-reduced-motion: reduce) {
+    .scan-msg-enter,
+    .scan-jump-btn,
+    .scan-typing-dots span,
+    .scan-tool-spinner,
+    .scan-thread-chip.running .dot,
+    .scan-live-dot { animation: none !important; }
+    .scan-hl-chip:hover,
+    .scan-input-row .btn-prim:active { transform: none; }
+  }
 </style>
 </head>
 <body>
@@ -281,6 +331,10 @@
       <div class="scan-highlights" id="scan-highlights" style="display:none"></div>
       <div class="scan-threads" id="scan-threads" style="display:none"></div>
       <div class="scan-transcript" id="scan-transcript"></div>
+      <button class="scan-jump-btn" id="scan-jump-btn" onclick="scanScrollToBottom(true)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <span data-i18n="newMessages">Nuevos mensajes</span>
+      </button>
       <div class="scan-input-row" id="scan-input-row" style="display:none">
         <textarea id="scan-chat-input" rows="1" data-i18n-placeholder="chatPlaceholder" placeholder="Hablale al agente — preguntale algo o dale una instrucción..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();scanSendMessage();}"></textarea>
         <button class="btn btn-prim" onclick="scanSendMessage()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg> <span data-i18n="send">Enviar</span></button>

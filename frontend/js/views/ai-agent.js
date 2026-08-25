@@ -111,6 +111,7 @@ const AI_I18N = {
     checkpointAuto: '↻ {calls} tool calls seguidos — sigue solo',
     checkpointManual: '⏸ Pausa tras {calls} tool calls seguidos — decile "continuá" para seguir',
     agentLabel: 'Agente', you: 'Vos', pentester: 'Pentester',
+    newMessages: 'Nuevos mensajes',
     rejectReasonPrompt: 'Motivo del rechazo (opcional):',
     interruptPrompt: '¿Qué querés que haga en vez de lo que está haciendo ahora?',
     findingAdded: 'Hallazgo agregado', nameRequired: 'El nombre es obligatorio',
@@ -177,6 +178,7 @@ const AI_I18N = {
     checkpointAuto: '↻ {calls} tool calls in a row — continuing on its own',
     checkpointManual: '⏸ Paused after {calls} tool calls in a row — tell it "continue" to keep going',
     agentLabel: 'Agent', you: 'You', pentester: 'Pentester',
+    newMessages: 'New messages',
     rejectReasonPrompt: 'Reason for rejection (optional):',
     interruptPrompt: 'What do you want it to do instead of what it’s doing now?',
     findingAdded: 'Finding added', nameRequired: 'Name is required',
@@ -618,13 +620,13 @@ function renderTypingBubble(activity) {
   if (!activity || activity.isToolCall) { existing?.remove(); return; }
   if (existing) return; // ya está mostrada — no la reinsertamos en cada evento
 
-  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  const wasAtBottom = scanIsNearBottom(el);
   const node = document.createElement('div');
-  node.className = 'scan-msg assistant';
+  node.className = 'scan-msg assistant scan-msg-enter';
   node.id = 'scan-typing-bubble';
   node.innerHTML = `<span class="who">${esc(t('agentLabel'))}</span><div class="bubble scan-typing-dots"><span></span><span></span><span></span></div>`;
   el.appendChild(node);
-  if (wasAtBottom) el.scrollTop = el.scrollHeight;
+  if (wasAtBottom) scanScrollToBottom();
 }
 
 // Recorre TODOS los eventos y arma los baldes de highlights. No intenta
@@ -967,6 +969,8 @@ function shouldRenderInTranscript(ev) {
 // está bien tirar todo el DOM: no hay nada que preservar en esos casos.
 function renderTranscript() {
   const el = document.getElementById('scan-transcript');
+  scanBindTranscriptScroll();
+  scanHideJumpPill(); // rebuild completo — arranca anclado al fondo (ver final)
   if (!_scanEvents.length) { el.innerHTML = ''; return; }
 
   const resultsByCallId = {};
@@ -992,6 +996,38 @@ function renderTranscript() {
 // reportado: al re-renderizar TODO en cada mensaje de WS, cualquier
 // <details> abierto se perdía, y el auto-scroll-al-final te sacaba de
 // donde estabas leyendo aunque no tuviera nada que ver con el evento nuevo).
+// ── Autoscroll del transcript ───────────────────────────────────────────
+// Umbral generoso a propósito: mientras estés "cerca" del fondo seguís
+// anclado y cada mensaje nuevo baja solo. Apenas te alejás para leer
+// historial, dejamos de arrastrarte y en su lugar aparece la píldora.
+const SCAN_STICK_THRESHOLD = 120;
+
+function scanIsNearBottom(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < SCAN_STICK_THRESHOLD;
+}
+
+function scanScrollToBottom(smooth) {
+  const el = document.getElementById('scan-transcript');
+  if (!el) return;
+  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  scanHideJumpPill();
+}
+
+function scanShowJumpPill() {
+  document.getElementById('scan-jump-btn')?.classList.add('show');
+}
+function scanHideJumpPill() {
+  document.getElementById('scan-jump-btn')?.classList.remove('show');
+}
+
+// Si el usuario scrollea hasta el fondo a mano, la píldora ya no tiene sentido.
+function scanBindTranscriptScroll() {
+  const el = document.getElementById('scan-transcript');
+  if (!el || el._scanScrollBound) return;
+  el._scanScrollBound = true;
+  el.addEventListener('scroll', () => { if (scanIsNearBottom(el)) scanHideJumpPill(); });
+}
+
 function appendLiveEvent(ev) {
   const el = document.getElementById('scan-transcript');
   // Cualquier evento real reemplaza a la burbuja de "escribiendo..." — se
@@ -1002,7 +1038,12 @@ function appendLiveEvent(ev) {
   document.getElementById('scan-typing-bubble')?.remove();
   if (!el.children.length) { renderTranscript(); return; } // primer evento de una sesión recién arrancada — sin nada que preservar
 
-  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  const wasAtBottom = scanIsNearBottom(el);
+  // Un mensaje del agente (respuesta, o reporte de sub-agente) es lo que el
+  // pentester está esperando ver — si llega mientras mira historial, avisamos.
+  const isIncomingMessage =
+    (ev.type === 'chat.message' && ev.payload.role !== 'user') ||
+    ev.type === 'subagent.reported';
 
   if (ev.type === 'tool.result') {
     const calledEv = _scanEvents.find(e => e.type === 'tool.called' && String(e.id) === String(ev.payload.call_id));
@@ -1016,10 +1057,12 @@ function appendLiveEvent(ev) {
     if (!shouldRenderInTranscript(ev)) return; // escondido en modo simple — ya resumido en las tarjetas de highlights
     const node = renderEvent(ev, {}); // recién llegado — nunca tiene tool.result todavía
     node.dataset.eventId = String(ev.id);
+    node.classList.add('scan-msg-enter'); // entrada suave — solo en vivo
     el.appendChild(node);
   }
 
-  if (wasAtBottom) el.scrollTop = el.scrollHeight;
+  if (wasAtBottom) scanScrollToBottom();
+  else if (isIncomingMessage) scanShowJumpPill();
 }
 
 function renderEvent(ev, resultsByCallId) {
@@ -1038,10 +1081,13 @@ function renderEvent(ev, resultsByCallId) {
 // payload malicioso del target en su texto, se ejecutaría tal cual en el
 // navegador de cualquiera mirando la sesión. DOMPurify.sanitize() cierra
 // ese hueco (encontrado en revisión, no en el whiteboard original).
+// Fails closed on purpose: if DOMPurify did not load, fall back to escaped plain
+// text instead of rendering unsanitised markup. The previous `DOMPurify ? … : html`
+// dropped the defence in exactly the situation it was written for — a network
+// where the library cannot be fetched.
 function renderMarkdown(text) {
-  if (!window.marked) return `<p>${esc(text || '')}</p>`;
-  const html = window.marked.parse(text || '');
-  return window.DOMPurify ? window.DOMPurify.sanitize(html) : html;
+  if (!window.marked || !window.DOMPurify) return `<p>${esc(text || '')}</p>`;
+  return window.DOMPurify.sanitize(window.marked.parse(text || ''));
 }
 
 // Reporte de un sub-agente al terminar su tarea delegada — se renderiza
@@ -1426,6 +1472,12 @@ function scanSendMessage() {
   if (!text || !_scanSession) return;
   wsClient.send({ type: 'ai_scan:send_message', session_id: _scanSession.id, text });
   input.value = '';
+  // Al mandar, siempre te llevo al fondo: re-ancla el autoscroll para que el
+  // echo de tu mensaje, la burbuja de "escribiendo…" y la respuesta bajen
+  // solas. Sin esto, si habías quedado unos px arriba el pin nunca se
+  // recuperaba y parecía que la IA no respondía.
+  scanScrollToBottom();
+  input.focus();
 }
 
 function scanApprove(callId) {
