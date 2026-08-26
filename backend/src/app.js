@@ -26,7 +26,7 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '4mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // Rate limiting (disabled in local dev)
 if (process.env.NODE_ENV === 'production') {

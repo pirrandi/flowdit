@@ -2683,7 +2683,15 @@ function scheduleVulnSave(vulnId) {
       const v = state.customVulns.find(x => x.id === vulnId);
       if (v) Object.assign(v, updated);
       flashSaved(vulnId);
-    } catch {}
+    } catch (err) {
+      console.error('[save evidence]', err);
+      const dot = document.getElementById(`saved-${vulnId}`);
+      if (dot) {
+        dot.style.background = 'var(--c-crit)';
+        dot.classList.add('show');
+        setTimeout(() => { dot.style.background = ''; dot.classList.remove('show'); }, 3000);
+      }
+    }
   }, 900);
 }
 
