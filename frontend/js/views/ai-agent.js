@@ -738,36 +738,39 @@ function renderScanHighlights() {
     return;
   }
 
-  el.innerHTML = `
-    <div class="scan-hl-row">
-      ${categories.filter(c => c.count > 0).map(c => `
-        <button class="scan-hl-chip ${c.cls || ''} ${_expandedHighlights.has(c.key) ? 'expanded' : ''}" onclick="toggleHighlightCategory('${c.key}')">
-          ${icon(c.icon, { size: 13 })} ${esc(c.label)} <span class="scan-hl-count">${c.count}</span>
-        </button>
-      `).join('')}
+  // Cada chip es el ancla de su propio popover (position:relative en el
+  // wrapper, .scan-hl-detail en position:absolute) — antes el detalle vivía
+  // como bloque aparte debajo de TODA la fila de chips, empujando el
+  // transcript hacia abajo cada vez que se abría uno. Ahora abrir/cerrar no
+  // mueve nada más en la página.
+  el.innerHTML = categories.filter(c => c.count > 0).map(c => `
+    <div class="scan-hl-item-wrap">
+      <button class="scan-hl-chip ${c.cls || ''} ${_expandedHighlights.has(c.key) ? 'expanded' : ''}" onclick="event.stopPropagation();toggleHighlightCategory('${c.key}')">
+        ${icon(c.icon, { size: 13 })} ${esc(c.label)} <span class="scan-hl-count">${c.count}</span>
+      </button>
+      ${_expandedHighlights.has(c.key) ? `
+        <div class="scan-hl-detail" onclick="event.stopPropagation()">
+          ${c.warning ? `<div class="scan-hl-warning">${icon('triangle-alert', { size: 12 })} ${esc(c.warning)}</div>` : ''}
+          ${c.items.map(it => {
+            const hasMore = it.body || it.detail || it.meta;
+            const valuePart = it.valueHtml || (it.value ? `<span class="val">${esc(it.value)}</span>` : '');
+            const summary = `<span>${esc(it.label)}</span>${valuePart}`;
+            if (!hasMore) return `<div class="scan-hl-detail-item">${summary}</div>`;
+            // Click para ver la respuesta/error real — pedido explícito, antes
+            // solo se veía label+value sin poder profundizar más.
+            return `
+              <details class="scan-hl-item">
+                <summary>${summary}</summary>
+                ${it.meta ? `<div class="scan-hl-item-meta">${esc(it.meta)}</div>` : ''}
+                ${it.detail ? `<div class="scan-hl-item-error">${esc(it.detail)}</div>` : ''}
+                ${it.body ? `<pre>${esc(String(it.body).slice(0, 4000))}</pre>` : ''}
+              </details>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
     </div>
-    ${categories.filter(c => c.count > 0 && _expandedHighlights.has(c.key)).map(c => `
-      <div class="scan-hl-detail">
-        ${c.warning ? `<div class="scan-hl-warning">${icon('triangle-alert', { size: 12 })} ${esc(c.warning)}</div>` : ''}
-        ${c.items.map(it => {
-          const hasMore = it.body || it.detail || it.meta;
-          const valuePart = it.valueHtml || (it.value ? `<span class="val">${esc(it.value)}</span>` : '');
-          const summary = `<span>${esc(it.label)}</span>${valuePart}`;
-          if (!hasMore) return `<div class="scan-hl-detail-item">${summary}</div>`;
-          // Click para ver la respuesta/error real — pedido explícito, antes
-          // solo se veía label+value sin poder profundizar más.
-          return `
-            <details class="scan-hl-item">
-              <summary>${summary}</summary>
-              ${it.meta ? `<div class="scan-hl-item-meta">${esc(it.meta)}</div>` : ''}
-              ${it.detail ? `<div class="scan-hl-item-error">${esc(it.detail)}</div>` : ''}
-              ${it.body ? `<pre>${esc(String(it.body).slice(0, 4000))}</pre>` : ''}
-            </details>
-          `;
-        }).join('')}
-      </div>
-    `).join('')}
-  `;
+  `).join('');
 }
 
 function toggleHighlightCategory(key) {
@@ -775,6 +778,12 @@ function toggleHighlightCategory(key) {
   else _expandedHighlights.add(key);
   renderScanHighlights();
 }
+document.addEventListener('click', e => {
+  if (_expandedHighlights.size && !e.target.closest('.scan-hl-item-wrap')) {
+    _expandedHighlights.clear();
+    renderScanHighlights();
+  }
+});
 
 async function switchScanSession(id) {
   clearTimeout(_liveActivityDebounceTimer);

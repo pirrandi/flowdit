@@ -30,14 +30,23 @@
   .scan-status-badge.error      { color: var(--c-crit); background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.3); }
   .scan-status-badge.completed  { color: var(--c-low); background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.25); }
 
-  .scan-context { flex-shrink: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r); font-family: var(--mono); font-size: 11px; color: var(--t3); }
+  /* Barra única: antes contexto/sesión, toggle Resumen-Detalle y estado
+     vivían en 3 cajas apiladas, cada una con su propio borde/padding —
+     reportado: "las opciones usan mucho espacio... el chat se siente
+     apretado". Ahora son grupos de una sola fila flex, sin borde propio; la
+     caja (fondo/borde) vive una sola vez, en el contenedor .scan-toolbar. */
+  .scan-toolbar { flex-shrink: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r); }
+  .scan-toolbar-info { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
+  .scan-toolbar-spacer { flex: 1 1 auto; min-width: 0; }
+
+  .scan-context { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--t3); }
   .scan-context strong { color: var(--t1); font-weight: 600; }
 
   /* Picker de sesiones — antes un <select> nativo sin ningún estilo propio
      (feo, reportado). Reusa exactamente el mismo patrón que .user-dropdown/
      .dropdown-item del menú de usuario (page.js) en vez de inventar uno
      nuevo, para que combine con el resto de la app. */
-  .scan-session-picker { position: relative; margin-left: auto; }
+  .scan-session-picker { position: relative; }
   .scan-session-trigger {
     display: flex; align-items: center; gap: 7px;
     background: var(--bg3); border: 1px solid var(--b1); border-radius: var(--r-sm);
@@ -206,24 +215,23 @@
      haya algún icono moviéndose... algo más visual, con un mensaje breve
      de lo que está haciendo la IA". Solo en Resumen — en Detalle cada tool
      call ya se ve una por una, sería redundante. */
-  .scan-live-activity {
-    flex-shrink: 0; display: flex; align-items: center; gap: 9px;
-    padding: 8px 14px; background: rgba(74,222,128,.06); border: 1px solid rgba(74,222,128,.25);
-    border-radius: var(--r); font-family: var(--mono); font-size: 11.5px; color: var(--c-low);
-  }
-  .scan-live-activity.waiting { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.3); color: var(--a); }
-  .scan-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-low); flex-shrink: 0; animation: livePulse 1.2s ease-in-out infinite; }
+  /* Antes una caja propia (fondo/borde/padding) apilada arriba del chat —
+     ahora es una línea suelta dentro de .scan-toolbar-info, al lado de los
+     contadores. El color sigue marcando corriendo (verde) vs esperando
+     aprobación (ámbar); ya no necesita su propio fondo para destacar. */
+  .scan-live-activity { flex-shrink: 0; display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--c-low); min-width: 0; }
+  .scan-live-activity.waiting { color: var(--a); }
+  .scan-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-low); flex-shrink: 0; animation: livePulse 1.2s ease-in-out infinite; }
   .scan-live-activity.waiting .scan-live-dot { background: var(--a); animation: none; } /* esperándote a vos, no "trabajando" — sin pulso */
-  .scan-live-text { color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scan-live-text { color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
 
-  /* max-height: sin esto, el panel de highlights (chips + detalle expandido)
-     competía por altura en la misma columna flex que #scan-transcript —
-     reportado: el box del transcript "se achica" al abrir Resumen, y cambia
-     de tamaño según cuánto contenido tenga highlights en cada momento. Con
-     un techo fijo + su propio scroll interno, esa diferencia queda acotada
-     y constante en vez de variable. */
-  .scan-highlights { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 220px; }
-  .scan-hl-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* Antes el detalle expandido de un highlight era un bloque más en la
+     columna, empujando el transcript hacia abajo cada vez que se abría uno
+     (reportado, junto con el resto del chrome apilado). Ahora cada chip es
+     el ancla de su propio popover flotante (position:absolute) — abrir uno
+     nunca cambia la altura del resto de la página. */
+  .scan-highlights { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .scan-hl-item-wrap { position: relative; }
   .scan-hl-chip {
     display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px;
     padding: 7px 12px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r);
@@ -235,7 +243,13 @@
   .scan-hl-chip .scan-hl-count { background: var(--bg3); color: var(--t1); padding: 1px 8px; border-radius: 999px; font-weight: 600; }
   .scan-hl-chip.review .scan-hl-count    { background: rgba(245,158,11,.15); color: var(--a); }
   .scan-hl-chip.findings .scan-hl-count  { background: rgba(239,68,68,.12); color: var(--c-crit); }
-  .scan-hl-detail { background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r); padding: 4px 12px; max-height: 320px; overflow-y: auto; }
+  .scan-hl-detail {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+    width: max(320px, 100%); max-width: min(400px, 88vw);
+    background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r);
+    padding: 4px 12px; max-height: 320px; overflow-y: auto;
+    box-shadow: 0 12px 28px rgba(0,0,0,.4);
+  }
   .scan-hl-detail-item, .scan-hl-item summary { padding: 8px 0; border-bottom: 1px solid var(--b1); font-family: var(--mono); font-size: 11px; color: var(--t2); display: flex; justify-content: space-between; gap: 10px; }
   .scan-hl-detail-item:last-child, .scan-hl-item:last-child summary { border-bottom: none; }
   .scan-hl-detail-item .val, .scan-hl-item .val { color: var(--t1); text-align: right; word-break: break-all; flex-shrink: 0; }
@@ -318,16 +332,19 @@
         <div class="page-title">AI Agent</div>
         <div class="page-subtitle" id="scan-subtitle" data-i18n="subtitle">// scanner de pentest autónomo — conectado con este proyecto</div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <div class="scan-lang-toggle" id="scan-lang-toggle"></div>
-        <div id="scan-controls-top" style="display:flex;gap:8px;align-items:center"></div>
-      </div>
+      <div class="scan-lang-toggle" id="scan-lang-toggle"></div>
     </div>
 
     <div class="scan-body">
-      <div class="scan-context" id="scan-context"></div>
-      <div class="scan-view-toggle" id="scan-view-toggle" style="display:none"></div>
-      <div class="scan-live-activity" id="scan-live-activity" style="display:none"></div>
+      <div class="scan-toolbar">
+        <div class="scan-toolbar-info">
+          <div class="scan-context" id="scan-context"></div>
+          <div class="scan-live-activity" id="scan-live-activity" style="display:none"></div>
+        </div>
+        <div class="scan-toolbar-spacer"></div>
+        <div class="scan-view-toggle" id="scan-view-toggle" style="display:none"></div>
+        <div id="scan-controls-top" style="display:flex;gap:8px;align-items:center"></div>
+      </div>
       <div class="scan-highlights" id="scan-highlights" style="display:none"></div>
       <div class="scan-threads" id="scan-threads" style="display:none"></div>
       <div class="scan-transcript" id="scan-transcript"></div>
