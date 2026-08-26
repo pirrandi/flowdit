@@ -34,6 +34,8 @@ It also ships an autonomous AI agent that can run a scan session on its own — 
 
 ### AI Pentest Agent
 
+<img src="frontend/img/screenshots/ai-agent.png" alt="AI pentest agent session" width="100%">
+
 An autonomous scanning agent, run per-project from its own chat-style session view. It works through recon and testing tools on its own, gates riskier actions (HTTP requests, exploit PoCs, proposing a finding) behind human approval, and checkpoints itself instead of running unattended forever.
 
 - Multi-provider: Groq, Anthropic (Claude), DeepSeek, Kimi (Moonshot), or any local/OpenAI-compatible server (Ollama, LM Studio, vLLM)
