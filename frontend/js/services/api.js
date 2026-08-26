@@ -237,6 +237,13 @@ const api = {
     get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),
     save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
   },
+  // Report builder configuration — cover metadata, section layout and the
+  // per-finding editorial data (risk-matrix probability, remediation
+  // priority, business impact, executive action, rewritten texts).
+  reportConfig: {
+    get:  (pid)       => request('GET', `/projects/${pid}/report-config`),
+    save: (pid, data) => request('PUT', `/projects/${pid}/report-config`, { data }),
+  },
   aiScan: {
     listSessions:  (pid)          => request('GET',    `/projects/${pid}/ai-scan/sessions`),
     getSession:    (pid, sid)     => request('GET',    `/projects/${pid}/ai-scan/sessions/${sid}`),
@@ -256,6 +263,12 @@ const api = {
     search: (q = '')  => request('GET',    `/templates?q=${encodeURIComponent(q)}`),
     save:   (d)       => request('POST',   `/templates`, d),
     delete: (id)      => request('DELETE', `/templates/${id}`),
+  },
+  reportTemplates: {
+    list:   ()             => request('GET',    `/report-templates`),
+    create: (name, data)   => request('POST',   `/report-templates`, { name, data }),
+    update: (id, name, data) => request('PUT',  `/report-templates/${id}`, { name, data }),
+    delete: (id)           => request('DELETE', `/report-templates/${id}`),
   },
   portal: {
     auth: (token, password) => fetch(`${API_BASE}/portal/auth`, {

@@ -13,3 +13,9 @@ Screenshot_*.png
 # Local dev tooling (Claude Code, skill registry cache)
 .claude/
 .atl/
+
+# DB recovery artifacts (contains raw PGDATA / dumps / credentials — never commit)
+flowdit_pgdata/
+flowdit_pgdata.backup/
+*.dump
+DB_RECOVERY.md

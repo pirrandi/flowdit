@@ -127,7 +127,7 @@ function encryptWithGs(pdfBytes, password, gsBin) {
 // POST /api/export/pdf
 // Body: { pageUrl, token, password? }
 router.post('/pdf', auth, requireUser, async (req, res) => {
-  const { pageUrl, token, password, rptKey, rptData, scope, reportType } = req.body;
+  const { pageUrl, token, password, rptKey, rptData, scope, reportType, filename } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
   // Resolved before the browser launches so a rejected URL costs nothing and
@@ -187,8 +187,12 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
       window.FLOWDIT_WS  = 'ws://localhost:4000/ws';
     });
 
-    // Inject auth token + report data into localStorage before page loads
+    // Inject auth token + report data into localStorage before page loads.
+    // FLOWDIT_SNAPSHOT tells export.html that this localStorage snapshot is the
+    // authoritative copy for this render, so it must not pull the (possibly
+    // older, debounce-behind) server copy over it — see pullReportConfig().
     await page.evaluateOnNewDocument((t, key, data) => {
+      window.FLOWDIT_SNAPSHOT = true;
       if (t)    localStorage.setItem('fd_access', t);
       if (key && data) localStorage.setItem(key, data);
     }, token || '', rptKey || '', rptData || '');
@@ -250,6 +254,19 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
     // Force a layout reflow to flush paint before PDF capture
     await page.evaluate(() => void document.body.getBoundingClientRect());
 
+    // Chrome writes document.title into the PDF's /Title, and that is what a
+    // reader sees in their viewer's tab and window bar. Left alone it is this
+    // app's own page title ("Export Report"), which says nothing about the
+    // document. Use the report's cover title, falling back to the project name.
+    const pageTitle = await page.evaluate(() => {
+      const pick = v => (typeof v === 'string' ? v.trim() : '');
+      try {
+        return pick(getReportData()?.meta?.coverTitle) || pick(state?.currentProject?.name);
+      } catch { return ''; }
+    });
+    const pdfTitle = (pageTitle || String(filename || '').trim() || 'Report').slice(0, 200);
+    await page.evaluate(t => { document.title = t; }, pdfTitle);
+
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -264,9 +281,17 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
       finalBytes = await encryptWithGs(pdfBytes, password.trim(), gsBin);
     }
 
+    // Same name in the header as in the PDF's own title. The quoted form must
+    // stay plain ASCII with no quotes or CR/LF (header injection); filename*
+    // carries the real, accented one for clients that understand RFC 5987.
+    const asciiName = pdfTitle.normalize('NFKD')
+      .replace(/[^\x20-\x7E]/g, '').replace(/["\\\r\n]/g, '')
+      .trim().slice(0, 120) || 'report';
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="report.pdf"`,
+      'Content-Disposition':
+        `attachment; filename="${asciiName}.pdf"; ` +
+        `filename*=UTF-8''${encodeURIComponent(pdfTitle)}.pdf`,
       'Content-Length': finalBytes.length,
     });
     res.end(Buffer.from(finalBytes));

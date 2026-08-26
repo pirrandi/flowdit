@@ -495,10 +495,14 @@
 .rich-editor img:hover { outline:2px solid var(--a)88;border-radius:2px; }
 
 /* ── Watermark ───────────────────────────────────────────────────── */
+/* The element is deliberately EMPTY: the mark is painted as an SVG background
+   image (see applyWatermark). A real text node here ended up in the PDF's text
+   layer, so selecting a paragraph in the exported file dragged "CONFIDENTIAL"
+   into the clipboard along with it. A background image has nothing to select.
+   --wm-screen / --wm-print are set inline by applyWatermark. */
 #rpt-watermark {
   display:none;pointer-events:none;user-select:none;
-  font-weight:900;text-transform:uppercase;letter-spacing:.15em;
-  font-family:var(--mono);white-space:nowrap;
+  background-repeat:no-repeat;background-position:center;background-size:contain;
   z-index:9999;
 }
 #rpt-watermark.wm-on { display:block; }
@@ -506,16 +510,18 @@
 @media screen {
   #rpt-watermark.wm-on {
     position:absolute;top:50%;left:50%;
-    transform:translate(-50%,-50%) rotate(-45deg);
-    font-size:96px;color:var(--t1);opacity:.045;
+    width:620px;height:620px;transform:translate(-50%,-50%);
+    background-image:var(--wm-screen);opacity:.07;
   }
 }
 /* print: fixed so it repeats on every page */
 @media print {
   #rpt-watermark.wm-on {
     position:fixed!important;top:50%!important;left:50%!important;
-    transform:translate(-50%,-50%) rotate(-45deg)!important;
-    font-size:96px!important;color:#000!important;opacity:.07!important;
+    width:19cm!important;height:19cm!important;
+    transform:translate(-50%,-50%)!important;
+    background-image:var(--wm-print)!important;opacity:.09!important;
+    print-color-adjust:exact!important;-webkit-print-color-adjust:exact!important;
   }
 }
 
@@ -921,7 +927,81 @@ const IMPACT_MAP   = { critical:4, high:3, medium:2, low:1, info:1 };
 const IMPACT_NAMES = { 4:'Crítico', 3:'Alto', 2:'Medio', 1:'Bajo' };
 const PROB_LABELS  = ['Muy Baja','Baja','Moderada','Alta','Muy Alta'];
 
-// ── Report data (localStorage, keyed by project) ──────────────────
+// ── Server-side persistence of the report configuration ───────────
+// This whole object (cover metadata, section layout, the per-finding
+// editorial data — risk-matrix probability, remediation priority, business
+// impact, executive action, rewritten description/remediation — and the
+// free markdown edit) used to live only in this browser's localStorage, so
+// a different machine or a cleared profile silently threw the work away.
+// localStorage stays as the synchronous working copy — buildReport() reads
+// it on every keystroke and the PDF exporter replays it inside headless
+// Chromium — but the server is the source of truth on load.
+let _rptSyncTimer   = null;
+let _rptSyncReady   = false;  // the server copy has been pulled; pushes allowed
+let _rptSyncBlocked = false;  // viewer role or unreachable API: work locally
+
+function pushReportConfig() {
+  if (window.FLOWDIT_SNAPSHOT) return;   // headless PDF render — never writes back
+  if (!_rptSyncReady || _rptSyncBlocked) return;
+  const pid = state.currentProject?.id;
+  if (!pid) return;
+  clearTimeout(_rptSyncTimer);
+  _rptSyncTimer = setTimeout(async () => {
+    _rptSyncTimer = null;
+    try {
+      await api.reportConfig.save(pid, getReportData());
+    } catch (e) {
+      // 403 = viewer, it will never succeed; anything else may be transient.
+      if (e?.status === 403) _rptSyncBlocked = true;
+      else console.warn('[export] report config sync failed:', e?.message || e);
+    }
+  }, 800);
+}
+
+// Fire the pending debounced write now. Without this, edits made in the last
+// 800ms before the tab is hidden or closed would never reach the server —
+// exactly the kind of silent loss this whole change exists to stop.
+function flushReportConfig() {
+  if (!_rptSyncTimer) return;
+  clearTimeout(_rptSyncTimer);
+  _rptSyncTimer = null;
+  if (!_rptSyncReady || _rptSyncBlocked || window.FLOWDIT_SNAPSHOT) return;
+  const pid = state.currentProject?.id;
+  if (!pid) return;
+  api.reportConfig.save(pid, getReportData()).catch(() => {});
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushReportConfig();
+});
+window.addEventListener('pagehide', flushReportConfig);
+
+async function pullReportConfig() {
+  // The headless PDF render gets the originating tab's exact snapshot injected
+  // into localStorage; overwriting it with the server copy would print whatever
+  // was last synced instead of what the user is looking at.
+  if (window.FLOWDIT_SNAPSHOT) return;
+  const pid = state.currentProject?.id;
+  if (!pid) return;
+  try {
+    const row    = await api.reportConfig.get(pid);
+    const remote = row?.data;
+    _rptSyncReady = true;
+    if (remote && typeof remote === 'object' && (remote.meta || remote.sections)) {
+      localStorage.setItem(`fd_rpt_${pid}`, JSON.stringify(remote));
+      return;
+    }
+    // Nothing stored server-side yet — first load after this upgrade. Adopt
+    // whatever this browser already had instead of wiping existing work.
+    if (localStorage.getItem(`fd_rpt_${pid}`)) pushReportConfig();
+  } catch (e) {
+    // Degrade to the local copy rather than losing the page.
+    _rptSyncBlocked = true;
+    console.warn('[export] could not load report config:', e?.message || e);
+  }
+}
+
+// ── Report data (localStorage working copy, keyed by project) ─────
 function getReportData() {
   const pid = state.currentProject?.id;
   if (!pid) return { meta:{}, sections: DEFAULT_SECTIONS.map(s=>({...s})) };
@@ -998,12 +1078,71 @@ function setRptAccent(color) {
 }
 
 
+// Build the diagonal mark on a canvas and use the resulting PNG as a background
+// image. An SVG background is NOT enough here: Chrome keeps <text> inside an SVG
+// image as real text when it writes the PDF, so "CONFIDENTIAL" still landed in
+// the text layer and came along whenever the reader selected a paragraph. A
+// canvas bitmap has no glyphs at all — verified by extracting the PDF text.
+// applyWatermark() runs on every saveReportData(), i.e. on every keystroke in
+// the report editor, and rasterising 1600x1600 is not free — memoise it.
+const _wmCache = new Map();
+
+function watermarkPngUri(text, color) {
+  const raw = String(text || 'DRAFT').replace(/[\u0000-\u001f]/g, '').trim().toUpperCase() || 'DRAFT';
+  const cacheKey = `${color}|${raw}`;
+  if (_wmCache.has(cacheKey)) return _wmCache.get(cacheKey);
+  const BOX = 1600;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = BOX;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const setFont = px => {
+    ctx.font = `900 ${px}px "Courier New", Courier, monospace`;
+    // Chrome resets letterSpacing whenever `font` is assigned, so it goes after.
+    try { ctx.letterSpacing = `${Math.round(px * 0.15)}px`; } catch { /* older engines */ }
+  };
+
+  ctx.translate(BOX / 2, BOX / 2);
+  ctx.rotate(-Math.PI / 4);
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Measure rather than guess, so a long custom word shrinks to fit instead of
+  // running off the page.
+  const MAX_W = BOX * 0.92;
+  let size = 240;
+  setFont(size);
+  const w = ctx.measureText(raw).width;
+  if (w > MAX_W) { size = Math.max(24, Math.floor(size * MAX_W / w)); setFont(size); }
+
+  ctx.fillText(raw, 0, 0);
+  const uri = `url("${canvas.toDataURL('image/png')}")`;
+  // Bounded: a user typing a watermark generates one entry per intermediate
+  // string, and there is no reason to hold on to any of them.
+  if (_wmCache.size > 24) _wmCache.clear();
+  _wmCache.set(cacheKey, uri);
+  return uri;
+}
+
 function applyWatermark(meta) {
   const el = document.getElementById('rpt-watermark');
   if (!el) return;
   const wm = meta?.watermark || {};
-  el.textContent = wm.text || 'DRAFT';
-  el.classList.toggle('wm-on', !!wm.enabled);
+  const on = !!wm.enabled;
+  el.textContent = '';                    // never a text node again
+  el.setAttribute('aria-hidden', 'true');
+  el.classList.toggle('wm-on', on);
+  if (!on) {
+    el.style.removeProperty('--wm-screen');
+    el.style.removeProperty('--wm-print');
+    return;
+  }
+  // Neutral gray reads on both the light and dark preview themes; paper gets
+  // near-black, which is what the PDF is actually printed against.
+  el.style.setProperty('--wm-screen', watermarkPngUri(wm.text, '#808080'));
+  el.style.setProperty('--wm-print',  watermarkPngUri(wm.text, '#111111'));
 }
 
 function applyReportAccent(color) {
@@ -1049,6 +1188,7 @@ function saveReportData(data, rebuild = true) {
   const pid = state.currentProject?.id;
   if (!pid) return;
   localStorage.setItem(`fd_rpt_${pid}`, JSON.stringify(data));
+  pushReportConfig();
   applyReportFont(data.meta?.font);
   applyBaseFontSize(data.meta?.baseFontSize);
   applyReportAccent(data.meta?.accentColor);
@@ -2065,28 +2205,92 @@ function buildSecItem(sec) {
 }
 
 // ── Report Templates ──────────────────────────────────────────────
+// Templates are per-user and stored server-side, so they follow the person
+// across browsers and machines. `_templates` is a cache of the server list
+// kept in memory because the editor renders synchronously; the legacy
+// localStorage key is only read once, to migrate what a user saved before
+// this became a server feature.
 const TPL_KEY = 'fd_report_templates';
 
-function getTemplates() {
-  try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch { return []; }
-}
-function _saveTemplates(list) { localStorage.setItem(TPL_KEY, JSON.stringify(list)); }
+let _templates  = [];
+let _tplRemote  = false;   // false = offline fallback, edits stay local
 
-function saveTemplate() {
+function getTemplates() { return _templates; }
+
+function _readLocalTemplates() {
+  try {
+    const list = JSON.parse(localStorage.getItem(TPL_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function _saveLocalTemplates(list) { localStorage.setItem(TPL_KEY, JSON.stringify(list)); }
+
+function _fromRow(row) {
+  return {
+    id:       row.id,
+    name:     row.name,
+    created:  (row.created_at || '').slice(0, 10),
+    meta:     row.data?.meta || {},
+    sections: Array.isArray(row.data?.sections) ? row.data.sections : [],
+  };
+}
+
+async function loadTemplates() {
+  if (window.FLOWDIT_SNAPSHOT) return;   // headless PDF render — templates unused
+  try {
+    const rows = await api.reportTemplates.list();
+    _templates = rows.map(_fromRow);
+    _tplRemote = true;
+    await _migrateLocalTemplates();
+  } catch (e) {
+    // Older backend or no connectivity — keep the browser copy usable.
+    _tplRemote = false;
+    _templates = _readLocalTemplates();
+    console.warn('[export] could not load report templates:', e?.message || e);
+  }
+}
+
+// One-time upload of templates saved before server storage existed. The
+// local key is only cleared when every entry made it across, so a partial
+// failure never loses a template.
+async function _migrateLocalTemplates() {
+  const legacy = _readLocalTemplates();
+  if (!legacy.length) return;
+  const failed = [];
+  for (const tpl of legacy) {
+    if (!tpl?.meta || !Array.isArray(tpl.sections)) continue;
+    try {
+      const row = await api.reportTemplates.create(tpl.name || 'Untitled', { meta: tpl.meta, sections: tpl.sections });
+      _templates.unshift(_fromRow(row));
+    } catch { failed.push(tpl); }
+  }
+  if (failed.length) _saveLocalTemplates(failed);
+  else localStorage.removeItem(TPL_KEY);
+}
+
+async function saveTemplate() {
   const input = document.getElementById('tpl-name-input');
-  const name = input?.value.trim();
+  const name  = input?.value.trim();
   if (!name) { input?.focus(); return; }
-  const d = getReportData();
-  const tpl = { name, created: new Date().toISOString().slice(0,10), meta: d.meta, sections: d.sections };
-  const list = getTemplates();
-  list.unshift(tpl);
-  _saveTemplates(list);
+  const d       = getReportData();
+  const payload = { meta: d.meta, sections: d.sections };
+
+  if (_tplRemote) {
+    try {
+      const row = await api.reportTemplates.create(name, payload);
+      _templates.unshift(_fromRow(row));
+    } catch (e) { showToast(e?.message || 'Could not save template', 'error'); return; }
+  } else {
+    _templates.unshift({ name, created: new Date().toISOString().slice(0,10), ...payload });
+    _saveLocalTemplates(_templates);
+  }
   if (input) input.value = '';
   buildEditor();
+  showToast('Template saved', 'success');
 }
 
 function loadTemplate(idx) {
-  const tpl = getTemplates()[idx];
+  const tpl = _templates[idx];
   if (!tpl) return;
   if (!confirm(`Load template "${tpl.name}"? This will overwrite the current report configuration.`)) return;
   const d = getReportData();
@@ -2096,19 +2300,25 @@ function loadTemplate(idx) {
   buildEditor();
 }
 
-function deleteTemplate(idx) {
-  const list = getTemplates();
-  if (!list[idx]) return;
-  if (!confirm(`Delete template "${list[idx].name}"?`)) return;
-  list.splice(idx, 1);
-  _saveTemplates(list);
+async function deleteTemplate(idx) {
+  const tpl = _templates[idx];
+  if (!tpl) return;
+  if (!confirm(`Delete template "${tpl.name}"?`)) return;
+  if (_tplRemote && tpl.id) {
+    try { await api.reportTemplates.delete(tpl.id); }
+    catch (e) { showToast(e?.message || 'Could not delete template', 'error'); return; }
+    _templates.splice(idx, 1);
+  } else {
+    _templates.splice(idx, 1);
+    _saveLocalTemplates(_templates);
+  }
   buildEditor();
 }
 
 function exportTemplate(idx) {
-  const tpl = getTemplates()[idx];
+  const tpl = _templates[idx];
   if (!tpl) return;
-  const blob = new Blob([JSON.stringify(tpl, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ name: tpl.name, created: tpl.created, meta: tpl.meta, sections: tpl.sections }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${tpl.name.replace(/\s+/g,'-').toLowerCase()}-template.json`;
@@ -2120,17 +2330,22 @@ function importTemplateFile(input) {
   const file = input.files?.[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const tpl = JSON.parse(e.target.result);
-      if (!tpl.meta || !tpl.sections) { alert('Invalid template file.'); return; }
-      if (!tpl.name) tpl.name = file.name.replace(/\.json$/i,'');
-      if (!tpl.created) tpl.created = new Date().toISOString().slice(0,10);
-      const list = getTemplates();
-      list.unshift(tpl);
-      _saveTemplates(list);
-      buildEditor();
-    } catch { alert('Could not parse template file.'); }
+  reader.onload = async e => {
+    let tpl;
+    try { tpl = JSON.parse(e.target.result); }
+    catch { alert('Could not parse template file.'); return; }
+    if (!tpl?.meta || !Array.isArray(tpl.sections)) { alert('Invalid template file.'); return; }
+    const name = tpl.name || file.name.replace(/\.json$/i, '');
+    if (_tplRemote) {
+      try {
+        const row = await api.reportTemplates.create(name, { meta: tpl.meta, sections: tpl.sections });
+        _templates.unshift(_fromRow(row));
+      } catch (err) { showToast(err?.message || 'Could not import template', 'error'); return; }
+    } else {
+      _templates.unshift({ name, created: tpl.created || new Date().toISOString().slice(0,10), meta: tpl.meta, sections: tpl.sections });
+      _saveLocalTemplates(_templates);
+    }
+    buildEditor();
   };
   reader.readAsText(file);
   input.value = '';
@@ -3894,7 +4109,14 @@ function copyMarkdown() {
 }
 
 async function pageInit() {
-  await loadAllTargetDetails();
+  // Pull the server copies BEFORE anything reads localStorage: getReportData()
+  // and the finding hydration in buildEditor() both take localStorage as their
+  // input, so the server state has to land there first.
+  await Promise.all([
+    loadAllTargetDetails(),
+    pullReportConfig(),
+    loadTemplates(),
+  ]);
   const d = getReportData();
   applyReportFont(d.meta?.font);
   applyBaseFontSize(d.meta?.baseFontSize);

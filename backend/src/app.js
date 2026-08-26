@@ -55,6 +55,7 @@ app.use('/api/portal',    require('./routes/portal'));    // public — no requi
 app.use('/api/projects',  require('./routes/projects'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/templates', require('./routes/templates'));
+app.use('/api/report-templates', require('./routes/report-templates'));
 
 // Nested project routes — mergeParams makes :projectId available in child routers
 const projectRouter = express.Router({ mergeParams: true });
@@ -65,6 +66,7 @@ projectRouter.use('/activity', require('./routes/activity'));
 projectRouter.use('/targets',  require('./routes/targets'));
 projectRouter.use('/tickets',    require('./routes/tickets'));
 projectRouter.use('/whiteboard', require('./routes/whiteboard'));
+projectRouter.use('/report-config', require('./routes/report-config'));
 projectRouter.use('/import',    require('./routes/import'));
 projectRouter.use('/ai',        require('./routes/ai'));
 projectRouter.use('/ai-scan',   require('./routes/ai-scan'));

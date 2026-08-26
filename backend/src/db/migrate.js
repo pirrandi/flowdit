@@ -673,6 +673,44 @@ const migrations = [
   // esta lista en el lugar, no se agrega un par nuevo.
   `ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_ai_provider_check`,
   `ALTER TABLE projects ADD CONSTRAINT projects_ai_provider_check CHECK (ai_provider IN ('groq','anthropic','deepseek','custom','kimi'))`,
+
+  // ── Report builder persistence ────────────────────────────────────────
+  // The export page used to keep the whole report configuration in the
+  // browser's localStorage: cover metadata, section list, and — critically —
+  // the per-finding editorial data (risk-matrix probability, remediation
+  // priority, business impact, executive action, rewritten description and
+  // remediation). That meant a different browser, a cleared profile or a
+  // fresh machine silently lost work the user had already done. The report
+  // is a project artifact, so it lives with the project, shared by every
+  // member exactly like whiteboard_state.
+  `CREATE TABLE IF NOT EXISTS report_config (
+    project_id UUID PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // updated_by is an audit stamp, not ownership: deleting the account that
+  // last touched the report must not be blocked by it, and must not take the
+  // report down with it either. Re-applied here so installs created before
+  // this line get the same behavior.
+  `ALTER TABLE report_config DROP CONSTRAINT IF EXISTS report_config_updated_by_fkey`,
+  `ALTER TABLE report_config ADD CONSTRAINT report_config_updated_by_fkey
+     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL`,
+
+  // Saved report templates (cover metadata + section layout) belong to the
+  // user, not to a project — that is the whole point of a template: reuse it
+  // on the next engagement.
+  `CREATE TABLE IF NOT EXISTS report_templates (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       VARCHAR(200) NOT NULL,
+    data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_report_templates_user ON report_templates(created_by, created_at DESC)`,
 ];
 
 
