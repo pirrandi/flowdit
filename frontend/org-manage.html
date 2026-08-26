@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flowdit — Manage Organization</title>
+<title>Manage Organization</title>
 <link rel="stylesheet" href="css/main.css">
 <link rel="icon" type="image/x-icon" href="img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
@@ -28,7 +28,7 @@
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
 
 <div class="proj-topbar">
-  <a href="projects.html" class="proj-topbar-logo">
+  <a href="projects" class="proj-topbar-logo">
     <img src="img/flowdit-logo.png" alt="Flowdit">
     <span>Flowdit</span>
   </a>
@@ -37,7 +37,7 @@
 </div>
 
 <div class="proj-body">
-  <a href="orgs.html" class="org-back"></a>
+  <a href="orgs" class="org-back"></a>
   <div id="org-manage-content">
     <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Loading...</div>
   </div>
@@ -82,17 +82,17 @@ document.querySelector('.org-back').innerHTML = `${icon('arrow-left',{size:11})}
 
 // ── AUTH GUARD + BOOT ──────────────────────────────────────────────
 async function bootOrgManage() {
-  if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
-  if (!ORG_ID) { window.location.href = 'orgs.html'; return; }
+  if (!api.auth.hasSession()) { window.location.href = '/'; return; }
+  if (!ORG_ID) { window.location.href = 'orgs'; return; }
   try { state.user = await api.auth.me(); }
-  catch { window.location.href = 'index.html'; return; }
+  catch { window.location.href = '/'; return; }
 
   renderUserPill();
 
   try {
     _org = await api.organizations.get(ORG_ID);
   } catch {
-    window.location.href = 'orgs.html';
+    window.location.href = 'orgs';
     return;
   }
 
@@ -120,7 +120,7 @@ function renderUserPill() {
       ${avatarHtml(u.username, color, 24, u.avatar_url)}
       <span>${esc(u.username)}</span>
       <div class="user-dropdown" id="user-dropdown">
-        <button class="dropdown-item" onclick="window.location.href='projects.html'">${icon('layout-grid',{size:13})} Projects</button>
+        <button class="dropdown-item" onclick="window.location.href='projects'">${icon('layout-grid',{size:13})} Projects</button>
         <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out',{size:13})} Logout</button>
       </div>
     </div>`;
@@ -132,7 +132,7 @@ document.addEventListener('click', e => { if (!e.target.closest('.user-pill')) c
 async function doLogout() {
   await api.auth.logout().catch(() => {});
   localStorage.removeItem('fd_project');
-  window.location.href = 'index.html';
+  window.location.href = '/';
 }
 
 // ── RENDER ────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ function render() {
         <div class="page-title">${esc(_org.name)}</div>
         <div class="page-subtitle">// ${_org.is_personal ? 'personal organization' : 'organization'}</div>
       </div>
-      <a href="projects.html?oid=${ORG_ID}" class="btn btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px">View Projects ${icon('arrow-right',{size:11})}</a>
+      <a href="projects?oid=${ORG_ID}" class="btn btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px">View Projects ${icon('arrow-right',{size:11})}</a>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:12px">
@@ -386,7 +386,7 @@ async function deleteOrg() {
   if (!confirm(`Delete "${_org.name}"? This cannot be undone.`)) return;
   try {
     await api.organizations.delete(ORG_ID);
-    window.location.href = 'orgs.html';
+    window.location.href = 'orgs';
   } catch(e) { showToast(e.message, 'error'); }
 }
 

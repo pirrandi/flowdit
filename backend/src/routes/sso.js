@@ -93,7 +93,7 @@ router.get('/start', async (req, res, next) => {
 });
 
 // GET /auth/sso/callback — Microsoft redirects back here with ?code&state
-router.get('/callback', async (req, res, next) => {
+router.get('/callback', async (req, res, _next) => {
   const { state } = req.query;
   if (!state) return loginErrorRedirect(res, 'Missing state');
   const flow = takeFlow(state);

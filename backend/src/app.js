@@ -30,7 +30,12 @@ app.use(express.json({ limit: '4mb' }));
 
 // Rate limiting (disabled in local dev)
 if (process.env.NODE_ENV === 'production') {
-  app.use(rateLimit({ windowMs:15*60*1000, max:500, standardHeaders:true, legacyHeaders:false }));
+  // RATE_LIMIT_MAX is documented in .env.example and set in docker-compose, but
+  // the global limit ignored it and always used 500. The auth limits below stay
+  // fixed on purpose — they guard credential stuffing, not general throughput,
+  // and shouldn't loosen when an operator raises the app-wide ceiling.
+  const globalMax = Number(process.env.RATE_LIMIT_MAX) || 500;
+  app.use(rateLimit({ windowMs:15*60*1000, max:globalMax, standardHeaders:true, legacyHeaders:false }));
   app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
   app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
   app.use('/api/portal/auth',   rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
@@ -51,6 +56,7 @@ app.use('/api/projects',  require('./routes/projects'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/compliance', require('./routes/compliance'));
+app.use('/api/report-templates', require('./routes/report-templates'));
 
 // Nested project routes — mergeParams makes :projectId available in child routers
 const projectRouter = express.Router({ mergeParams: true });
@@ -61,8 +67,10 @@ projectRouter.use('/activity', require('./routes/activity'));
 projectRouter.use('/targets',  require('./routes/targets'));
 projectRouter.use('/tickets',    require('./routes/tickets'));
 projectRouter.use('/whiteboard', require('./routes/whiteboard'));
+projectRouter.use('/report-config', require('./routes/report-config'));
 projectRouter.use('/import',    require('./routes/import'));
 projectRouter.use('/ai',        require('./routes/ai'));
+projectRouter.use('/ai-scan',   require('./routes/ai-scan'));
 
 // Ports & endpoints nested under a specific target
 const targetRouter = express.Router({ mergeParams: true });

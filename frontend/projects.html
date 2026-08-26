@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flowdit — Projects</title>
+<title>Projects</title>
 <link rel="stylesheet" href="css/main.css">
 <link rel="icon" type="image/x-icon" href="img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
@@ -61,7 +61,7 @@
 <div id="loading-overlay"><div class="spinner"></div><div class="spinner-text">// loading...</div></div>
 
 <div class="proj-topbar">
-  <a href="projects.html" class="proj-topbar-logo">
+  <a href="projects" class="proj-topbar-logo">
     <img src="img/flowdit-logo.png" alt="Flowdit">
     <span>Flowdit</span>
   </a>
@@ -137,9 +137,9 @@ let _orgFilter = null; // null = "All"
 
 // ── AUTH GUARD + BOOT ──────────────────────────────────────────────
 async function bootProjects() {
-  if (!api.auth.hasSession()) { window.location.href = 'index.html'; return; }
+  if (!api.auth.hasSession()) { window.location.href = '/'; return; }
   try { state.user = await api.auth.me(); }
-  catch { window.location.href = 'index.html'; return; }
+  catch { window.location.href = '/'; return; }
 
   renderUserPill();
 
@@ -194,7 +194,7 @@ function renderUserPill() {
       <span>${esc(u.username)}</span>
       <div class="user-dropdown" id="user-dropdown">
         <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> Edit Profile</button>
-        <button class="dropdown-item" onclick="window.location.href='orgs.html'">${icon('building-2',{size:13})} Organizations</button>
+        <button class="dropdown-item" onclick="window.location.href='orgs'">${icon('building-2',{size:13})} Organizations</button>
         <button class="dropdown-item danger" onclick="doLogout()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></svg> Logout</button>
       </div>
     </div>`;
@@ -206,7 +206,7 @@ document.addEventListener('click', e => { if (!e.target.closest('.user-pill')) c
 async function doLogout() {
   await api.auth.logout().catch(() => {});
   localStorage.removeItem('fd_project');
-  window.location.href = 'index.html';
+  window.location.href = '/';
 }
 
 // ── PROFILE MODAL ─────────────────────────────────────────────────
@@ -320,8 +320,8 @@ async function saveProfile() {
 
 // ── RENDER PROJECTS ───────────────────────────────────────────────
 function projectHref(p) {
-  if (p.member_role === 'viewer') return `client.html?pid=${p.id}`;
-  return `dashboard.html?pid=${p.id}`;
+  if (p.member_role === 'viewer') return `client?pid=${p.id}`;
+  return `dashboard?pid=${p.id}`;
 }
 
 function renderProjects() {
@@ -422,7 +422,7 @@ async function saveNewProject() {
     const proj = await api.projects.create({ name, target, description: desc, organization_id });
     document.getElementById('project-modal').classList.remove('open');
     localStorage.setItem('fd_project', proj.id);
-    window.location.href = `dashboard.html?pid=${proj.id}`;
+    window.location.href = `dashboard?pid=${proj.id}`;
   } catch(e) { showToast(e.message, 'error'); }
   finally { btn.disabled = false; }
 }
@@ -448,7 +448,7 @@ async function doJoin() {
     const res = await api.projects.join(code);
     document.getElementById('join-modal').classList.remove('open');
     localStorage.setItem('fd_project', res.projectId);
-    const dest = res.role === 'viewer' ? `client.html?pid=${res.projectId}` : `dashboard.html?pid=${res.projectId}`;
+    const dest = res.role === 'viewer' ? `client?pid=${res.projectId}` : `dashboard?pid=${res.projectId}`;
     window.location.href = dest;
   } catch(e) {
     err.textContent = e.message;

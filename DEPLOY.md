@@ -153,6 +153,19 @@ server {
     root /var/www/flowdit/frontend;
     index index.html;
 
+    # Security headers. Note that nginx does not merge add_header across levels:
+    # any block declaring its own add_header loses every inherited one, so a
+    # location that sets Cache-Control must restate these.
+    #
+    # connect-src is 'self' here because this vhost proxies /api and /ws on the
+    # same origin. 'unsafe-inline' is still required by the current frontend
+    # (inline <script> blocks and inline style attributes).
+    add_header X-Frame-Options        "SAMEORIGIN"                       always;
+    add_header X-Content-Type-Options "nosniff"                          always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin"  always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
+
     location / {
         try_files $uri $uri/ /index.html;
     }

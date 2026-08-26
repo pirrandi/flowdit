@@ -55,6 +55,7 @@ function buildTargetCard(t) {
       <span style="font-family:var(--mono);font-size:10px;color:${statusColor};margin-left:auto;flex-shrink:0">${statusLabel}</span>
       ${linkedVulns.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--c-crit);margin-left:8px">${linkedVulns.length} finding${linkedVulns.length>1?'s':''}</span>` : ''}
       <div class="vuln-actions">
+        <button class="btn-icon" title="Escanear con AI Agent" onclick="event.stopPropagation();window.location.href='ai-agent?pid=${state.currentProject.id}&target=${t.id}'">${icon('sparkles',{size:12})}</button>
         <button class="btn-icon edit"   onclick="openEditTarget('${t.id}',event)">${icon('square-pen',{size:12})}</button>
         <button class="btn-icon delete" onclick="deleteTarget('${t.id}',event)">${icon('x',{size:12})}</button>
       </div>

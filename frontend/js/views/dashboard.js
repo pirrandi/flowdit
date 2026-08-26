@@ -179,7 +179,7 @@ function openVulnDrawer(vulnId) {
   }
 
   html += `<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--b1)">
-    <a href="vulns.html?pid=${esc(state.currentProject?.id)}" class="btn btn-ghost" style="font-size:11px">
+    <a href="vulns?pid=${esc(state.currentProject?.id)}" class="btn btn-ghost" style="font-size:11px">
       Abrir en Findings ${icon('arrow-right', { size: 11 })}
     </a>
   </div>`;
@@ -433,7 +433,7 @@ function updateDashboard() {
         ${(() => {
           if (!p.date_end) return `
             <div class="stat-val" style="color:var(--t3)">—</div>
-            <div class="stat-sub"><a href="settings.html?pid=${pid}" style="color:var(--a);text-decoration:none">Set deadline ${icon('arrow-right', { size: 10 })}</a></div>
+            <div class="stat-sub"><a href="settings?pid=${pid}" style="color:var(--a);text-decoration:none">Set deadline ${icon('arrow-right', { size: 10 })}</a></div>
             <div class="stat-bar"></div>`;
           const parseDate = s => { const [y,m,d] = s.slice(0,10).split('-').map(Number); return new Date(y,m-1,d); };
           const today = new Date(); today.setHours(0,0,0,0);
@@ -462,7 +462,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Recent Findings <span class="section-count">${vulns.length}</span></div>
-            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all ${icon('arrow-right', { size: 10 })}</a>
+            <a href="vulns?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all ${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body bare">
             ${vulns.length === 0
@@ -496,7 +496,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Targets <span class="section-count">${inScope.length}</span></div>
-            <a href="targets.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage ${icon('arrow-right', { size: 10 })}</a>
+            <a href="targets?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage ${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body bare">
             ${inScope.length === 0
@@ -540,7 +540,7 @@ function updateDashboard() {
           return `<div class="section">
             <div class="section-head">
               <div class="section-title">Methodologies <span class="section-count">${entries.length}</span></div>
-              <a href="methodology.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage ${icon('arrow-right', { size: 10 })}</a>
+              <a href="methodology?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">manage ${icon('arrow-right', { size: 10 })}</a>
             </div>
             <div class="section-body">
               <div style="display:flex;flex-direction:column;gap:10px">
@@ -575,7 +575,7 @@ function updateDashboard() {
           return `<div class="section">
             <div class="section-head">
               <div class="section-title">Client Queries <span class="section-count">${tickets.length}</span></div>
-              <a href="tickets.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all ${icon('arrow-right', { size: 10 })}</a>
+              <a href="tickets?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">view all ${icon('arrow-right', { size: 10 })}</a>
             </div>
             <div class="section-body">
               <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
@@ -593,7 +593,7 @@ function updateDashboard() {
                 </div>
               </div>
               ${recent.length
-                ? recent.map(t => `<div class="dash-ticket-row" onclick="window.location.href='tickets.html?pid=${pid}'">
+                ? recent.map(t => `<div class="dash-ticket-row" onclick="window.location.href='tickets?pid=${pid}'">
                     <div class="dash-ticket-dot" style="background:${t.status==='open'?'var(--a)':'var(--c-high)'}"></div>
                     <span style="font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
                     ${t.reply_count ? `<span style="font-size:10px;color:var(--t3)">${t.reply_count} repl${t.reply_count===1?'y':'ies'}</span>` : ''}
@@ -643,7 +643,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Remediation <span class="section-count">${remPct}%</span></div>
-            <a href="vulns.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">${icon('arrow-right', { size: 10 })}</a>
+            <a href="vulns?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body">
             ${vulns.length === 0
@@ -665,7 +665,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">WSTG Progress <span class="section-count">${wPct}%</span></div>
-            <a href="owstg.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">${icon('arrow-right', { size: 10 })}</a>
+            <a href="owstg?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body">
             <div style="display:flex;gap:16px;margin-bottom:12px">
@@ -696,7 +696,7 @@ function updateDashboard() {
         <div class="section">
           <div class="section-head">
             <div class="section-title">Timeline</div>
-            <a href="settings.html?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">edit ${icon('arrow-right', { size: 10 })}</a>
+            <a href="settings?pid=${pid}" class="btn btn-ghost" style="font-size:10px;padding:2px 8px">edit ${icon('arrow-right', { size: 10 })}</a>
           </div>
           <div class="section-body">
             ${(() => {
@@ -707,7 +707,7 @@ function updateDashboard() {
               ];
               const today = new Date(); today.setHours(0,0,0,0);
               if (!p.date_start && !p.date_end && !p.date_report) {
-                return `<div style="font-size:11px;color:var(--t3)">Sin fechas configuradas. <a href="settings.html?pid=${pid}" style="color:var(--a)">Configurar ${icon('arrow-right', { size: 10 })}</a></div>`;
+                return `<div style="font-size:11px;color:var(--t3)">Sin fechas configuradas. <a href="settings?pid=${pid}" style="color:var(--a)">Configurar ${icon('arrow-right', { size: 10 })}</a></div>`;
               }
               return `<div style="display:flex;flex-direction:column;gap:10px">
                 ${rows.map(r => {

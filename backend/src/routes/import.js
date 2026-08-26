@@ -221,11 +221,78 @@ async function parseZap(xml, projectId, userId, targetMap) {
   return { imported, targets_created: targetsCreated };
 }
 
+// ── Nmap parser ─────────────────────────────────────────────────────────
+// A diferencia de Burp/Nessus/ZAP (que reportan VULNERABILIDADES), un scan
+// de Nmap reporta puertos/servicios — ROADMAP.md: "complementa Nessus para
+// el inventario de puertos/servicios". No crea custom_vulns: puebla
+// targets + target_ports directamente, el mismo dato que ya se ve en la
+// pestaña Targets de cada target. `-oX` es la forma estándar de generar el
+// XML (ej. `nmap -sV -oX scan.xml <hosts>`).
+async function parseNmap(xml, projectId, userId, targetMap) {
+  const parser = new XMLParser({
+    ignoreAttributes: false, attributeNamePrefix: '@_',
+    isArray: n => ['host', 'address', 'hostname', 'port'].includes(n),
+  });
+  const root = parser.parse(xml)?.nmaprun;
+  if (!root) throw new Error('Invalid Nmap XML — missing <nmaprun> root (use nmap -oX)');
+
+  const hosts = [].concat(root.host || []);
+  let imported = 0, targetsCreated = 0;
+
+  // target_ports no tiene UNIQUE(target_id,port,protocol) — sin este chequeo,
+  // reimportar el mismo scan (o dos scans solapados) duplicaría filas cada
+  // vez. Se arma una sola vez, como targetMap más arriba.
+  const { rows: existingPorts } = await db.query(`SELECT target_id, port, protocol FROM target_ports`);
+  const portSet = new Set(existingPorts.map(p => `${p.target_id}:${p.port}:${p.protocol}`));
+
+  for (const host of hosts) {
+    if (host.status?.['@_state'] !== 'up') continue; // hosts caídos/no respondieron — nada real que importar
+
+    const addresses    = [].concat(host.address || []);
+    const hostnames     = [].concat(host.hostnames?.hostname || []);
+    // Preferir el hostname "user" (el que el propio Nmap resolvió/te dieron)
+    // sobre la IP, mismo criterio que parseNessus prefiere FQDN sobre IP.
+    const userHostname = hostnames.find(h => h['@_type'] === 'user')?.['@_name'];
+    const ipv4          = addresses.find(a => a['@_addrtype'] === 'ipv4')?.['@_addr'];
+    const hostValue     = userHostname || ipv4 || addresses.find(a => a['@_addrtype'] !== 'mac')?.['@_addr'];
+    if (!hostValue) continue;
+
+    const target = await upsertTarget(projectId, hostValue, userId, targetMap);
+    if (!target) continue;
+    if (target.created) targetsCreated++;
+
+    for (const port of [].concat(host.ports?.port || [])) {
+      if (port.state?.['@_state'] !== 'open') continue; // solo lo accionable — mismo criterio que Nessus salteando severity=0
+
+      const portNum  = parseInt(port['@_portid'], 10);
+      const protocol = String(port['@_protocol'] || 'tcp').toLowerCase();
+      if (!portNum || (protocol !== 'tcp' && protocol !== 'udp')) continue; // target_ports.protocol solo acepta tcp/udp
+
+      const key = `${target.id}:${portNum}:${protocol}`;
+      if (portSet.has(key)) continue;
+      portSet.add(key);
+
+      const svc = port.service || {};
+      const version = [svc['@_product'], svc['@_version'], svc['@_extrainfo'] && `(${svc['@_extrainfo']})`]
+        .filter(Boolean).join(' ') || null;
+
+      await db.query(
+        `INSERT INTO target_ports (target_id, port, protocol, state, service, version, notes, added_by)
+         VALUES ($1,$2,$3,'open',$4,$5,'Imported from Nmap scan',$6)`,
+        [target.id, portNum, protocol, svc['@_name'] || null, version, userId]
+      );
+      imported++;
+    }
+  }
+  return { imported, targets_created: targetsCreated };
+}
+
 // ── Auto-detect + single endpoint ───────────────────────────────────────
 function detectFormat(xml) {
   if (/<issues[\s>]/i.test(xml))              return 'burp';
   if (/NessusClientData/i.test(xml))          return 'nessus';
   if (/OWASPZAPReport/i.test(xml))            return 'zap';
+  if (/<nmaprun[\s>]/i.test(xml))              return 'nmap';
   return null;
 }
 
@@ -234,7 +301,7 @@ router.post('/scan', requireEditor, upload.single('file'), async (req, res, next
   try {
     const xml    = req.file.buffer.toString('utf8');
     const format = detectFormat(xml);
-    if (!format) return res.status(400).json({ error: 'Unrecognized format — expected Burp Suite, Nessus, or OWASP ZAP XML' });
+    if (!format) return res.status(400).json({ error: 'Unrecognized format — expected Burp Suite, Nessus, OWASP ZAP, or Nmap XML' });
 
     const projectId = req.params.projectId;
     const { rows: existing } = await db.query('SELECT id, host FROM targets WHERE project_id=$1', [projectId]);
@@ -244,6 +311,7 @@ router.post('/scan', requireEditor, upload.single('file'), async (req, res, next
     if (format === 'burp')   result = await parseBurp(xml,   projectId, req.user.id, targetMap);
     if (format === 'nessus') result = await parseNessus(xml, projectId, req.user.id, targetMap);
     if (format === 'zap')    result = await parseZap(xml,    projectId, req.user.id, targetMap);
+    if (format === 'nmap')   result = await parseNmap(xml,   projectId, req.user.id, targetMap);
 
     res.json({ ...result, format });
   } catch (err) {

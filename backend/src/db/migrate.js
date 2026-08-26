@@ -509,6 +509,214 @@ const migrations = [
   // implicit (PCI-DSS only for now) — no framework field yet, kept as `compliance_tags`
   // (not `pci_tags`) so other frameworks can be added later without a rename.
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS compliance_tags JSONB NOT NULL DEFAULT '[]'`,
+
+  // ── AI PENTEST AGENT (scanner) ───────────────────────────────────────
+  // Diseño completo en AI_PENTEST_AGENT.md (branch feature/ai-pentest-agent).
+  // Una sesión es una máquina de estados; ai_scan_events es el log completo
+  // (event sourcing) usado tanto para auditoría como para reconstruir el
+  // estado de quien se conecta tarde al WebSocket.
+  `CREATE TABLE IF NOT EXISTS ai_scan_sessions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    target_id     UUID REFERENCES targets(id) ON DELETE SET NULL, -- null = alcance de todo el proyecto
+    status        VARCHAR(20) NOT NULL DEFAULT 'idle'
+                    CHECK (status IN ('idle','running','waiting_approval','paused','completed','error')),
+    current_phase VARCHAR(50),
+    started_by    UUID NOT NULL REFERENCES users(id),
+    started_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at  TIMESTAMPTZ
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_scan_sessions_project ON ai_scan_sessions(project_id)`,
+
+  `CREATE TABLE IF NOT EXISTS ai_scan_events (
+    id          BIGSERIAL PRIMARY KEY,
+    session_id  UUID NOT NULL REFERENCES ai_scan_sessions(id) ON DELETE CASCADE,
+    -- thread_id: sin uso en V1 (siempre NULL). V1 bloquea la sesión ENTERA
+    -- ante cualquier finding.proposed pendiente (más simple de razonar).
+    -- Gancho barato para la extensión futura a paralelismo (varios hilos de
+    -- trabajo por sesión, ej. uno por target, donde una aprobación pendiente
+    -- en un hilo no frena a los demás) — evita alterar la tabla ese día,
+    -- alcanza con empezar a poblar esta columna. Ver AI_PENTEST_AGENT.md
+    -- y ROADMAP.md → "Scanner de IA — soporte multi-hilo".
+    thread_id   UUID,
+    type        VARCHAR(50) NOT NULL, -- 'phase.started', 'finding.proposed', 'chat.message', etc.
+    payload     JSONB NOT NULL DEFAULT '{}',
+    created_by  UUID REFERENCES users(id), -- NULL = lo generó la IA, no un humano
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_scan_events_session ON ai_scan_events(session_id, created_at)`,
+
+  // ── DEEPSEEK PROVIDER (OpenAI-compatible, ver openaiCompatible.js) ───
+  // El DROP+ADD de este CHECK constraint se sacó de acá — ver comentario
+  // más abajo, junto a la versión final del constraint, para el porqué
+  // (bug real: re-imponer una versión vieja del constraint en cada arranque
+  // rompía si algún proyecto ya usaba un provider agregado más tarde).
+
+  // ── ORQUESTACIÓN MULTI-AGENTE (cobra el gancho thread_id de más arriba) ──
+  // El thread con parent_thread_id NULL es el coordinador (el que "habla"
+  // con el pentester); cada delegate_to_subagent crea uno hijo. Un solo
+  // nivel de delegación — enforced en código (agentLoop.js), no acá.
+  // Diseño completo en AI_PENTEST_AGENT.md § "Orquestación multi-agente".
+  `CREATE TABLE IF NOT EXISTS ai_scan_threads (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id        UUID NOT NULL REFERENCES ai_scan_sessions(id) ON DELETE CASCADE,
+    parent_thread_id  UUID REFERENCES ai_scan_threads(id) ON DELETE SET NULL,
+    label             VARCHAR(200),
+    status            VARCHAR(20) NOT NULL DEFAULT 'running'
+                        CHECK (status IN ('running','idle','waiting_approval','completed','error')),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at      TIMESTAMPTZ
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_scan_threads_session ON ai_scan_threads(session_id)`,
+
+  // ── PROVEEDOR "CUSTOM" (modelos locales — Ollama, LM Studio, vLLM, etc.) ──
+  // Configurado por env vars a nivel de quien hostea Flowdit (CUSTOM_API_URL/
+  // CUSTOM_API_KEY/CUSTOM_MODEL, ver backend/src/services/ai/custom.js), NO
+  // por proyecto — un base_url elegible desde la UI sería SSRF. Ver
+  // AI_PENTEST_AGENT.md § Multi-proveedor.
+  // (mismo motivo que arriba — DROP+ADD movido a la versión final del constraint)
+
+  // ── MODO DE TOOL-CALLING (fallback en texto plano) ──────────────────────
+  // 'native' (default) = tools/tool_calls estructurados, lo que ya usan
+  // groq/anthropic/deepseek y la mayoría de modelos locales modernos.
+  // 'text' = fallback ACTION: tool(args) parseado a mano, para modelos
+  // locales débiles que no soportan tool-calling nativo de forma confiable
+  // (solo lo consume el proveedor 'custom' — ver openaiCompatible.js).
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_tool_mode VARCHAR(10) NOT NULL DEFAULT 'native' CHECK (ai_tool_mode IN ('native','text'))`,
+
+  // ── GATE DE NIVEL 2/3 OPCIONAL — "MODO SIN RESTRICCIONES" ────────────────
+  // Por defecto (false), send_http_request/test_payload/run_exploit_poc
+  // (Nivel 2) y propose_finding (Nivel 3) siguen requiriendo aprobación
+  // explícita, igual que siempre. En true, corren solas, igual que Nivel 1
+  // — pedido explícito del usuario ("chipe libre absoluto en todo"). Ver
+  // agentLoop.js needsGate() y AI_PENTEST_AGENT.md § Superficie de tools.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_autonomous_requests BOOLEAN NOT NULL DEFAULT false`,
+
+  // "Un agente a la vez" — oculta delegate_to_subagent del coordinador
+  // (agentLoop.js advance()), así nunca hay más de un thread `running` en
+  // toda la sesión. Pedido explícito tras encontrar en vivo que Kimi K3 en
+  // tier gratuito tiene Concurrency: 1 — con sub-agentes en paralelo eso
+  // rompe sin importar el RPM. También sirve en general para no quemar
+  // tokens tan rápido, más allá de rate limits bajos.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_single_agent BOOLEAN NOT NULL DEFAULT false`,
+
+  // ── CONFIG DE IA POR SESIÓN — pisa la del proyecto, no al revés ─────────
+  // Mismo patrón que ai_scan_sessions.response_language (se fija UNA vez al
+  // arrancar, no se reconfigura a mitad de sesión). NULL = "usá lo del
+  // proyecto" — cubre sesiones viejas creadas antes de esta migración sin
+  // necesidad de backfill. Pedido explícito: poder tener sesiones con
+  // proveedores/configs distintas conviviendo en el mismo proyecto (ej. una
+  // en Kimi con rate limit bajo, otra en Claude sin restricciones). Ver el
+  // merge `effective` en agentLoop.js advance().
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20)`,
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50)`,
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_tool_mode VARCHAR(10)`,
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_autonomous_requests BOOLEAN`,
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_single_agent BOOLEAN`,
+
+  // ── ORIGEN DEL HALLAZGO — ¿lo propuso la IA? ─────────────────────────────
+  // custom_vulns.created_by siempre es un usuario real (el que aprobó, o
+  // quien arrancó la sesión en modo autónomo) — nunca hubo forma de saber,
+  // mirando la tabla, si un hallazgo salió de propose_finding o lo escribió
+  // un humano a mano. Pedido explícito: "que se complemente mejor con el
+  // ecosistema" — la vista de Findings puede marcarlo visualmente con esto.
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN NOT NULL DEFAULT false`,
+
+  // ── IDIOMA DE RESPUESTA DEL AGENTE (ES/EN) ───────────────────────────────
+  // Pedido explícito: toggle de idioma en la página del AI Agent (acotado a
+  // esa página, no toda la app — decisión explícita del usuario). Se fija UNA
+  // vez, al arrancar la sesión (lo que el toggle del frontend valía en ese
+  // momento — ver ai-agent.js scanStartSession()), no es reconfigurable a
+  // mitad de sesión: cambiaría el idioma de un historial ya en curso.
+  // Consumido por buildSystemPrompt() en agentLoop.js.
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS response_language VARCHAR(2) NOT NULL DEFAULT 'es' CHECK (response_language IN ('es','en'))`,
+
+  // NULL = todavía sin nombre — auto-nombrada desde el primer mensaje
+  // (deriveSessionName en agentLoop.js) o puesta a mano vía PATCH
+  // /sessions/:id (ai-scan.js); el frontend cae al label de fecha si es NULL.
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS name VARCHAR(200)`,
+
+  // ── COSTO Y HALLAZGOS POR SESIÓN ──────────────────────────────────────
+  // Van al final del array (no junto a las definiciones originales de
+  // ai_usage/custom_vulns más arriba) porque referencian ai_scan_sessions,
+  // que recién existe más abajo en este mismo archivo — las migraciones
+  // corren en orden. ON DELETE SET NULL, no CASCADE: borrar una sesión de
+  // scan no debe borrarse el gasto ya incurrido ni los hallazgos ya
+  // creados, son artefactos reales del proyecto — solo pierden el vínculo
+  // con la sesión que los originó (mismo espíritu que custom_vulns.target_id).
+  `ALTER TABLE ai_usage ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES ai_scan_sessions(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_usage_session ON ai_usage(session_id)`,
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES ai_scan_sessions(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_custom_vulns_session ON custom_vulns(session_id)`,
+
+  // ── PERFIL DE SESIÓN — qué tipo de engagement es ─────────────────────
+  // Pedido explícito: poder configurar una sesión para un CTF o un laboratorio
+  // tipo HTB/THM, no solo un pentest de cliente real — cambia el enfoque que
+  // buildSystemPrompt() le da al agente (ver agentLoop.js), no solo el
+  // proveedor de IA. Nullable, sin CHECK — mismo criterio que ai_tool_mode acá
+  // arriba: es un override de sesión, se valida en la ruta (ai-scan.js), no en
+  // la DB. NULL = 'pentest' (comportamiento actual, sin cambios).
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_profile VARCHAR(20)`,
+
+  // ── TOPE DE GASTO REAL POR SESIÓN (en $) ─────────────────────────────
+  // Pedido del ROADMAP: el único freno que existía era de ITERACIONES
+  // (MAX_ITERATIONS_PER_TURN en agentLoop.js), no de costo — 400 tool calls
+  // con un modelo caro puede seguir siendo mucha plata. NULL = sin tope
+  // (comportamiento actual). Se compara contra SUM(ai_usage.cost_usd) por
+  // session_id — ver el chequeo en advance() (agentLoop.js).
+  `ALTER TABLE ai_scan_sessions ADD COLUMN IF NOT EXISTS ai_max_cost_usd NUMERIC(10,4)`,
+
+  // ── projects_ai_provider_check — ÚNICA versión vigente del constraint ──
+  // Bug real encontrado en vivo: este constraint se fue actualizando con
+  // pares DROP+ADD nuevos cada vez que se sumaba un proveedor (deepseek,
+  // luego custom, ahora kimi) — pero migrate.js re-corre TODO el array en
+  // cada arranque, no solo lo nuevo. Con un proyecto real ya usando
+  // ai_provider='kimi', reiniciar el backend volvía a aplicar la versión
+  // VIEJA del constraint (sin 'kimi') antes de llegar a esta, y esa fila ya
+  // no encajaba — la migración fallaba y el backend no arrancaba más. Por
+  // eso ahora hay un solo DROP+ADD para este constraint, acá, con la lista
+  // completa vigente — si se suma un proveedor nuevo a futuro, se EDITA
+  // esta lista en el lugar, no se agrega un par nuevo.
+  `ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_ai_provider_check`,
+  `ALTER TABLE projects ADD CONSTRAINT projects_ai_provider_check CHECK (ai_provider IN ('groq','anthropic','deepseek','custom','kimi'))`,
+
+  // ── Report builder persistence ────────────────────────────────────────
+  // The export page used to keep the whole report configuration in the
+  // browser's localStorage: cover metadata, section list, and — critically —
+  // the per-finding editorial data (risk-matrix probability, remediation
+  // priority, business impact, executive action, rewritten description and
+  // remediation). That meant a different browser, a cleared profile or a
+  // fresh machine silently lost work the user had already done. The report
+  // is a project artifact, so it lives with the project, shared by every
+  // member exactly like whiteboard_state.
+  `CREATE TABLE IF NOT EXISTS report_config (
+    project_id UUID PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // updated_by is an audit stamp, not ownership: deleting the account that
+  // last touched the report must not be blocked by it, and must not take the
+  // report down with it either. Re-applied here so installs created before
+  // this line get the same behavior.
+  `ALTER TABLE report_config DROP CONSTRAINT IF EXISTS report_config_updated_by_fkey`,
+  `ALTER TABLE report_config ADD CONSTRAINT report_config_updated_by_fkey
+     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL`,
+
+  // Saved report templates (cover metadata + section layout) belong to the
+  // user, not to a project — that is the whole point of a template: reuse it
+  // on the next engagement.
+  `CREATE TABLE IF NOT EXISTS report_templates (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       VARCHAR(200) NOT NULL,
+    data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_report_templates_user ON report_templates(created_by, created_at DESC)`,
 ];
 
 

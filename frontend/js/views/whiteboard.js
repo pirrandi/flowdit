@@ -47,9 +47,16 @@ const METHOD_COLOR = {
 const NOTE_COLORS  = ['#ffd96a', '#a8edab', '#a8d8f0', '#f7b8b8', '#e0b8f7'];
 const CARD_COLORS  = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e4a4f'];
 
+// marked does not strip embedded HTML, so its output must be sanitised before it
+// reaches innerHTML — whiteboard notes are stored and shown to every member and
+// to the client portal, which makes raw HTML here stored XSS. If either library
+// is unavailable, fall back to escaped plain text rather than rendering unsafe
+// markup: losing bold and headings beats executing a note's <script>.
 function renderMd(text) {
   if (!text || !text.trim()) return '';
-  if (window.marked) return window.marked.parse(text);
+  if (window.marked && window.DOMPurify) {
+    return window.DOMPurify.sanitize(window.marked.parse(text));
+  }
   return esc(text).replace(/\n/g, '<br>');
 }
 
@@ -250,7 +257,7 @@ function _buildNode(nodeData, target) {
         ${epRows}
       </div>
       <div class="wb-node-footer">
-        <a href="targets.html?pid=${pid}" target="_blank">View in Targets →</a>
+        <a href="targets?pid=${pid}" target="_blank">View in Targets →</a>
       </div>
     </div>`;
 

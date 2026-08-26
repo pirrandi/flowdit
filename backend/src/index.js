@@ -1,7 +1,8 @@
 const http = require('http');
 const app  = require('./app');
 
-const wsService = require('./services/ws');
+const wsService  = require('./services/ws');
+const agentLoop  = require('./services/ai/agentLoop');
 
 const server = http.createServer(app);
 const PORT   = process.env.PORT || 4000;
@@ -14,4 +15,12 @@ server.listen(PORT, () => {
   console.log(`🚀 Flowdit API  ->  http://localhost:${PORT}`);
   console.log(`🔌 WebSocket    ->  ws://localhost:${PORT}/ws`);
   console.log(`   Mode: ${isDev ? 'development (CORS open)' : 'production'}`);
+
+  // Cualquier sesión del AI Agent que haya quedado "running" en la DB de un
+  // reinicio anterior (crash, deploy) no tiene ningún proceso trabajándola
+  // más — advance() vive en memoria, no sobrevive un restart. Ver el
+  // comentario de resumeOrphanedThreads() en agentLoop.js.
+  agentLoop.resumeOrphanedThreads()
+    .then(n => { if (n) console.log(`↻ ${n} sesión(es) del AI Agent retomada(s) tras el reinicio`); })
+    .catch(err => console.error('resumeOrphanedThreads failed:', err.message));
 });

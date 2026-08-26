@@ -15,7 +15,8 @@ const { seedTemplates } = require('../src/db/vuln-templates');
 
 const TABLES = [
   'organization_sso_configs', 'organization_invites', 'organization_members',
-  'ai_usage', 'whiteboard_state', 'ticket_replies', 'tickets',
+  'ai_usage', 'whiteboard_state', 'report_config', 'report_templates',
+  'ticket_replies', 'tickets',
   'target_endpoints', 'target_ports', 'activity_log', 'project_methodologies',
   'methodology_progress', 'methodologies', 'custom_vulns', 'ps_progress',
   'wstg_item_checks', 'wstg_progress', 'project_invites', 'project_members',

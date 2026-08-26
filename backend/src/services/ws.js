@@ -1,6 +1,7 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const jwt = require('jsonwebtoken');
 const url  = require('url');
+const { userBelongsToProject } = require('./ownership');
 
 // projectId → Set<ws>
 const rooms = new Map();
@@ -16,12 +17,31 @@ function setup(server) {
     if (!projectId) { ws.close(4002, 'No projectId'); return; }
 
     // Auth via first message (token not in query string)
-    ws.once('message', (data) => {
+    ws.once('message', async (data) => {
       try {
         const msg = JSON.parse(data);
         if (msg.type !== 'auth' || !msg.token) { ws.close(4001, 'Unauthorized'); return; }
         const payload = jwt.verify(msg.token, process.env.JWT_SECRET);
         const user = { id: payload.sub, username: payload.username };
+
+        // Bug real (ver ROADMAP.md § "WebSocket — validar membership de
+        // proyecto al conectar"): el JWT solo prueba "sos un usuario válido
+        // de Flowdit", nunca "sos miembro de ESTE proyecto" — cualquier
+        // cuenta autenticada podía unirse a la sala de CUALQUIER proyecto
+        // con solo conocer su UUID, y desde ahí leer el feed de Activity,
+        // los eventos del scanner de IA, y mandar/recibir parches de
+        // whiteboard como si fuera miembro real. Mismo chequeo que
+        // requireProjectAccess (middleware REST) — membership directa o vía
+        // owner/admin de la organización dueña.
+        if (!(await userBelongsToProject(user.id, projectId))) {
+          // 4001, no un código nuevo: el cliente (frontend/js/services/ws.js)
+          // ya tiene una lista de códigos que NO reintenta (4001/4002/4003)
+          // — un código nuevo caería en el reconnect con backoff exponencial
+          // de abajo, reintentando para siempre contra un proyecto al que
+          // este usuario nunca va a poder entrar.
+          ws.close(4001, 'Unauthorized');
+          return;
+        }
 
         // Join room
         if (!rooms.has(projectId)) rooms.set(projectId, new Set());
@@ -39,18 +59,61 @@ function setup(server) {
         ws.send(JSON.stringify({ type: 'auth_ok' }));
         broadcastPresence(projectId);
 
-        // Relay whiteboard messages to other room members
+        // Relay whiteboard messages to other room members (verbatim forward,
+        // no server-side processing) + dispatch ai_scan:* messages to the
+        // scanner agent loop (which DOES process before broadcasting — see
+        // agentLoop.js and AI_PENTEST_AGENT.md).
         ws.on('message', (data) => {
-          try {
-            const msg = JSON.parse(data);
-            if (msg.type !== 'wb:cursor' && msg.type !== 'wb:patch') return;
+          let msg;
+          try { msg = JSON.parse(data); } catch { return; }
+
+          if (msg.type === 'wb:cursor' || msg.type === 'wb:patch') {
             const room = rooms.get(projectId);
             if (!room) return;
             const out = JSON.stringify({ ...msg, userId: user.id, username: user.username });
             room.forEach(other => {
               if (other !== ws && other.readyState === WebSocket.OPEN) other.send(out);
             });
-          } catch {}
+            return;
+          }
+
+          if (typeof msg.type === 'string' && msg.type.startsWith('ai_scan:')) {
+            // require perezoso: agentLoop.js requiere este mismo módulo
+            // (ws.js) para poder broadcastear — si este require estuviera
+            // arriba del archivo, el ciclo capturaría el `module.exports`
+            // de ws.js ANTES de que se reasigne al final (líneas de abajo),
+            // dejando a agentLoop.js con una referencia vieja/vacía. Acá
+            // adentro del handler, ambos módulos ya terminaron de cargar.
+            const agentLoop = require('./ai/agentLoop');
+            (async () => {
+              try {
+                // msg.session_id lo elige el cliente — sin este chequeo,
+                // cualquier usuario conectado a ESTA sala (proyecto
+                // `projectId`) podía operar sobre la sesión de scanner de
+                // OTRO proyecto con solo conocer su UUID (encontrado en
+                // revisión, ver AI_PENTEST_AGENT.md § Seguridad).
+                if (!msg.session_id || !(await agentLoop.sessionBelongsToProject(msg.session_id, projectId))) return;
+                switch (msg.type) {
+                  case 'ai_scan:send_message':  await agentLoop.sendMessage(msg.session_id, user.id, msg.text); break;
+                  case 'ai_scan:approve_action': await agentLoop.resolveGatedCall(msg.session_id, msg.call_id, 'accepted', user.id); break;
+                  case 'ai_scan:reject_action':  await agentLoop.resolveGatedCall(msg.session_id, msg.call_id, 'rejected', user.id, { reason: msg.reason }); break;
+                  case 'ai_scan:pause':          await agentLoop.pause(msg.session_id); break;
+                  case 'ai_scan:resume':         await agentLoop.resume(msg.session_id); break;
+                  case 'ai_scan:interrupt':
+                    // Orden importa: interrupt() aborta la llamada en curso y
+                    // hace la transición de estado de forma atómica ANTES de
+                    // que sendMessage() lea el status — así sendMessage
+                    // siempre ve 'idle' y retoma el loop con la instrucción
+                    // nueva, sin correr en paralelo con el advance() abortado.
+                    await agentLoop.interrupt(msg.session_id);
+                    await agentLoop.sendMessage(msg.session_id, user.id, `[interrupt] ${msg.instruction}`);
+                    break;
+                }
+              } catch (err) {
+                console.error('ai_scan message error:', err.message);
+              }
+            })();
+          }
         });
 
         ws.on('close', () => {
@@ -88,6 +151,20 @@ function broadcastActivity(projectId, event) {
   });
 }
 
+// Broadcast an AI scanner session event to all members of a project.
+// Used by agentLoop.js — see AI_PENTEST_AGENT.md. Unlike the wb:cursor/
+// wb:patch relay above (which just forwards a client's own message
+// verbatim), this is server-initiated: agentLoop.js processes/persists
+// the event first, then calls this to push the result to everyone watching.
+function broadcastScanEvent(projectId, data) {
+  const room = rooms.get(projectId);
+  if (!room) return;
+  const msg = JSON.stringify({ type: 'ai_scan:event', ...data });
+  room.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
 // Send online users list to the whole room (deduplicated by user id)
 function broadcastPresence(projectId) {
   const room = rooms.get(projectId);
@@ -101,4 +178,4 @@ function broadcastPresence(projectId) {
   });
 }
 
-module.exports = { setup, broadcastActivity, disconnectUser };
+module.exports = { setup, broadcastActivity, broadcastScanEvent, disconnectUser };

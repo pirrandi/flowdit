@@ -5,6 +5,7 @@ const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
 const { requireProjectAccess, requireEditor } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
+const agentLoop = require('../services/ai/agentLoop');
 
 router.use(requireAuth, requireProjectAccess);
 
@@ -35,13 +36,25 @@ router.post('/', requireEditor, [
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null, cwe=null, compliance_tags=[] } = req.body;
+  const {
+    name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null, cwe=null, compliance_tags=[],
+    // Presentes solo cuando este POST viene del flujo "Editar y agregar" de
+    // una propuesta del scanner de IA (ver AI_PENTEST_AGENT.md § Nivel 3) —
+    // le avisan al loop que esa tool call quedó resuelta, para que no se
+    // quede esperando una aprobación que ya pasó por acá.
+    resolve_ai_session_id = null, resolve_ai_call_id = null,
+  } = req.body;
   try {
     const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
+    // "Editar y agregar" de una propuesta del agente sigue siendo un
+    // hallazgo de origen IA (el humano ajustó campos, no lo inventó de
+    // cero) — mismo criterio que createFindingFromProposal() en
+    // agentLoop.js para el resto de las vías de propose_finding.
+    const aiGenerated = !!(resolve_ai_session_id && resolve_ai_call_id);
     const { rows } = await db.query(
-      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, cwe, compliance_tags, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16) RETURNING *`,
-      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), validTargetId, cvss_vector||null, cvss_score||null, cwe||null, JSON.stringify(compliance_tags), req.user.id]
+      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, cwe, compliance_tags, created_by, updated_by, ai_generated)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17) RETURNING *`,
+      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), validTargetId, cvss_vector||null, cvss_score||null, cwe||null, JSON.stringify(compliance_tags), req.user.id, aiGenerated]
     );
     await activity.log({
       projectId:  req.params.projectId,
@@ -52,6 +65,21 @@ router.post('/', requireEditor, [
       entityName: name,
       meta:       { severity },
     });
+
+    if (resolve_ai_session_id && resolve_ai_call_id) {
+      // No await — resolver el gate no debe demorar ni poder hacer fallar
+      // la respuesta de creación del hallazgo, que ya está confirmada.
+      // sessionBelongsToProject: resolve_ai_session_id lo manda el cliente
+      // — sin validarlo, cualquier proyecto podía forzar la resolución de
+      // un gate pendiente en OTRO proyecto (encontrado en revisión, ver
+      // AI_PENTEST_AGENT.md § Seguridad).
+      agentLoop.sessionBelongsToProject(resolve_ai_session_id, req.params.projectId)
+        .then(belongs => belongs
+          ? agentLoop.resolveGatedCall(resolve_ai_session_id, resolve_ai_call_id, 'accepted', req.user.id, { created_vuln_id: rows[0].id })
+          : null)
+        .catch(err => console.error('resolveGatedCall (editar y agregar) failed:', err.message));
+    }
+
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });

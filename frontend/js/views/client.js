@@ -9,16 +9,16 @@ async function bootClient() {
   const isPortal = api.portal.session.has();
 
   if (!isPortal && !api.auth.hasSession()) {
-    window.location.href = 'client-login.html';
+    window.location.href = 'client-login';
     return;
   }
 
   if (isPortal) {
     state.user = { id: null, username: 'client', role: 'viewer' };
     const pid  = api.portal.session.projectId;
-    if (!pid) { window.location.href = 'client-login.html'; return; }
+    if (!pid) { window.location.href = 'client-login'; return; }
     const projectData = await api.projects.get(pid).catch(() => null);
-    if (!projectData) { api.portal.session.clear(); window.location.href = 'client-login.html'; return; }
+    if (!projectData) { api.portal.session.clear(); window.location.href = 'client-login'; return; }
     state.projects       = [{ ...projectData, member_role: 'viewer' }];
     state.currentProject = state.projects[0];
     await loadClientProject(pid);
@@ -32,7 +32,7 @@ async function bootClient() {
     state.user = await api.auth.me();
   } catch {
     api.auth.clearTokens();
-    window.location.href = 'client-login.html';
+    window.location.href = 'client-login';
     return;
   }
 
@@ -135,7 +135,7 @@ function renderClientTopbar() {
         <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">live</span>
       </div>
       <div style="width:1px;height:16px;background:var(--b1)"></div>
-      ${!isPortal ? `<a href="projects.html" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">${icon('arrow-left',{size:11})} Projects</a>` : ''}
+      ${!isPortal ? `<a href="projects" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">${icon('arrow-left',{size:11})} Projects</a>` : ''}
       <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="doClientLogout()">Logout</button>
     </div>`;
 }
@@ -601,7 +601,7 @@ async function doClientLogout() {
     await api.auth.logout().catch(() => {});
     localStorage.removeItem('fd_project');
   }
-  window.location.href = 'client-login.html';
+  window.location.href = 'client-login';
 }
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────

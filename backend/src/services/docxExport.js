@@ -317,7 +317,7 @@ function codeBlock(text) {
   }));
 }
 
-function fieldBlock(labelStr, value) {
+function _fieldBlock(labelStr, value) {
   if (!value?.trim()) return [];
   return [labelText(labelStr), ...htmlToDocx(value), spacer(80)];
 }
@@ -412,7 +412,7 @@ function getSectionObj(sections, id) {
   return sections?.find(s => s.id === id || s.type === id);
 }
 
-function isSectionVisible(id, sections) {
+function _isSectionVisible(id, sections) {
   if (!sections?.length) return true;
   const sec = getSectionObj(sections, id);
   return !sec || sec.visible !== false;
@@ -558,7 +558,6 @@ function buildDetailedFindings(vulns, sec) {
   out.push(...renderSectionExtras(sec));
 
   vulns.forEach((v, i) => {
-    const s = SEV[v.severity] || SEV.info;
 
     out.push(new Paragraph({
       spacing: { before: i === 0 ? 0 : 320, after: 120 },

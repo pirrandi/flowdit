@@ -100,3 +100,45 @@ test('GET /auth/me returns the authenticated user with a valid token', async () 
   assert.equal(res.status, 200);
   assert.equal(res.body.username, 'frank');
 });
+
+// ── Refresh token lifetime is configurable ───────────────────────────────
+// JWT_REFRESH_EXPIRES_IN used to be documented but ignored: every insert site
+// hardcoded 30 days, so an operator tightening the window saw no effect.
+
+test('refreshExpiryDays honours JWT_REFRESH_EXPIRES_IN and falls back safely', () => {
+  const { refreshExpiryDays } = require('../src/utils/tokens');
+  const prev = process.env.JWT_REFRESH_EXPIRES_IN;
+  try {
+    process.env.JWT_REFRESH_EXPIRES_IN = '7d';
+    assert.equal(refreshExpiryDays(), 7);
+    process.env.JWT_REFRESH_EXPIRES_IN = '14';
+    assert.equal(refreshExpiryDays(), 14);
+    // Unparseable values must not reach SQL as a broken interval.
+    process.env.JWT_REFRESH_EXPIRES_IN = 'not-a-duration';
+    assert.equal(refreshExpiryDays(), 30);
+    delete process.env.JWT_REFRESH_EXPIRES_IN;
+    assert.equal(refreshExpiryDays(), 30);
+  } finally {
+    if (prev === undefined) delete process.env.JWT_REFRESH_EXPIRES_IN;
+    else process.env.JWT_REFRESH_EXPIRES_IN = prev;
+  }
+});
+
+test('a configured refresh window is actually applied to the persisted token', async () => {
+  const prev = process.env.JWT_REFRESH_EXPIRES_IN;
+  process.env.JWT_REFRESH_EXPIRES_IN = '3d';
+  try {
+    const user = await registerUser({ username: 'refreshwin', email: 'refreshwin@example.com' });
+    const { rows } = await db.query(
+      `SELECT EXTRACT(DAY FROM (expires_at - NOW())) AS days
+       FROM refresh_tokens WHERE token=$1`,
+      [user.refreshToken]
+    );
+    assert.equal(rows.length, 1);
+    // 3 days out, minus the sub-second the insert took, floors to 2.
+    assert.ok(Number(rows[0].days) >= 2 && Number(rows[0].days) <= 3, `got ${rows[0].days} days`);
+  } finally {
+    if (prev === undefined) delete process.env.JWT_REFRESH_EXPIRES_IN;
+    else process.env.JWT_REFRESH_EXPIRES_IN = prev;
+  }
+});

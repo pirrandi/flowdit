@@ -10,56 +10,103 @@ const { generateDocx } = require('../services/docxExport');
 
 const router = express.Router();
 
+// Any Chromium-based browser drives Puppeteer, so the list stays broad on
+// purpose: distro Chrome/Chromium, Brave, Edge and Vivaldi across the common
+// install locations (Arch, Debian, snap, /opt vendor dirs). Deployers whose
+// binary lives elsewhere set PUPPETEER_EXECUTABLE_PATH (or CHROME_BIN) and
+// skip the guessing entirely.
 const CHROME_CANDIDATES = [
   '/opt/brave-bin/brave',
+  '/usr/bin/brave',
+  '/usr/bin/brave-browser',
   '/usr/bin/google-chrome',
   '/usr/bin/google-chrome-stable',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/snap/bin/chromium',
+  '/usr/bin/microsoft-edge',
+  '/usr/bin/microsoft-edge-stable',
+  '/opt/vivaldi/vivaldi',
+  '/usr/bin/vivaldi',
+  '/usr/bin/vivaldi-stable',
 ];
+
+function isExecutable(p) {
+  try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
+}
 
 function findChrome() {
-  return CHROME_CANDIDATES.find(p => {
-    try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
-  });
+  // Explicit override wins — a deployer knows their binary better than we do.
+  const override = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+  if (override && isExecutable(override)) return override;
+  return CHROME_CANDIDATES.find(isExecutable);
 }
 
-const SOFFICE_CANDIDATES = [
-  '/usr/bin/soffice',
-  '/usr/bin/libreoffice',
-  '/opt/libreoffice/program/soffice',
+// SECURITY: pageUrl is browser-supplied (window.location.href), so it is
+// attacker-controlled. Handing it to page.goto() unchanged made this endpoint a
+// full-read SSRF: any authenticated user could point it at an internal service
+// (cloud metadata, an admin panel) and get the rendered page back as a PDF.
+//
+// So the client's origin is never trusted. Only the path and query survive; the
+// scheme/host always come from configuration, and the path must resolve to the
+// export page itself. new URL() normalises "..", so traversal cannot walk out.
+//
+// INTERNAL_APP_URL takes precedence because Puppeteer runs inside the backend
+// container, where "localhost" is the backend itself and not the nginx
+// container serving the frontend. FRONTEND_URL is the bare-metal fallback.
+// With neither configured there is no trusted origin to rebuild against, so the
+// export fails closed rather than fetching whatever the caller asked for.
+function resolveInternalPageUrl(pageUrl) {
+  const base = process.env.INTERNAL_APP_URL || process.env.FRONTEND_URL;
+  if (!base) {
+    throw new Error(
+      'Refusing to render: neither INTERNAL_APP_URL nor FRONTEND_URL is set, ' +
+      'so there is no trusted origin to render the report from. See .env.example.'
+    );
+  }
+
+  let requested;
+  try { requested = new URL(pageUrl); }
+  catch { throw new Error('pageUrl is not a valid URL'); }
+
+  // Deployments under a sub-path keep their prefix, hence the suffix match.
+  const cleanPath = requested.pathname.replace(/\/+$/, '');
+  if (!/\/export(\.html)?$/.test(cleanPath)) {
+    throw new Error('Refusing to render: only the export page can be rendered as a report');
+  }
+
+  const out    = new URL(base);
+  out.pathname = requested.pathname;
+  out.search   = requested.search;
+  out.hash     = '';
+  return out.toString();
+}
+
+// Password protection is done by Ghostscript. It is an optional feature: the
+// unprotected PDF renders fine without it, so we only need `gs` when the caller
+// actually asks for a password. Resolved the same way as Chrome — env override
+// first, then the usual install locations — so a missing `gs` becomes one clear,
+// actionable error instead of a generic ENOENT 500.
+const GS_CANDIDATES = [
+  '/usr/bin/gs',
+  '/usr/local/bin/gs',
+  '/opt/homebrew/bin/gs',
+  '/snap/bin/gs',
+  '/bin/gs',
 ];
 
-function findSoffice() {
-  return SOFFICE_CANDIDATES.find(p => {
-    try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
-  });
+function findGhostscript() {
+  const override = process.env.GHOSTSCRIPT_BIN;
+  if (override && isExecutable(override)) return override;
+  return GS_CANDIDATES.find(isExecutable);
 }
 
-function convertHtmlToDocx(htmlPath, outDir) {
-  return new Promise((resolve, reject) => {
-    const bin = findSoffice();
-    if (!bin) return reject(new Error('LibreOffice not found on server'));
-    execFile(bin, [
-      '--headless',
-      '--infilter=HTML (StarWriter)',
-      '--convert-to', 'docx:MS Word 2007 XML',
-      '--outdir', outDir,
-      htmlPath,
-    ], { timeout: 60000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
-      resolve();
-    });
-  });
-}
-
-function encryptWithGs(pdfBytes, password) {
+function encryptWithGs(pdfBytes, password, gsBin) {
   return new Promise((resolve, reject) => {
     const tmpIn  = path.join(os.tmpdir(), `rpt_${Date.now()}_in.pdf`);
     const tmpOut = path.join(os.tmpdir(), `rpt_${Date.now()}_out.pdf`);
     fs.writeFileSync(tmpIn, Buffer.from(pdfBytes));
-    execFile('gs', [
+    execFile(gsBin, [
       '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite',
       '-dCompatibilityLevel=1.4',
       `-sOwnerPassword=${password}_owner`,
@@ -80,20 +127,47 @@ function encryptWithGs(pdfBytes, password) {
 // POST /api/export/pdf
 // Body: { pageUrl, token, password? }
 router.post('/pdf', auth, requireUser, async (req, res) => {
-  const { pageUrl, token, password, rptKey, rptData, scope, reportType } = req.body;
+  const { pageUrl, token, password, rptKey, rptData, scope, reportType, filename } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
+  // Resolved before the browser launches so a rejected URL costs nothing and
+  // answers 400 (caller's fault) instead of the generic 500 below.
+  let internalPageUrl;
+  try { internalPageUrl = resolveInternalPageUrl(pageUrl); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+
   const executablePath = findChrome();
-  if (!executablePath) return res.status(500).json({ error: 'No Chromium/Chrome found on server' });
+  if (!executablePath) return res.status(500).json({
+    error: 'No Chromium/Chrome found on server. Install a Chromium-based browser ' +
+           '(chromium, google-chrome, brave, edge or vivaldi) or set ' +
+           'PUPPETEER_EXECUTABLE_PATH to its binary.',
+  });
+
+  // If a password was requested, make sure we can actually honor it BEFORE
+  // spending seconds rendering. Failing loudly (not returning an unprotected
+  // PDF) is deliberate: the user asked for protection and must not be handed a
+  // file they'd wrongly believe is encrypted.
+  const wantsPassword = !!password?.trim();
+  const gsBin = wantsPassword ? findGhostscript() : null;
+  if (wantsPassword && !gsBin) return res.status(501).json({
+    error: 'Password protection requires Ghostscript (gs) on the server, which is ' +
+           'not installed. Install it (Arch: "sudo pacman -S ghostscript", ' +
+           'Debian/Ubuntu: "sudo apt install ghostscript") or set GHOSTSCRIPT_BIN ' +
+           'to its path — or export without a password.',
+  });
 
   let browser;
   try {
     browser = await puppeteer.launch({
       executablePath,
       headless: true,
+      // NOTE: no --single-process / --no-zygote. They save a few processes but
+      // are notoriously fragile — they segfault (core dump) on several
+      // Chromium builds, including Vivaldi, right after DevTools comes up,
+      // which surfaces to the client as "socket hang up". Stability wins.
       args: [
         '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-        '--disable-gpu', '--single-process', '--no-zygote',
+        '--disable-gpu',
         '--force-device-scale-factor=1',
         '--font-render-hinting=none',
         '--disable-font-subpixel-positioning',
@@ -103,13 +177,27 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
 
-    // Inject auth token + report data into localStorage before page loads
+    // Pin the API base before config.js's dev/prod hostname heuristic runs — the
+    // page is navigated through the internal nginx hostname (see
+    // resolveInternalPageUrl), which that heuristic doesn't recognize.
+    // Puppeteer's browser runs inside the backend container itself, so its own
+    // "localhost:4000" reaches this same process.
+    await page.evaluateOnNewDocument(() => {
+      window.FLOWDIT_API = 'http://localhost:4000/api';
+      window.FLOWDIT_WS  = 'ws://localhost:4000/ws';
+    });
+
+    // Inject auth token + report data into localStorage before page loads.
+    // FLOWDIT_SNAPSHOT tells export.html that this localStorage snapshot is the
+    // authoritative copy for this render, so it must not pull the (possibly
+    // older, debounce-behind) server copy over it — see pullReportConfig().
     await page.evaluateOnNewDocument((t, key, data) => {
+      window.FLOWDIT_SNAPSHOT = true;
       if (t)    localStorage.setItem('fd_access', t);
       if (key && data) localStorage.setItem(key, data);
     }, token || '', rptKey || '', rptData || '');
 
-    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.goto(internalPageUrl, { waitUntil: 'networkidle0', timeout: 30000 });
 
     // Wait for fonts and report content to be ready
     await page.evaluateHandle('document.fonts.ready');
@@ -166,6 +254,19 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
     // Force a layout reflow to flush paint before PDF capture
     await page.evaluate(() => void document.body.getBoundingClientRect());
 
+    // Chrome writes document.title into the PDF's /Title, and that is what a
+    // reader sees in their viewer's tab and window bar. Left alone it is this
+    // app's own page title ("Export Report"), which says nothing about the
+    // document. Use the report's cover title, falling back to the project name.
+    const pageTitle = await page.evaluate(() => {
+      const pick = v => (typeof v === 'string' ? v.trim() : '');
+      try {
+        return pick(getReportData()?.meta?.coverTitle) || pick(state?.currentProject?.name);
+      } catch { return ''; }
+    });
+    const pdfTitle = (pageTitle || String(filename || '').trim() || 'Report').slice(0, 200);
+    await page.evaluate(t => { document.title = t; }, pdfTitle);
+
     const pdfBytes = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -176,13 +277,21 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
     browser = null;
 
     let finalBytes = pdfBytes;
-    if (password?.trim()) {
-      finalBytes = await encryptWithGs(pdfBytes, password.trim());
+    if (wantsPassword) {
+      finalBytes = await encryptWithGs(pdfBytes, password.trim(), gsBin);
     }
 
+    // Same name in the header as in the PDF's own title. The quoted form must
+    // stay plain ASCII with no quotes or CR/LF (header injection); filename*
+    // carries the real, accented one for clients that understand RFC 5987.
+    const asciiName = pdfTitle.normalize('NFKD')
+      .replace(/[^\x20-\x7E]/g, '').replace(/["\\\r\n]/g, '')
+      .trim().slice(0, 120) || 'report';
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="report.pdf"`,
+      'Content-Disposition':
+        `attachment; filename="${asciiName}.pdf"; ` +
+        `filename*=UTF-8''${encodeURIComponent(pdfTitle)}.pdf`,
       'Content-Length': finalBytes.length,
     });
     res.end(Buffer.from(finalBytes));
@@ -275,3 +384,7 @@ router.post('/docx', auth, requireUser, async (req, res) => {
 });
 
 module.exports = router;
+// Exported for the SSRF guard tests — asserting on the rebuilt URL directly is
+// the only way to prove the caller's origin was discarded, since a legitimate
+// path is rewritten rather than rejected and would otherwise need a browser.
+module.exports.resolveInternalPageUrl = resolveInternalPageUrl;

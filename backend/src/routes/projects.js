@@ -1,12 +1,11 @@
 const router = require('express').Router();
-const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor, requireOwner } = require('../middleware/project');
+const { requireProjectAccess, requireOwner } = require('../middleware/project');
 const { encrypt } = require('../utils/crypto');
 
 router.use(requireAuth);
@@ -93,7 +92,7 @@ router.get('/:projectId', requireProjectAccess, (req, res) => res.json(sanitizeP
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model','github_repo'];
+  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model','ai_tool_mode','ai_autonomous_requests','ai_single_agent','github_repo'];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
 

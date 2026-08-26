@@ -71,6 +71,9 @@ async function renderSettings() {
               <select class="form-input" id="cfg-ai-provider" onchange="setAiProvider(this.value)">
                 <option value="groq"      ${(p.ai_provider||'groq')==='groq'      ? 'selected' : ''}>Groq (Llama 3.3 70B)</option>
                 <option value="anthropic" ${p.ai_provider==='anthropic'           ? 'selected' : ''}>Anthropic (Claude)</option>
+                <option value="deepseek"  ${p.ai_provider==='deepseek'            ? 'selected' : ''}>DeepSeek</option>
+                <option value="kimi"      ${p.ai_provider==='kimi'                ? 'selected' : ''}>Kimi K3 (Moonshot AI)</option>
+                <option value="custom"    ${p.ai_provider==='custom'              ? 'selected' : ''}>Custom / Local (Ollama, LM Studio...)</option>
               </select>
             </div>
             <div>
@@ -78,6 +81,38 @@ async function renderSettings() {
               <select class="form-input" id="cfg-ai-model" onchange="setAiModel(this.value)">
                 ${buildAiModelOptions(p.ai_provider || 'groq', p.ai_model)}
               </select>
+            </div>
+            ${p.ai_provider === 'custom' ? `
+            <div>
+              <div class="form-label" style="margin-bottom:4px">Tool-calling</div>
+              <select class="form-input" id="cfg-ai-tool-mode" onchange="setAiToolMode(this.value)">
+                <option value="native" ${(p.ai_tool_mode||'native')==='native' ? 'selected' : ''}>Nativo (tools/tool_calls estructurados)</option>
+                <option value="text"   ${p.ai_tool_mode==='text'               ? 'selected' : ''}>Texto plano (fallback ACTION: tool(args) — para modelos que no soportan tool-calling)</option>
+              </select>
+            </div>` : ''}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px;border-top:1px solid var(--b1)">
+              <div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:2px">AI Agent — modo sin restricciones</div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">
+                  El AI Agent manda requests activos (send_http_request/test_payload/run_exploit_poc) Y crea hallazgos (propose_finding) sin pedir tu aprobación antes — trabaja de punta a punta sin frenarse a preguntar. El scope autorizado (targets con scope='in') sigue siendo un límite duro, no lo relaja este toggle.
+                </div>
+              </div>
+              <button class="setting-toggle ${p.ai_autonomous_requests?'on':''}"
+                onclick="toggleProjectFlag('ai_autonomous_requests',${!p.ai_autonomous_requests})">
+                <span class="setting-toggle-knob"></span>
+              </button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px;border-top:1px solid var(--b1)">
+              <div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:2px">AI Agent — un agente a la vez</div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">
+                  Sin sub-agentes en paralelo — todo corre secuencial, un solo hilo. Más lento, pero evita romper con proveedores de rate limit/concurrencia bajos (ej. tiers gratuitos) y consume menos tokens de punta a punta.
+                </div>
+              </div>
+              <button class="setting-toggle ${p.ai_single_agent?'on':''}"
+                onclick="toggleProjectFlag('ai_single_agent',${!p.ai_single_agent})">
+                <span class="setting-toggle-knob"></span>
+              </button>
             </div>
           </div>
         </div>
@@ -159,6 +194,13 @@ const AI_MODELS = {
     { value: 'claude-opus-4-8',  label: 'Claude Opus 4.8 (más capaz)' },
     { value: 'claude-sonnet-5',  label: 'Claude Sonnet 5 (equilibrado)' },
     { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (más rápido/económico)' },
+  ],
+  deepseek: [
+    { value: 'deepseek-chat',     label: 'DeepSeek Chat (V3)' },
+    { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner (R1)' },
+  ],
+  kimi: [
+    { value: 'kimi-k3', label: 'Kimi K3 (2.8T, 1M contexto)' },
   ],
 };
 
@@ -263,7 +305,7 @@ function buildClientSettings(p) {
 }
 
 function buildPortalLinkSection(p) {
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login.html`;
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login`;
   const link = p.portal_token ? `${base}?token=${p.portal_token}` : null;
 
   return `
@@ -386,6 +428,16 @@ async function setAiModel(model) {
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
     showToast('Modelo actualizado', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function setAiToolMode(mode) {
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { ai_tool_mode: mode });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    showToast('Modo de tool-calling actualizado', 'success');
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -512,7 +564,7 @@ async function deleteProject() {
     state.projects = state.projects.filter(p => p.id !== state.currentProject.id);
     state.currentProject = state.projects[0] || null;
     localStorage.setItem('fd_project', state.currentProject?.id || '');
-    window.location.href = 'projects.html';
+    window.location.href = 'projects';
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -522,6 +574,7 @@ window.saveTimeline         = saveTimeline;
 window.toggleProjectFlag    = toggleProjectFlag;
 window.setAiProvider        = setAiProvider;
 window.setAiModel           = setAiModel;
+window.setAiToolMode        = setAiToolMode;
 window.saveGithubRepo       = saveGithubRepo;
 window.saveGithubPat        = saveGithubPat;
 window.onLogoFileChange     = onLogoFileChange;
