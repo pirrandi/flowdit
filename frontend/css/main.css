@@ -487,11 +487,12 @@ body {
 
 /* ── TREND CHART (severity over time) ──────────────────────────────── */
 .trend-chart-svg { width: 100%; height: auto; display: block; overflow: visible; }
-.trend-band { opacity: 0.12; }
-.trend-line { fill: none; stroke-width: 2; }
+.trend-grid-line { stroke: var(--b1); stroke-width: 1; }
+.trend-baseline { stroke: var(--b2); stroke-width: 1; }
+.trend-hover-col { fill: var(--b1); opacity: 0; pointer-events: none; transition: opacity .1s; }
+.trend-hover-col.active { opacity: 1; }
 .trend-hit { fill: transparent; cursor: crosshair; }
-.trend-cursor { opacity: 0; stroke: var(--b3); stroke-width: 1; pointer-events: none; transition: opacity .1s; }
-.trend-cursor.active { opacity: 1; }
+.trend-bar-total { font-family: var(--mono); font-size: 9px; fill: var(--t3); text-anchor: middle; }
 .trend-axis-label { font-family: var(--mono); font-size: 9px; fill: var(--t4); }
 .trend-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--b1); }
 .trend-legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--t3); }

@@ -200,7 +200,7 @@ function closeVulnDrawer() {
 
 // ── FINDINGS OVER TIME (stacked area, cumulative by severity) ─────────
 const SEV_COLOR = { critical:'var(--c-crit)', high:'var(--c-high)', medium:'var(--c-med)', low:'var(--c-low)', info:'var(--c-info)' };
-const SEV_STACK = ['critical','high','medium','low','info']; // bottom → top
+const SEV_STACK = ['info','low','medium','high','critical']; // bottom → top
 const TREND_W = 760, TREND_H = 150, TREND_PAD_TOP = 10, TREND_PAD_BOTTOM = 26, TREND_PAD_X = 4;
 const TREND_PLOT_W = TREND_W - TREND_PAD_X * 2;
 const TREND_PLOT_H = TREND_H - TREND_PAD_TOP - TREND_PAD_BOTTOM;
@@ -212,8 +212,16 @@ function _fmtDay(key) {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month:'short', day:'numeric' });
 }
-function _trendX(i, n) { return TREND_PAD_X + (n === 1 ? 0 : (TREND_PLOT_W * i) / (n - 1)); }
 function _trendY(v, maxY) { return TREND_PAD_TOP + TREND_PLOT_H - (v / maxY) * TREND_PLOT_H; }
+
+// A rect path with only its top corners rounded — the "data end" cap sits on
+// the outermost segment of a stack; the segments below it stay square and are
+// separated from their neighbor by a 2px surface gap (see BAR_GAP below).
+function _roundedTopRect(x, y, w, h, r) {
+  r = Math.min(r, h / 2, w / 2);
+  if (r <= 0) return `M${x},${y} h${w} v${h} h${-w} Z`;
+  return `M${x},${y+r} Q${x},${y} ${x+r},${y} H${x+w-r} Q${x+w},${y} ${x+w},${y+r} V${y+h} H${x} Z`;
+}
 
 function renderSeverityTrend(vulns) {
   if (!vulns.length) return '';
@@ -226,43 +234,54 @@ function renderSeverityTrend(vulns) {
     if (byDay[key][s] !== undefined) byDay[key][s]++;
   });
 
-  let days = Object.keys(byDay).sort();
-  if (days.length === 1) {
-    // pad a zero day before the only bucket so the area has visible width
-    const prev = new Date(days[0] + 'T00:00:00');
-    prev.setDate(prev.getDate() - 1);
-    const prevKey = _dayKey(prev);
-    byDay[prevKey] = { critical:0, high:0, medium:0, low:0, info:0 };
-    days = [prevKey, days[0]];
-  }
-
-  const cum = { critical:0, high:0, medium:0, low:0, info:0 };
+  // Grouped daily bars: each bar shows findings NEW that day (not a running
+  // total), stacked by severity within the bar. A single day renders fine as
+  // one bar — no need to fabricate an extra day like the line/area charts did.
+  const days = Object.keys(byDay).sort();
+  const totals = { critical:0, high:0, medium:0, low:0, info:0 };
+  const slotW = TREND_PLOT_W / days.length;
   const points = days.map((day, i) => {
     const added = byDay[day];
-    SEV_STACK.forEach(s => cum[s] += added[s]);
-    return { day, added, cum: { ...cum }, x: _trendX(i, days.length) };
+    SEV_STACK.forEach(s => totals[s] += added[s]);
+    const dayTotal = SEV_STACK.reduce((sum, s) => sum + added[s], 0);
+    return { day, added, dayTotal, x: TREND_PAD_X + slotW * (i + 0.5) };
   });
   _trendPoints = points;
 
-  const total = SEV_STACK.reduce((sum, s) => sum + cum[s], 0);
-  const maxY  = Math.max(1, Math.ceil(total * 1.15));
+  const total    = SEV_STACK.reduce((sum, s) => sum + totals[s], 0);
+  const niceMax  = Math.max(1, Math.max(...points.map(p => p.dayTotal)));
+  const maxY     = Math.max(1, Math.ceil(niceMax * 1.15));
+  const barW     = Math.min(24, slotW * 0.55);
+  const BAR_GAP  = 2; // surface gap between stacked segments, never a stroke
 
-  let baseAcc = points.map(() => 0);
-  const bands = SEV_STACK.map(s => {
-    const topAcc = points.map((p, i) => baseAcc[i] + p.cum[s]);
-    const topPath  = points.map((p, i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${_trendY(topAcc[i], maxY).toFixed(1)}`).join(' ');
-    const basePath = points.map((p, i) => `L${points[points.length-1-i].x.toFixed(1)},${_trendY(baseAcc[points.length-1-i], maxY).toFixed(1)}`).join(' ');
-    const hasData  = topAcc.some((v, i) => v > baseAcc[i]);
-    const band = { s, areaD: `${topPath} ${basePath} Z`, lineD: topPath, hasData };
-    baseAcc = topAcc;
-    return band;
-  });
+  const bars = points.map(p => {
+    const segs = SEV_STACK.filter(s => p.added[s] > 0);
+    let acc = 0;
+    return segs.map((s, si) => {
+      const isBottom = si === 0;
+      const isTop    = si === segs.length - 1;
+      const rawY0 = _trendY(acc, maxY);
+      acc += p.added[s];
+      const rawY1 = _trendY(acc, maxY);
+      const y1 = rawY1 + (isTop ? 0 : BAR_GAP / 2);
+      const y0 = rawY0 - (isBottom ? 0 : BAR_GAP / 2);
+      const h  = Math.max(0.5, y0 - y1);
+      const x  = p.x - barW / 2;
+      return isTop
+        ? `<path class="trend-bar-seg" d="${_roundedTopRect(x, y1, barW, h, 4)}" fill="${SEV_COLOR[s]}"></path>`
+        : `<rect class="trend-bar-seg" x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${SEV_COLOR[s]}"></rect>`;
+    }).join('');
+  }).join('');
+
+  const totalLabels = points.map(p =>
+    `<text class="trend-bar-total" x="${p.x.toFixed(1)}" y="${(_trendY(p.dayTotal, maxY) - 6).toFixed(1)}">${p.dayTotal}</text>`
+  ).join('');
+
+  const gridLineYs = [niceMax * 0.5, niceMax].map(v => _trendY(v, maxY));
 
   const labelCount = Math.min(points.length, 5);
   const labelIdxs  = new Set();
   for (let i = 0; i < labelCount; i++) labelIdxs.add(Math.round(i * (points.length - 1) / (labelCount - 1 || 1)));
-
-  const hitW = TREND_PLOT_W / points.length;
 
   return `
     <div class="section">
@@ -272,16 +291,16 @@ function renderSeverityTrend(vulns) {
       </div>
       <div class="section-body" style="position:relative">
         <svg class="trend-chart-svg" viewBox="0 0 ${TREND_W} ${TREND_H}" preserveAspectRatio="none" onmouseleave="hideTrendTooltip()">
-          ${bands.map(b => b.hasData ? `
-            <path class="trend-band" d="${b.areaD}" fill="${SEV_COLOR[b.s]}"></path>
-            <path class="trend-line" d="${b.lineD}" stroke="${SEV_COLOR[b.s]}"></path>
-          ` : '').join('')}
-          <line class="trend-cursor" id="trend-cursor" x1="0" y1="${TREND_PAD_TOP}" x2="0" y2="${TREND_PAD_TOP + TREND_PLOT_H}"></line>
-          ${points.map((p, i) => `<rect class="trend-hit" x="${(p.x - hitW/2).toFixed(1)}" y="0" width="${hitW.toFixed(1)}" height="${TREND_H}" onmouseenter="showTrendTooltip(${i}, event)"></rect>`).join('')}
+          ${gridLineYs.map(y => `<line class="trend-grid-line" x1="${TREND_PAD_X}" x2="${TREND_W - TREND_PAD_X}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>`).join('')}
+          <line class="trend-baseline" x1="${TREND_PAD_X}" x2="${TREND_W - TREND_PAD_X}" y1="${_trendY(0, maxY).toFixed(1)}" y2="${_trendY(0, maxY).toFixed(1)}"></line>
+          <rect class="trend-hover-col" id="trend-cursor" x="0" y="${TREND_PAD_TOP}" width="${(barW + 10).toFixed(1)}" height="${TREND_PLOT_H}" rx="4"></rect>
+          ${bars}
+          ${totalLabels}
+          ${points.map((p, i) => `<rect class="trend-hit" x="${(p.x - slotW/2).toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${TREND_H}" onmouseenter="showTrendTooltip(${i}, event)"></rect>`).join('')}
           ${[...labelIdxs].map(i => `<text class="trend-axis-label" x="${points[i].x.toFixed(1)}" y="${TREND_H-6}" text-anchor="${i===0?'start':i===points.length-1?'end':'middle'}">${_fmtDay(points[i].day)}</text>`).join('')}
         </svg>
         <div class="trend-legend">
-          ${SEV_STACK.filter(s => cum[s] > 0).map(s => `<span class="trend-legend-item"><span class="trend-legend-dot" style="background:${SEV_COLOR[s]}"></span>${s} (${cum[s]})</span>`).join('')}
+          ${SEV_STACK.filter(s => totals[s] > 0).map(s => `<span class="trend-legend-item"><span class="trend-legend-dot" style="background:${SEV_COLOR[s]}"></span>${s} (${totals[s]})</span>`).join('')}
         </div>
       </div>
     </div>
@@ -294,10 +313,10 @@ function showTrendTooltip(i, evt) {
   const tip = document.getElementById('trend-tooltip');
   const cursor = document.getElementById('trend-cursor');
   if (!p || !tip) return;
-  const rows = SEV_STACK.filter(s => p.cum[s] > 0).map(s =>
-    `<div class="chart-tooltip-row"><span><span class="dot" style="background:${SEV_COLOR[s]}"></span>${s}</span><span>${p.added[s] ? '+'+p.added[s]+' · ' : ''}${p.cum[s]} total</span></div>`
+  const rows = SEV_STACK.filter(s => p.added[s] > 0).map(s =>
+    `<div class="chart-tooltip-row"><span><span class="dot" style="background:${SEV_COLOR[s]}"></span>${s}</span><span>${p.added[s]}</span></div>`
   ).join('');
-  tip.innerHTML = `<div class="chart-tooltip-date">${_fmtDay(p.day)}</div>${rows || '<div class="chart-tooltip-row">No findings yet</div>'}`;
+  tip.innerHTML = `<div class="chart-tooltip-date">${_fmtDay(p.day)}</div>${rows || '<div class="chart-tooltip-row">No findings that day</div>'}`;
   tip.classList.add('show');
   const tipW = tip.offsetWidth, tipH = tip.offsetHeight;
   const left = (evt.clientX + 14 + tipW > window.innerWidth) ? evt.clientX - tipW - 14 : evt.clientX + 14;
@@ -305,7 +324,8 @@ function showTrendTooltip(i, evt) {
   tip.style.left = Math.max(4, left) + 'px';
   tip.style.top  = Math.max(4, top) + 'px';
   if (cursor) {
-    cursor.setAttribute('x1', p.x); cursor.setAttribute('x2', p.x);
+    const w = parseFloat(cursor.getAttribute('width'));
+    cursor.setAttribute('x', p.x - w / 2);
     cursor.classList.add('active');
   }
 }
@@ -603,7 +623,8 @@ function updateDashboard() {
                 <div style="display:flex;flex-direction:column;gap:6px">
                   ${['critical','high','medium','low','info'].map(s => {
                     const c = sevCount[s];
-                    const pct = vulns.length ? Math.round(c/vulns.length*100) : 0;
+                    const maxCount = Math.max(1, ...Object.values(sevCount));
+                    const pct = Math.round(c / maxCount * 100);
                     const colors = {critical:'var(--c-crit)',high:'var(--c-high)',medium:'var(--c-med)',low:'var(--c-low)',info:'var(--c-info)'};
                     return `<div style="display:flex;align-items:center;gap:8px">
                       <span class="sev ${s}" style="width:56px;justify-content:center;flex-shrink:0">${s}</span>
