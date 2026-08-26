@@ -291,7 +291,6 @@ const migrations = [
   // ── CVSS v3.1 on findings ────────────────────────────────────────
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cvss_vector TEXT`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cvss_score  NUMERIC(3,1)`,
-  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS logo_bg  VARCHAR(5) NOT NULL DEFAULT 'light' CHECK (logo_bg IN ('light','dark'))`,
 
   // ── CWE on findings ──────────────────────────────────────────────
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS cwe VARCHAR(20)`,
@@ -358,7 +357,14 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_vuln_templates_name ON vuln_templates USING gin(to_tsvector('english', name))`,
 
   // ── AI PROVIDER (per-project) ────────────────────────────────────────
-  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) NOT NULL DEFAULT 'groq' CHECK (ai_provider IN ('groq','anthropic'))`,
+  // Sin CHECK inline a propósito: ADD COLUMN IF NOT EXISTS saltea la COLUMNA
+  // cuando ya existe, pero igual crea el CHECK inline como constraint ANÓNIMO
+  // nuevo en cada corrida (projects_ai_provider_check1, _check2, ...), y esos
+  // quedan con la lista de proveedores VIEJA. Postgres evalúa todos los CHECK
+  // con AND, así que el más restrictivo gana y agregar un proveedor nuevo
+  // empieza a fallar con 500. El constraint vigente se define una sola vez,
+  // más abajo, con nombre explícito.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) NOT NULL DEFAULT 'groq'`,
   // NULL = use the provider's default model (GROQ_MODEL / ANTHROPIC_MODEL env var)
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50)`,
 
@@ -717,6 +723,34 @@ const migrations = [
   )`,
 
   `CREATE INDEX IF NOT EXISTS idx_report_templates_user ON report_templates(created_by, created_at DESC)`,
+
+  // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
+  // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`
+  // no es idempotente para el constraint: saltea la columna pero agrega el
+  // CHECK inline igual, con un nombre autogenerado nuevo (_check1, _check2...).
+  // Como migrate.js re-corre TODO el array en cada arranque, esos se acumulan.
+  // Mientras la lista del CHECK no cambie son solo ruido; cuando cambia (pasó
+  // con ai_provider al sumar deepseek/custom/kimi) la copia vieja bloquea los
+  // valores nuevos y la escritura falla con 500.
+  //
+  // Los constraints vigentes son los de nombre explícito, SIN sufijo numérico.
+  // Esto borra únicamente las copias numeradas, así el estado converge sin
+  // importar cuántas veces se haya corrido la migración.
+  `DO $$
+    DECLARE c record;
+    BEGIN
+      FOR c IN
+        SELECT rel.relname AS tbl, con.conname AS name
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+        WHERE ns.nspname = 'public'
+          AND con.contype = 'c'
+          AND con.conname ~ '_check[0-9]+$'
+      LOOP
+        EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', c.tbl, c.name);
+      END LOOP;
+    END $$`,
 ];
 
 
