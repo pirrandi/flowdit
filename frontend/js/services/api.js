@@ -249,6 +249,9 @@ const api = {
     save:   (d)       => request('POST',   `/templates`, d),
     delete: (id)      => request('DELETE', `/templates/${id}`),
   },
+  compliance: {
+    pciDss: () => request('GET', `/compliance/frameworks/pci-dss`),
+  },
   portal: {
     auth: (token, password) => fetch(`${API_BASE}/portal/auth`, {
       method: 'POST',

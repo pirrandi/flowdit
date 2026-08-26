@@ -503,6 +503,12 @@ const migrations = [
     UNIQUE (ticket_id, provider)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ticket_integrations_ticket ON ticket_integrations(ticket_id)`,
+
+  // ── COMPLIANCE TAGGING (PCI-DSS v1 — framework-agnostic key for future frameworks) ──
+  // Shape per tag: { control_id: '6.5.1', title: 'Injection flaws' }. Framework is
+  // implicit (PCI-DSS only for now) — no framework field yet, kept as `compliance_tags`
+  // (not `pci_tags`) so other frameworks can be added later without a rename.
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS compliance_tags JSONB NOT NULL DEFAULT '[]'`,
 ];
 
 

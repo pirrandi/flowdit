@@ -35,13 +35,13 @@ router.post('/', requireEditor, [
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null, cwe=null } = req.body;
+  const { name, category='Custom', severity='medium', items=[], payloads=[], notes='', description='', remediation='', evidence=[], target_id=null, cvss_vector=null, cvss_score=null, cwe=null, compliance_tags=[] } = req.body;
   try {
     const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
     const { rows } = await db.query(
-      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, cwe, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`,
-      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), validTargetId, cvss_vector||null, cvss_score||null, cwe||null, req.user.id]
+      `INSERT INTO custom_vulns (project_id, name, category, severity, items, payloads, notes, description, remediation, evidence, target_id, cvss_vector, cvss_score, cwe, compliance_tags, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16) RETURNING *`,
+      [req.params.projectId, name, category, severity, JSON.stringify(items), JSON.stringify(payloads), notes, description, remediation, JSON.stringify(evidence), validTargetId, cvss_vector||null, cvss_score||null, cwe||null, JSON.stringify(compliance_tags), req.user.id]
     );
     await activity.log({
       projectId:  req.params.projectId,
@@ -57,12 +57,12 @@ router.post('/', requireEditor, [
 });
 
 router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','cvss_vector','cvss_score','cwe'];
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','cvss_vector','cvss_score','cwe','compliance_tags'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
       let val = req.body[f];
-      if (['items','payloads','checked_items','evidence','http_proofs'].includes(f)) val = JSON.stringify(val);
+      if (['items','payloads','checked_items','evidence','http_proofs','compliance_tags'].includes(f)) val = JSON.stringify(val);
       updates.push(`${f}=$${values.length+1}`);
       values.push(val);
     }

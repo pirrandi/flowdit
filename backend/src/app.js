@@ -50,6 +50,7 @@ app.use('/api/portal',    require('./routes/portal'));    // public — no requi
 app.use('/api/projects',  require('./routes/projects'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/templates', require('./routes/templates'));
+app.use('/api/compliance', require('./routes/compliance'));
 
 // Nested project routes — mergeParams makes :projectId available in child routers
 const projectRouter = express.Router({ mergeParams: true });

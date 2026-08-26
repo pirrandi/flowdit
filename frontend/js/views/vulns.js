@@ -273,6 +273,48 @@ async function copyCVSSVector() {
   showToast('CVSS vector copied', 'info');
 }
 
+// ── PCI-DSS COMPLIANCE TAGS ──────────────────────────────────────────
+let _selectedComplianceIds = new Set();
+
+async function ensurePciControls() {
+  if (state.pciControls) return state.pciControls;
+  try {
+    state.pciControls = await api.compliance.pciDss();
+  } catch (e) {
+    state.pciControls = [];
+  }
+  return state.pciControls;
+}
+
+function complianceBadge(tag) {
+  return `<span class="compliance-badge" title="${esc(tag.title || '')}">PCI-DSS ${esc(tag.control_id)}</span>`;
+}
+
+async function renderCompliancePicker(selectedIds = []) {
+  _selectedComplianceIds = new Set(selectedIds);
+  const list = document.getElementById('modal-compliance-list');
+  if (!list) return;
+  const controls = await ensurePciControls();
+  list.innerHTML = controls.map(c => `
+    <label class="compliance-opt">
+      <input type="checkbox" value="${esc(c.control_id)}" ${_selectedComplianceIds.has(c.control_id) ? 'checked' : ''} onchange="toggleComplianceTag('${esc(c.control_id)}', this.checked)">
+      <span class="compliance-opt-id">${esc(c.control_id)}</span>
+      <span class="compliance-opt-title">${esc(c.title)}</span>
+    </label>`).join('');
+}
+
+function toggleComplianceTag(controlId, checked) {
+  if (checked) _selectedComplianceIds.add(controlId);
+  else _selectedComplianceIds.delete(controlId);
+}
+
+function collectComplianceTags() {
+  const controls = state.pciControls || [];
+  return controls
+    .filter(c => _selectedComplianceIds.has(c.control_id))
+    .map(c => ({ control_id: c.control_id, title: c.title }));
+}
+
 const SEVERITY_ORDER  = ['critical','high','medium','low','info'];
 
 const SEVERITY_LABELS = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
@@ -372,6 +414,9 @@ function buildVulnCard(v) {
     </div>
   </div>`;
 
+  const complianceH = (v.compliance_tags||[]).length ? `<div class="items-section"><div class="items-label">PCI-DSS Coverage</div>
+    ${v.compliance_tags.map(t => `<div class="item-row"><span class="compliance-opt-id">${esc(t.control_id)}</span><span class="item-text">${esc(t.title)}</span></div>`).join('')}</div>` : '';
+
   const descH = v.description ? `<div class="items-section"><div class="items-label">Description</div>
     <div class="md-body" style="color:var(--t2)">${renderMd(v.description)}</div></div>` : '';
   const remH  = v.remediation ? `<div class="items-section"><div class="items-label">Remediation</div>
@@ -424,6 +469,7 @@ function buildVulnCard(v) {
       ${severityBadge(v.severity)}
       ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
       ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
+      ${(v.compliance_tags||[]).map(t => complianceBadge(t)).join('')}
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
       ${(v.remediation_status && v.remediation_status !== 'open') ? remediationBadge(v.remediation_status) : ''}
       <span class="vuln-name">${esc(v.name)}</span>
@@ -433,7 +479,7 @@ function buildVulnCard(v) {
         <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">${icon('x',{size:12})}</button>
       </div>
     </div>
-    <div class="vuln-body" id="vbody-${v.id}">${descH}${itemsH}${payH}${noteH}${remH}${remH2}${evidH}${httpH}</div>`;
+    <div class="vuln-body" id="vbody-${v.id}">${descH}${complianceH}${itemsH}${payH}${noteH}${remH}${remH2}${evidH}${httpH}</div>`;
   return card;
 }
 
@@ -541,6 +587,7 @@ function openAddVulnModal() {
   addModalRow('modal-items-list', 'Check item...');
   addModalRow('modal-payloads-list', 'Payload...', true);
   _initCVSS(null);
+  renderCompliancePicker([]);
   if (window.cselSync) window.cselSync();
   document.getElementById('vuln-modal').classList.add('open');
 }
@@ -568,6 +615,7 @@ function openEditVuln(id, e) {
   (v.payloads||[]).forEach(p => { addModalRow('modal-payloads-list','Payload...',true); pList.lastChild.querySelector('textarea').value = p; });
   if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...',true);
   _initCVSS(v.cvss_vector || null);
+  renderCompliancePicker((v.compliance_tags || []).map(t => t.control_id));
   if (window.cselSync) window.cselSync();
   document.getElementById('vuln-modal').classList.add('open');
 }
@@ -603,7 +651,7 @@ async function saveVuln() {
   btn.disabled = true;
   try {
     const target_id = document.getElementById('modal-vuln-target')?.value || null;
-    const payload = { name, category: category||'Custom', severity, items, payloads, notes, description, remediation, target_id: target_id||null, cwe: cwe||null };
+    const payload = { name, category: category||'Custom', severity, items, payloads, notes, description, remediation, target_id: target_id||null, cwe: cwe||null, compliance_tags: collectComplianceTags() };
     if (_cvssModified) {
       if (_cvssCleared) {
         payload.cvss_vector = null;
@@ -907,3 +955,8 @@ window.handleImportDrop       = handleImportDrop;
 window.submitImport           = submitImport;
 window.toggleHttpProofInclude = toggleHttpProofInclude;
 window.editHttpProof          = editHttpProof;
+window.ensurePciControls      = ensurePciControls;
+window.complianceBadge        = complianceBadge;
+window.renderCompliancePicker = renderCompliancePicker;
+window.toggleComplianceTag    = toggleComplianceTag;
+window.collectComplianceTags  = collectComplianceTags;

@@ -3433,6 +3433,7 @@ function buildReport() {
           if (v.cwe)         md(`**CWE:** ${v.cwe}`);
           if (v.target_host) md(`**Objetivo:** ${v.target_host}`);
           if (v.cvss_score != null) md(`**CVSS:** ${(+v.cvss_score).toFixed(1)}`);
+          if ((v.compliance_tags||[]).length) md(`**PCI-DSS:** ${v.compliance_tags.map(t=>t.control_id).join(', ')}`);
           md(`**Estado:** ${sl}`);
           if (wstgLinks.length) md(`**WSTG:** ${wstgLinks.join(', ')}`);
           if (showDesc && desc) { md(''); md('**Descripción**'); md(isRich && edit.description ? edit.description.replace(/<[^>]+>/g,' ') : desc); }
@@ -3444,6 +3445,7 @@ function buildReport() {
           const _meta = [
             v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor}">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : '',
             v.cwe        ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(v.cwe)}</span>` : '',
+            (v.compliance_tags||[]).length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--a)">PCI-DSS: ${v.compliance_tags.map(t=>esc(t.control_id)).join(', ')}</span>` : '',
             v.category   ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(v.category)}</span>` : '',
             v.target_host? `<span style="font-family:var(--mono);font-size:10px;color:var(--a)">${esc(v.target_host)}</span>` : '',
             wstgLinks.length ? `<span style="font-family:var(--mono);font-size:10px;color:var(--a)">WSTG: ${wstgLinks.join(', ')}</span>` : '',
@@ -3460,6 +3462,7 @@ function buildReport() {
           if (showDesc && desc) html += `<div class="rpt-field"><div class="rpt-field-label">Descripción</div><div class="rpt-field-val">${isRich && edit.description ? edit.description : renderMd(desc)}</div></div>`;
           if (showPay  && (v.payloads||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Payloads</div>${v.payloads.map(p=>`<div class="rpt-code" style="margin-bottom:4px">${esc(p)}</div>`).join('')}</div>`;
           if ((v.items||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Lista de verificación</div><div>${v.items.map((item,i)=>`<div style="font-size:12px;color:var(--t2);padding:2px 0">${v.checked_items?.[i]?'[x]':'[ ]'} ${esc(item)}</div>`).join('')}</div></div>`;
+          if ((v.compliance_tags||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Cobertura PCI-DSS</div><div>${v.compliance_tags.map(t=>`<div style="font-size:12px;color:var(--t2);padding:2px 0"><span style="font-family:var(--mono);font-weight:700;color:var(--a)">${esc(t.control_id)}</span> — ${esc(t.title)}</div>`).join('')}</div></div>`;
           if (showNotes && notesVal) html += `<div class="rpt-field"><div class="rpt-field-label">Notas</div><div class="rpt-field-val">${esc(notesVal)}</div></div>`;
           if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediación</div><div class="rpt-field-rem">${isRich && edit.remediation ? edit.remediation : renderMd(rem)}</div></div>`;
           if (showEvid && evid.length) {

@@ -574,6 +574,8 @@ function buildDetailedFindings(vulns, sec) {
     if (v.cwe)         metaParts.push(`CWE: ${v.cwe}`);
     if (v.cvss_score != null) metaParts.push(`CVSS: ${v.cvss_score}`);
     if (v.cvss_vector) metaParts.push(v.cvss_vector);
+    const complianceTags = Array.isArray(v.compliance_tags) ? v.compliance_tags : [];
+    if (complianceTags.length) metaParts.push(`PCI-DSS: ${complianceTags.map(t => t.control_id).join(', ')}`);
     if (metaParts.length) out.push(p(metaParts.join('  ·  '), { color: TEXT_MUTE, size: 19, italic: true }));
     out.push(spacer(80));
 
@@ -588,6 +590,21 @@ function buildDetailedFindings(vulns, sec) {
     if (v.remediation?.trim()) {
       out.push(labelText('Remediation'));
       out.push(...htmlToDocx(v.remediation));
+      out.push(spacer(80));
+    }
+
+    // PCI-DSS compliance coverage
+    if (complianceTags.length) {
+      out.push(labelText('PCI-DSS Coverage'));
+      complianceTags.forEach(t => {
+        out.push(new Paragraph({
+          spacing: { after: 40 },
+          children: [
+            new TextRun({ text: `${t.control_id}  `, bold: true, color: ACCENT, size: 20, font: 'Calibri' }),
+            new TextRun({ text: t.title || '', color: TEXT_MAIN, size: 20, font: 'Calibri' }),
+          ],
+        }));
+      });
       out.push(spacer(80));
     }
 
