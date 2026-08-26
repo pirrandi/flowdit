@@ -1272,6 +1272,15 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: .9; }
 .item-text { font-size: 11px; color: var(--t2); line-height: 1.5; flex: 1; }
 .item-text.done { text-decoration: line-through; color: var(--t3); }
 
+/* ── COMPLIANCE TAGS (PCI-DSS) ────────────────────────────────────── */
+.compliance-badge { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--a); background: var(--a-dim); border: 1px solid rgba(245,158,11,.25); border-radius: var(--r-sm); padding: 1px 7px; flex-shrink: 0; }
+.compliance-picker { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 8px; }
+.compliance-opt { display: flex; align-items: baseline; gap: 8px; padding: 3px 4px; border-radius: var(--r-sm); cursor: pointer; }
+.compliance-opt:hover { background: var(--bg3); }
+.compliance-opt input { flex-shrink: 0; margin-top: 2px; cursor: pointer; }
+.compliance-opt-id { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--a); flex-shrink: 0; min-width: 34px; }
+.compliance-opt-title { font-size: 11px; color: var(--t2); line-height: 1.4; }
+
 /* ── PAYLOADS ────────────────────────────────────────────────────── */
 .payload-section { margin-top: 10px; }
 .payload-tabs { display: flex; gap: 2px; background: var(--bg3); border-radius: var(--r-sm); padding: 2px; margin-bottom: 6px; }
