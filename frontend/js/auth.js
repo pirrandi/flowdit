@@ -6,8 +6,8 @@ async function boot() {
       await api.auth.me();
       window.location.href = await resolveHome();
       return;
-    } catch {
-      api.auth.clearTokens();
+    } catch (err) {
+      if (err.status === 401) api.auth.clearTokens();
     }
   }
   hide('loading-overlay');

@@ -30,9 +30,13 @@ async function bootClient() {
   // Regular user session
   try {
     state.user = await api.auth.me();
-  } catch {
-    api.auth.clearTokens();
-    window.location.href = 'client-login';
+  } catch (err) {
+    if (err.status === 401) {
+      api.auth.clearTokens();
+      window.location.href = 'client-login';
+    } else {
+      showToast('Could not reach the server, please retry', 'error');
+    }
     return;
   }
 

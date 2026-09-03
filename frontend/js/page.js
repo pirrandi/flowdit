@@ -7,7 +7,11 @@ window.addEventListener('fd:logout', () => { window.location.href = '/'; });
 async function bootPage(viewName) {
   if (!api.auth.hasSession()) { window.location.href = '/'; return; }
   try { state.user = await api.auth.me(); }
-  catch { window.location.href = '/'; return; }
+  catch (err) {
+    if (err.status === 401) { window.location.href = '/'; return; }
+    showToast('Could not reach the server, please retry', 'error');
+    return;
+  }
 
   state.currentView = viewName;
   renderTopbar();
