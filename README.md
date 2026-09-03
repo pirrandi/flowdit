@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Self-hosted pentest engagement management platform — findings, targets, methodologies, an autonomous AI scanner, client portal, and professional reports in one place.
+  Self-hosted pentest engagement management platform: findings, targets, methodologies, an autonomous AI scanner, client portal, and professional reports in one place.
 </p>
 
 <p align="center">
@@ -20,11 +20,9 @@
 
 ## What is Flowdit?
 
-Flowdit is a self-hosted platform built for penetration testers and security consultants. It centralizes everything that happens during an engagement — findings, targets, methodology checklists, team activity — and exposes a live read-only portal so clients can follow the project in real time.
+Flowdit is a self-hosted platform for penetration testers and security consultants. It centralizes everything that happens during an engagement (findings, targets, methodology checklists, team activity) and exposes a live read-only portal so clients can follow the project as it progresses, instead of waiting for a PDF at the end.
 
-No more delivering a PDF at the end and hoping the client trusts the process. With Flowdit, they see it as it happens.
-
-It also ships an autonomous AI agent that can run a scan session on its own — enumerating, testing, and proposing findings for a human to approve — and scales from a single freelancer to a multi-tenant organization with SSO.
+It also ships an autonomous AI agent that can run a scan session on its own: enumerating, testing, and proposing findings for a human to approve. It scales from a single freelancer to a multi-tenant organization with SSO.
 
 > **Language:** the product UI and AI-generated reports are Spanish-only (built for the LatAm/Spain pentest market). This documentation is in English for reach, but expect Spanish strings throughout the app itself.
 
@@ -40,9 +38,9 @@ An autonomous scanning agent, run per-project from its own chat-style session vi
 
 - Multi-provider: Groq, Anthropic (Claude), DeepSeek, Kimi (Moonshot), or any local/OpenAI-compatible server (Ollama, LM Studio, vLLM)
 - Per-session cost cap (`$`) and iteration checkpoints, on top of the existing per-project spend tracking
-- Session profiles — standard pentest, CTF, or HTB/THM-style lab — change how aggressively it works and what it reports
+- Session profiles (standard pentest, CTF, HTB/THM-style lab) change how aggressively it works and what it reports
 - Optional multi-agent orchestration: a coordinator thread can delegate to sub-agents that run in parallel
-- Survives a backend restart mid-session — orphaned scan threads resume automatically
+- Survives a backend restart mid-session; orphaned scan threads resume automatically
 
 ### Findings & Vulnerability Tracking
 
@@ -50,11 +48,11 @@ An autonomous scanning agent, run per-project from its own chat-style session vi
 
 - Custom vulnerability library with severity, CVSS v3.1 scoring, CWE, checklist items, payloads, and notes
 - Built-in interactive CVSS v3.1 calculator with vector string generation
-- Reusable vulnerability templates — add common findings (SQLi, XSS, IDOR, SSRF…) with pre-written description and remediation in one click
-- Remediation workflow — finding → remediated → retest → verified closed, with audit trail (who, when)
+- Reusable vulnerability templates for common findings (SQLi, XSS, IDOR, SSRF, etc.), with pre-written description and remediation
+- Remediation workflow: finding, remediated, retest, verified closed, with an audit trail of who and when
 - PCI-DSS compliance tagging per finding, surfaced in both PDF and DOCX reports
 - Evidence attachments (screenshots) per finding
-- HTTP Proofs — import request/response pairs from Burp Suite, annotate with markdown, include selectively in reports
+- HTTP Proofs: import request/response pairs from Burp Suite, annotate with markdown, include selectively in reports
 - Findings can be marked as AI-generated when they came from the AI Agent
 
 ### Scan Imports
@@ -64,7 +62,7 @@ Auto-detected by file content, all sharing one endpoint:
 - Burp Suite XML
 - Nessus (`.nessus`)
 - OWASP ZAP XML
-- Nmap XML (`nmap -oX`) — populates targets and open ports directly
+- Nmap XML (`nmap -oX`), which populates targets and open ports directly
 
 ### Targets & Scope
 
@@ -80,14 +78,14 @@ Auto-detected by file content, all sharing one endpoint:
 
 - Full OWASP WSTG checklist with per-test notes and status
 - PortSwigger Web Security Academy lab tracker
-- Custom methodology builder — create reusable test libraries for your team
+- Custom methodology builder to create reusable test libraries for your team
 
 ### Reporting
 
 <img src="frontend/img/screenshots/export.png" alt="Report editor and PDF export" width="100%">
 
-- PDF export — professional report with executive summary, findings, risk breakdown, evidence, HTTP proofs, WSTG results, PCI-DSS coverage, and targets table. Configurable sections, fonts, accent color, watermark, page header/footer, and password encryption
-- DOCX export — full Word document generated server-side, no LibreOffice required
+- PDF export: professional report with executive summary, findings, risk breakdown, evidence, HTTP proofs, WSTG results, PCI-DSS coverage, and targets table. Configurable sections, fonts, accent color, watermark, page header/footer, and password encryption
+- DOCX export: full Word document generated server-side, no LibreOffice required
 - Report builder configuration is persisted per project (not just in the browser), and reusable as saved templates
 
 ### Client Portal
@@ -96,12 +94,12 @@ Auto-detected by file content, all sharing one endpoint:
 
 - Read-only view for clients, accessible via invite link
 - Configurable visibility: findings, WSTG progress, targets, activity feed
-- Ticket system — clients can open queries linked to specific findings; team responds in thread
+- Ticket system: clients can open queries linked to specific findings, and the team responds in thread
 - Push a ticket to GitHub Issues with one click (per-project repo + token, see [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md))
 
 ### Organizations & Access
 
-- Multi-tenant organizations — group projects under a company account with owner/admin/member roles; owners/admins see every project without per-project invites
+- Multi-tenant organizations: group projects under a company account with owner/admin/member roles, where owners and admins see every project without per-project invites
 - Team members with per-project roles: owner, editor, viewer
 - SSO via Microsoft Entra ID (OIDC), configured per organization, with JIT user provisioning and optional enforcement per email domain
 - Two-factor authentication (TOTP), opt-in per user, independent of SSO
@@ -110,27 +108,27 @@ Auto-detected by file content, all sharing one endpoint:
 
 - Real-time activity feed via WebSockets, membership-checked per project
 - Collaborative whiteboard per project
-- Project branding — upload logo per engagement
+- Project branding, upload a logo per engagement
 - Timeline tracking with start, end, and report dates
 - Dark and light theme, compact density mode
-- Hardened by default — CSP headers, sanitized Markdown rendering, no CDN dependencies at runtime
+- Hardened by default: CSP headers, sanitized Markdown rendering, no CDN dependencies at runtime
 
 ---
 
 ## Stack
 
-| Layer         | Technology                                                        |
-|---------------|--------------------------------------------------------------------|
-| Backend       | Node.js + Express                                                   |
-| Database      | PostgreSQL 15+                                                       |
-| Auth          | JWT (access + refresh tokens), OIDC SSO, TOTP 2FA                    |
-| Realtime      | WebSockets                                                           |
-| AI providers  | Groq, Anthropic, DeepSeek, Kimi, or any local/OpenAI-compatible model |
-| Frontend      | Vanilla JS, HTML, CSS                                                |
-| Reverse proxy | Nginx                                                                |
-| Process       | PM2                                                                  |
-| PDF export    | Puppeteer (Chromium headless)                                        |
-| DOCX export   | docx (native, no LibreOffice)                                        |
+| Layer         | Technology                                                            |
+|---------------|------------------------------------------------------------------------|
+| Backend       | Node.js + Express                                                       |
+| Database      | PostgreSQL 15+                                                          |
+| Auth          | JWT (access + refresh tokens), OIDC SSO, TOTP 2FA                       |
+| Realtime      | WebSockets                                                              |
+| AI providers  | Groq, Anthropic, DeepSeek, Kimi, or any local/OpenAI-compatible model   |
+| Frontend      | Vanilla JS, HTML, CSS                                                   |
+| Reverse proxy | Nginx                                                                   |
+| Process       | PM2                                                                     |
+| PDF export    | Puppeteer (Chromium headless)                                           |
+| DOCX export   | docx (native, no LibreOffice)                                           |
 
 ---
 
@@ -148,7 +146,7 @@ Auto-detected by file content, all sharing one endpoint:
 
 ### Try it in one command (Docker)
 
-Spins up Postgres + backend (with Chromium/Ghostscript for PDF export) + Nginx, no manual setup:
+Spins up Postgres, backend (with Chromium/Ghostscript for PDF export), and Nginx, with no manual setup:
 
 ```bash
 git clone https://github.com/Pirrandi/flowdit.git
@@ -156,7 +154,7 @@ cd flowdit
 docker compose --profile full up -d --build
 ```
 
-Then open http://localhost. This is meant for trying Flowdit locally, not for production — see [DEPLOY.md](DEPLOY.md) for a real deployment (systemd/PM2, SSL, hardened env).
+Then open http://localhost. This is meant for trying Flowdit locally, not for production. See [DEPLOY.md](DEPLOY.md) for a real deployment (systemd/PM2, SSL, hardened env).
 
 ### Manual setup
 
@@ -238,10 +236,10 @@ flowdit/
 
 ## Roadmap
 
-- [ ] Public demo instance deployed (seed script and demo-mode guard are done — see [ROADMAP.md](ROADMAP.md))
+- [ ] Public demo instance deployed (seed script and demo-mode guard are done, see [ROADMAP.md](ROADMAP.md))
 - [ ] Email notifications for ticket replies
 - [ ] CVSS v4.0 support
-- [ ] SSO — Okta, Google Workspace, and pure SAML
+- [ ] SSO for Okta, Google Workspace, and pure SAML
 - [ ] Managed hosting (paid tier)
 - [ ] White-label branding
 
@@ -257,4 +255,4 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT, see [LICENSE](LICENSE) for details.

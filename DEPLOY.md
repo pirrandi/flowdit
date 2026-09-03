@@ -1,4 +1,4 @@
-# Flowdit — Self-hosting Guide
+# Flowdit Self-hosting Guide
 
 This guide covers a full production deployment on Ubuntu 22.04 LTS using Node.js, PostgreSQL, Nginx, PM2, and Let's Encrypt.
 

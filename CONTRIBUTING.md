@@ -22,28 +22,28 @@ cd backend && node src/db/migrate.js
 # Start backend (nodemon for auto-reload)
 cd backend && npm run dev
 
-# Frontend is served by Nginx or directly from frontend/ — open index.html
+# Frontend is served by Nginx, or open frontend/index.html directly
 ```
 
 ## Project structure
 
 ```
 backend/src/
-  db/migrate.js      — all DB migrations, run sequentially and idempotently
-  routes/            — one file per resource (vulns, targets, projects…)
-  services/          — WebSocket hub, activity logger, DOCX renderer, mailer
-  middleware/        — auth guard, project access control
+  db/migrate.js      all DB migrations, run sequentially and idempotently
+  routes/            one file per resource (vulns, targets, projects…)
+  services/          WebSocket hub, activity logger, DOCX renderer, mailer
+  middleware/        auth guard, project access control
 
 frontend/
-  *.html             — one HTML file per page/view
-  js/views/          — page-specific logic
-  js/services/       — api.js, state.js, utils.js, ws.js
-  css/main.css       — Signal design system tokens + all component styles
+  *.html             one HTML file per page/view
+  js/views/          page-specific logic
+  js/services/       api.js, state.js, utils.js, ws.js
+  css/main.css       Signal design system tokens + all component styles
 ```
 
 ## Running tests
 
-Tests are integration tests that hit a real PostgreSQL database — no mocks. They run against a **separate database whose name contains `test`** (never your dev database — `resetDb()` truncates every table between tests).
+Tests are integration tests that hit a real PostgreSQL database, no mocks. They run against a **separate database whose name contains `test`** (never your dev database: `resetDb()` truncates every table between tests).
 
 ```bash
 # One-time setup: create the test database and run migrations against it
@@ -65,18 +65,18 @@ cd backend && npm run lint
 ## Guidelines
 
 **Backend**
-- All DB changes go in `backend/src/db/migrate.js` as new entries at the bottom — migrations are idempotent (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`)
-- Use parameterized queries everywhere — no string concatenation in SQL
+- All DB changes go in `backend/src/db/migrate.js` as new entries at the bottom. Migrations are idempotent (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`)
+- Use parameterized queries everywhere, no string concatenation in SQL
 - Keep routes thin; move reusable logic to `services/`
 
 **Frontend**
-- No frameworks — vanilla JS, HTML, CSS only
-- Use Signal design system tokens (`--bg`, `--t1`, `--a`, etc.) — no hardcoded colors
-- No emojis in UI — functional Unicode only (`✓ ✕ ✎ ⚠`)
+- No frameworks, vanilla JS, HTML, CSS only
+- Use Signal design system tokens (`--bg`, `--t1`, `--a`, etc.), no hardcoded colors
+- No emojis in UI, functional Unicode only (`✓ ✕ ✎ ⚠`)
 - One HTML file per view; shared logic in `js/page.js` and `js/services/`
 
 **General**
-- Keep PRs focused — one feature or fix per PR
+- Keep PRs focused, one feature or fix per PR
 - Test your changes against a real PostgreSQL instance before submitting
 - If adding a new dependency, explain why in the PR description
 
