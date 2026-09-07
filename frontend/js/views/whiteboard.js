@@ -359,11 +359,7 @@ function _buildCard(cardData) {
 
   el.innerHTML = `
     <div class="wb-card-head" data-drag-handle style="background:${cardData.color || CARD_COLORS[0]}">
-      <svg class="wb-card-grip" width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
-        <circle cx="2" cy="2"  r="1.2"/><circle cx="6" cy="2"  r="1.2"/>
-        <circle cx="2" cy="6"  r="1.2"/><circle cx="6" cy="6"  r="1.2"/>
-        <circle cx="2" cy="10" r="1.2"/><circle cx="6" cy="10" r="1.2"/>
-      </svg>
+      ${icon('grip-vertical', { size: 13, class: 'wb-card-grip' })}
       <span class="wb-card-title" data-title contenteditable="false">${esc(cardData.title || '')}</span>
       <div class="wb-card-colors">${colorDots}</div>
       <span class="wb-card-rm">×</span>
@@ -1655,7 +1651,7 @@ async function exportPng() {
   } catch (err) {
     showToast('Export failed: ' + err.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = ''; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'; }
+    if (btn) { btn.disabled = false; btn.textContent = ''; btn.innerHTML = icon('download', { size: 16 }); }
   }
 }
 

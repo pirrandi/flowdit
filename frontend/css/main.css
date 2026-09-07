@@ -391,6 +391,7 @@ body {
   border-radius: var(--r); padding: 7px 16px;
   color: var(--t2); font-size: 12px; font-weight: 500;
   transition: border-color .15s, color .15s; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 .btn-secondary:hover { border-color: var(--b3); color: var(--t1); }
 .btn-accent {

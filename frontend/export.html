@@ -380,7 +380,9 @@
 
 /* ── Rich text editor ────────────────────────────────────────────── */
 .rich-tb { display:flex;align-items:center;gap:1px;padding:4px 6px;background:var(--bg3);border:1px solid var(--b1);border-radius:5px 5px 0 0;flex-wrap:wrap;gap:2px; }
-.rich-tb-btn { background:none;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--t2);font-size:11px;padding:2px 5px;line-height:1.5;min-width:22px;text-align:center;flex-shrink:0; }
+.rich-tb-btn { background:none;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--t2);font-size:11px;padding:2px 5px;line-height:1.5;min-width:24px;height:24px;text-align:center;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;gap:1px; }
+.rich-tb-btn .fd-icon { vertical-align:0; }
+.rich-tb-caret { opacity:.55;margin-left:-1px; }
 .rich-tb-btn:hover { background:var(--bg);border-color:var(--b1); }
 .rich-tb-btn.active { background:var(--a)18;border-color:var(--a)55;color:var(--a); }
 .rich-tb-sep { width:1px;height:13px;background:var(--b1);margin:0 2px;flex-shrink:0; }
@@ -414,11 +416,20 @@
 .rich-fs-input::-webkit-inner-spin-button,.rich-fs-input::-webkit-outer-spin-button { -webkit-appearance:none; }
 /* ── Context toolbars (table / image) ────────────────────────────── */
 .rich-ctx-tb { position:fixed;z-index:9500;background:var(--bg2);border:1px solid var(--b1);border-radius:6px;padding:3px 4px;display:none;align-items:center;gap:2px;box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:all; }
+.rich-ctx-lbl { font-family:var(--mono);font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;padding:0 3px 0 1px; }
+.rich-ctx-pos { font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);padding:0 5px;white-space:nowrap; }
+.rich-tb-btn:disabled { opacity:.3;cursor:not-allowed; }
+.rich-tb-btn:disabled:hover { background:none;border-color:transparent; }
+/* Bands sit above the modal (9000) but below the context toolbar (9500). */
+.rich-tbl-hl { position:fixed;z-index:9400;pointer-events:none;display:none;background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.40);border-radius:2px; }
 /* ── Active section edit button ──────────────────────────────────── */
 .sec-btn.active { color:var(--a)!important;border-color:var(--a)55!important;background:var(--a)10!important; }
 .rich-color-wrap { position:relative;display:inline-flex; }
-.rich-color-palette { position:absolute;top:calc(100% + 3px);left:0;background:var(--bg2);border:1px solid var(--b1);border-radius:6px;padding:7px;display:none;flex-wrap:wrap;gap:3px;z-index:300;box-shadow:0 6px 20px rgba(0,0,0,.25);width:140px; }
+.rich-color-palette { position:fixed;top:0;left:0;background:var(--bg2);border:1px solid var(--b1);border-radius:6px;padding:7px;display:none;flex-wrap:wrap;gap:3px;z-index:9600;box-shadow:0 6px 20px rgba(0,0,0,.25);width:140px; }
 .rich-color-palette.open { display:flex; }
+/* Table picker stacks its grid/label/controls — don't let shrink-to-fit
+   spread them across a row now that the palette is position:fixed. */
+.rich-color-palette.rich-tp { flex-direction:column;align-items:stretch;width:auto;padding:10px; }
 .rich-sw { width:18px;height:18px;border-radius:3px;cursor:pointer;border:1px solid rgba(128,128,128,.2);flex-shrink:0;transition:transform .1s; }
 .rich-sw:hover { transform:scale(1.25);z-index:1;position:relative; }
 
@@ -465,7 +476,9 @@
 .sec-title { font-size:11px;font-weight:600;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .sec-title.sec-dim { color:var(--t3);text-decoration:line-through;font-weight:400; }
 .sec-type-badge { font-family:var(--mono);font-size:9px;color:var(--t3);letter-spacing:.04em; }
-.sec-btn { background:none;border:1px solid var(--b1);border-radius:3px;cursor:pointer;color:var(--t3);font-size:10px;padding:1px 5px;line-height:1.5;flex-shrink:0; }
+.sec-btn { background:none;border:1px solid var(--b1);border-radius:3px;cursor:pointer;color:var(--t3);font-size:10px;padding:2px 5px;line-height:1.5;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;gap:4px; }
+.sec-btn .fd-icon, .sec-drag .fd-icon, .btn-remove .fd-icon { vertical-align:0; }
+.sec-drag, .btn-remove { display:inline-flex;align-items:center;justify-content:center; }
 .sec-btn:hover { color:var(--t1);border-color:var(--t3);background:var(--bg3); }
 .sec-btn.del:hover { color:var(--c-crit);border-color:var(--c-crit)55;background:var(--c-crit)08; }
 .sec-edit-body { display:none;padding:8px 10px 10px;border-top:1px solid var(--b1)44;background:var(--bg); }
@@ -594,7 +607,7 @@
       <!-- Actions -->
       <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
         <button class="btn-secondary" onclick="copyMarkdown()" style="padding:6px 12px;font-size:12px">Copy MD</button>
-        <button class="btn-secondary" onclick="exportDocx()"  style="padding:6px 12px;font-size:12px">↓ DOCX</button>
+        <button class="btn-secondary" onclick="exportDocx()"  style="padding:6px 12px;font-size:12px" data-icon="download" data-icon-size="13">DOCX</button>
         <button class="btn-accent"    onclick="exportPdf()"   style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
       </div>
     </div>
@@ -607,7 +620,7 @@
         <div style="flex-shrink:0;border-bottom:1px solid var(--b1);background:var(--bg2)">
           <div style="padding:9px 14px;display:flex;align-items:center;gap:8px">
             <span style="font-size:12px;font-weight:700;color:var(--t2)">Report Editor</span>
-            <button id="btn-free-edit" class="btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px" onclick="confirmFreeEdit()">⇄ Free Edit</button>
+            <button id="btn-free-edit" class="btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px" onclick="confirmFreeEdit()" data-icon="arrow-left-right" data-icon-size="12">Free Edit</button>
           </div>
         </div>
         <div id="editor-panel"></div>
@@ -636,14 +649,24 @@
 
 <!-- Table context toolbar -->
 <div id="rich-ctx-table" class="rich-ctx-tb no-print">
-  <button class="rich-tb-btn" onclick="richTableAddRow()" title="Add row below">+ row ↓</button>
-  <button class="rich-tb-btn" onclick="richTableAddCol()" title="Add column right">+ col →</button>
+  <span class="rich-ctx-pos" id="rich-tbl-pos">R1·C1</span>
   <span class="rich-tb-sep"></span>
-  <button class="rich-tb-btn" onclick="richTableDelRow()" title="Delete current row">− row</button>
-  <button class="rich-tb-btn" onclick="richTableDelCol()" title="Delete current column">− col</button>
+  <span class="rich-ctx-lbl">Row</span>
+  <button class="rich-tb-btn" onclick="richTableAddRow('above')" title="Insert row above"   data-icon="arrow-up"   data-icon-size="14"></button>
+  <button class="rich-tb-btn" onclick="richTableAddRow('below')" title="Insert row below"   data-icon="arrow-down" data-icon-size="14"></button>
+  <button class="rich-tb-btn" id="rich-tbl-delrow" onclick="richTableDelRow()" title="Delete this row" data-icon="trash-2" data-icon-size="14"></button>
   <span class="rich-tb-sep"></span>
-  <button class="rich-tb-btn" style="color:var(--c-crit)" onclick="richTableDelete()" title="Delete entire table">del table</button>
+  <span class="rich-ctx-lbl">Col</span>
+  <button class="rich-tb-btn" onclick="richTableAddCol('left')"  title="Insert column left"  data-icon="arrow-left"  data-icon-size="14"></button>
+  <button class="rich-tb-btn" onclick="richTableAddCol('right')" title="Insert column right" data-icon="arrow-right" data-icon-size="14"></button>
+  <button class="rich-tb-btn" id="rich-tbl-delcol" onclick="richTableDelCol()" title="Delete this column" data-icon="trash-2" data-icon-size="14"></button>
+  <span class="rich-tb-sep"></span>
+  <button class="rich-tb-btn" style="color:var(--c-crit)" onclick="richTableDelete()" title="Delete entire table" data-icon="trash-2" data-icon-size="14"></button>
 </div>
+<!-- Row / column highlight bands. Overlays, never DOM inside the editor, so
+     the active-cell feedback can't leak into the saved report HTML. -->
+<div id="rich-tbl-hl-row" class="rich-tbl-hl no-print"></div>
+<div id="rich-tbl-hl-col" class="rich-tbl-hl no-print"></div>
 <!-- Image context toolbar -->
 <div id="rich-ctx-img" class="rich-ctx-tb no-print">
   <button class="rich-tb-btn" onclick="richImgWidth(25)" title="25% width">25%</button>
@@ -657,11 +680,11 @@
     onblur="richImgWidthPx(this.value)">
   <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">px</span>
   <span class="rich-tb-sep"></span>
-  <button class="rich-tb-btn" onclick="richImgAlign('left')"   title="Float left">◧</button>
-  <button class="rich-tb-btn" onclick="richImgAlign('center')" title="Center">⊡</button>
-  <button class="rich-tb-btn" onclick="richImgAlign('right')"  title="Float right">◨</button>
+  <button class="rich-tb-btn" onclick="richImgAlign('left')"   title="Float left"  data-icon="align-left"   data-icon-size="15"></button>
+  <button class="rich-tb-btn" onclick="richImgAlign('center')" title="Center"      data-icon="align-center" data-icon-size="15"></button>
+  <button class="rich-tb-btn" onclick="richImgAlign('right')"  title="Float right" data-icon="align-right"  data-icon-size="15"></button>
   <span class="rich-tb-sep"></span>
-  <button class="rich-tb-btn" style="color:var(--c-crit)" onclick="richImgDelete()" title="Delete image">del</button>
+  <button class="rich-tb-btn" style="color:var(--c-crit)" onclick="richImgDelete()" title="Delete image" data-icon="trash-2"      data-icon-size="15"></button>
 </div>
 <div class="toast-container" id="toast-container"></div>
 
@@ -795,7 +818,7 @@ function confirmFreeEdit() {
       </div>
       <div style="padding:16px 22px;display:flex;gap:8px;justify-content:flex-end">
         <button class="btn-secondary" style="padding:7px 16px;font-size:12px" id="fe-cancel">Cancelar</button>
-        <button class="btn-accent"    style="padding:7px 16px;font-size:12px" id="fe-confirm">Continuar →</button>
+        <button class="btn-accent"    style="padding:7px 16px;font-size:12px" id="fe-confirm">Continuar ${icon('arrow-right',{size:12})}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -819,9 +842,9 @@ function enterFreeEdit() {
         <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--a)">⇄ Modo Markdown</span>
         <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">— diseño visual reemplazado por texto plano</span>
         <div style="margin-left:auto;display:flex;gap:6px">
-          <button id="fe-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="toggleFeSplit()">◫ Split View</button>
-          <button class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="discardFreeEdit()">✕ Descartar</button>
-          <button class="btn-accent"    style="padding:4px 11px;font-size:11px" onclick="closeFreeEdit()">← Volver</button>
+          <button id="fe-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="toggleFeSplit()" data-icon="columns-2" data-icon-size="11">Split View</button>
+          <button class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="discardFreeEdit()" data-icon="x" data-icon-size="11">Descartar</button>
+          <button class="btn-accent"    style="padding:4px 11px;font-size:11px" onclick="closeFreeEdit()" data-icon="arrow-left" data-icon-size="11">Volver</button>
         </div>
       </div>
       <div class="fe-body">
@@ -857,7 +880,7 @@ function toggleFeSplit() {
   if (!pane) return;
   const open = pane.classList.toggle('open');
   inner.classList.toggle('split', open);
-  btn.textContent = open ? '▣ Editor Only' : '◫ Split View';
+  btn.innerHTML = open ? `${icon('square',{size:11})} Editor Only` : `${icon('columns-2',{size:11})} Split View`;
   if (open) _updateFePreview();
 }
 
@@ -1487,9 +1510,9 @@ function _buildSubItem(secId, sub) {
       <div class="sec-sub-title-wrap" style="flex:1;min-width:0">
         <div class="sec-sub-title ${sub.visible?'':'sec-dim'}" id="sub-title-${sub.id}">${esc(sub.title)}</div>
       </div>
-      <button class="sec-btn" onclick="openRichModalSub('${secId}','${sub.id}')" title="Full editor">⤢</button>
-      <button class="sec-btn" onclick="secToggleSubEdit('${sub.id}')" title="Edit">✎</button>
-      <button class="sec-btn del" onclick="secDelSub('${secId}','${sub.id}')">✕</button>
+      <button class="sec-btn" onclick="openRichModalSub('${secId}','${sub.id}')" title="Full editor">${icon('maximize-2',{size:12})}</button>
+      <button class="sec-btn" onclick="secToggleSubEdit('${sub.id}')" title="Edit">${icon('pencil',{size:12})}</button>
+      <button class="sec-btn del" onclick="secDelSub('${secId}','${sub.id}')" title="Delete subsection">${icon('trash-2',{size:12})}</button>
     </div>
     <div class="sec-sub-body" id="sub-edit-${sub.id}">
       <div class="exp-meta-row" style="margin-bottom:6px">
@@ -1583,7 +1606,43 @@ function richTogglePalette(palId) {
   const pal = document.getElementById(palId);
   if (!pal) return;
   document.querySelectorAll('.rich-color-palette').forEach(el => { if (el !== pal) el.classList.remove('open'); });
-  pal.classList.toggle('open');
+  const open = !pal.classList.contains('open');
+  pal.classList.toggle('open', open);
+  if (open) _positionPalette(pal);
+}
+
+/* Palettes are position:fixed so they escape the overflow:hidden of the
+   full-editor modal (.fe-modal-inner / .fe-body). Coordinates are viewport
+   based, then corrected by the containing block's own offset — the modal
+   creates one through backdrop-filter. */
+function _positionPalette(pal) {
+  const btn = pal.previousElementSibling;
+  if (!btn) return;
+  const MARGIN = 8;
+
+  pal.style.left = '0px';
+  pal.style.top  = '0px';
+  const origin = pal.getBoundingClientRect();
+  const rect   = btn.getBoundingClientRect();
+
+  let left = rect.left;
+  if (left + origin.width > window.innerWidth - MARGIN)
+    left = window.innerWidth - origin.width - MARGIN;
+  if (left < MARGIN) left = MARGIN;
+
+  // Prefer below the button; flip above when it would overflow the viewport.
+  let top = rect.bottom + 3;
+  if (top + origin.height > window.innerHeight - MARGIN) {
+    const above = rect.top - origin.height - 3;
+    top = above >= MARGIN ? above : Math.max(MARGIN, window.innerHeight - origin.height - MARGIN);
+  }
+
+  pal.style.left = (left - origin.left) + 'px';
+  pal.style.top  = (top  - origin.top)  + 'px';
+}
+
+function _repositionOpenPalettes() {
+  document.querySelectorAll('.rich-color-palette.open').forEach(_positionPalette);
 }
 
 // editorId = id of the contenteditable div
@@ -1625,17 +1684,19 @@ function _richToolbar(editorId, palPfx) {
   ).join('');
   const btn = (action, label, title) =>
     `<button class="rich-tb-btn" title="${title}" onmousedown="event.preventDefault()" onclick="${action}">${label}</button>`;
+  const ic  = n => icon(n, { size: 15 });
+  const caret = icon('chevron-down', { size: 10, class: 'rich-tb-caret' });
   const sep = `<span class="rich-tb-sep"></span>`;
   return `<div class="rich-tb">
-    ${btn(`document.execCommand('undo')`,'↩','Undo')}
-    ${btn(`document.execCommand('redo')`,'↪','Redo')}
+    ${btn(`document.execCommand('undo')`,ic('undo-2'),'Undo')}
+    ${btn(`document.execCommand('redo')`,ic('redo-2'),'Redo')}
     ${sep}
-    ${btn(`document.execCommand('bold')`,`<strong>B</strong>`,'Bold')}
-    ${btn(`document.execCommand('italic')`,`<em>I</em>`,'Italic')}
-    ${btn(`document.execCommand('underline')`,`<u>U</u>`,'Underline')}
-    ${btn(`document.execCommand('strikeThrough')`,`<s>S</s>`,'Strikethrough')}
-    ${btn(`document.execCommand('superscript')`,'x²','Superscript')}
-    ${btn(`document.execCommand('subscript')`,'x₂','Subscript')}
+    ${btn(`document.execCommand('bold')`,ic('bold'),'Bold')}
+    ${btn(`document.execCommand('italic')`,ic('italic'),'Italic')}
+    ${btn(`document.execCommand('underline')`,ic('underline'),'Underline')}
+    ${btn(`document.execCommand('strikeThrough')`,ic('strikethrough'),'Strikethrough')}
+    ${btn(`document.execCommand('superscript')`,ic('superscript'),'Superscript')}
+    ${btn(`document.execCommand('subscript')`,ic('subscript'),'Subscript')}
     ${sep}
     <input class="rich-fs-input" type="number" min="8" max="96" placeholder="sz"
       title="Font size (8–96px) — apply to selection"
@@ -1643,39 +1704,39 @@ function _richToolbar(editorId, palPfx) {
       onkeydown="if(event.key==='Enter'){richSetFontSize('${editorId}',this.value);this.blur()}"
       onblur="richSetFontSize('${editorId}',this.value)">
     ${sep}
-    ${btn(`document.execCommand('formatBlock',false,'h2')`,'H2','Heading 2')}
-    ${btn(`document.execCommand('formatBlock',false,'h3')`,'H3','Heading 3')}
-    ${btn(`document.execCommand('formatBlock',false,'h4')`,'H4','Heading 4')}
-    ${btn(`document.execCommand('formatBlock',false,'p')`,'P','Paragraph')}
-    ${btn(`document.execCommand('formatBlock',false,'blockquote')`,'&ldquo;','Blockquote')}
-    ${btn(`document.execCommand('formatBlock',false,'pre')`,'{ }','Code block')}
+    ${btn(`document.execCommand('formatBlock',false,'h2')`,ic('heading-2'),'Heading 2')}
+    ${btn(`document.execCommand('formatBlock',false,'h3')`,ic('heading-3'),'Heading 3')}
+    ${btn(`document.execCommand('formatBlock',false,'h4')`,ic('heading-4'),'Heading 4')}
+    ${btn(`document.execCommand('formatBlock',false,'p')`,ic('pilcrow'),'Paragraph')}
+    ${btn(`document.execCommand('formatBlock',false,'blockquote')`,ic('quote'),'Blockquote')}
+    ${btn(`document.execCommand('formatBlock',false,'pre')`,ic('code'),'Code block')}
     ${sep}
-    ${btn(`document.execCommand('insertUnorderedList')`,'•','Bullet list')}
-    ${btn(`document.execCommand('insertOrderedList')`,'1.','Numbered list')}
-    ${btn(`document.execCommand('indent')`,'⇥','Indent')}
-    ${btn(`document.execCommand('outdent')`,'⇤','Outdent')}
+    ${btn(`document.execCommand('insertUnorderedList')`,ic('list'),'Bullet list')}
+    ${btn(`document.execCommand('insertOrderedList')`,ic('list-ordered'),'Numbered list')}
+    ${btn(`document.execCommand('indent')`,ic('indent-increase'),'Indent')}
+    ${btn(`document.execCommand('outdent')`,ic('indent-decrease'),'Outdent')}
     ${sep}
     <div class="rich-color-wrap">
-      <button class="rich-tb-btn" title="Text color" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-fg')"><span style="border-bottom:2.5px solid #ef4444;padding-bottom:1px;font-weight:700">A</span> ▾</button>
+      <button class="rich-tb-btn" title="Text color" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-fg')">${ic('baseline')}${caret}</button>
       <div class="rich-color-palette" id="${palPfx}-fg">${fgSwatches}</div>
     </div>
     <div class="rich-color-wrap">
-      <button class="rich-tb-btn" title="Highlight" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-hi')"><span style="background:#fef08a;padding:0 2px">A</span> ▾</button>
+      <button class="rich-tb-btn" title="Highlight" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-hi')">${ic('highlighter')}${caret}</button>
       <div class="rich-color-palette" id="${palPfx}-hi">${hiSwatches}</div>
     </div>
-    ${btn(`document.execCommand('removeFormat')`,'T✕','Clear formatting')}
+    ${btn(`document.execCommand('removeFormat')`,ic('remove-formatting'),'Clear formatting')}
     ${sep}
-    ${btn(`richInsertLink('${editorId}')`,'lnk','Insert link')}
-    ${btn(`richInsertImage('${editorId}')`,'img','Insert image')}
+    ${btn(`richInsertLink('${editorId}')`,ic('link'),'Insert link')}
+    ${btn(`richInsertImage('${editorId}')`,ic('image'),'Insert image')}
     ${sep}
-    ${btn(`document.execCommand('justifyLeft')`,'←','Left')}
-    ${btn(`document.execCommand('justifyCenter')`,'↔','Center')}
-    ${btn(`document.execCommand('justifyRight')`,'→','Right')}
-    ${btn(`document.execCommand('justifyFull')`,'⇔','Justify')}
+    ${btn(`document.execCommand('justifyLeft')`,ic('align-left'),'Align left')}
+    ${btn(`document.execCommand('justifyCenter')`,ic('align-center'),'Align center')}
+    ${btn(`document.execCommand('justifyRight')`,ic('align-right'),'Align right')}
+    ${btn(`document.execCommand('justifyFull')`,ic('align-justify'),'Justify')}
     ${sep}
     <div class="rich-color-wrap">
-      <button class="rich-tb-btn" title="Insert table" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-tp')">⊞ ▾</button>
-      <div class="rich-color-palette" id="${palPfx}-tp" style="width:auto;padding:10px">
+      <button class="rich-tb-btn" title="Insert table" onmousedown="event.preventDefault()" onclick="richTogglePalette('${palPfx}-tp')">${ic('table')}${caret}</button>
+      <div class="rich-color-palette rich-tp" id="${palPfx}-tp">
         <div class="rich-tg" id="${palPfx}-tg" onmouseleave="richTableHoverReset('${palPfx}')">${gridCells}</div>
         <div class="rich-tg-label" id="${palPfx}-tl">hover to select size</div>
         <div style="display:flex;gap:5px;margin-top:7px;align-items:center;border-top:1px solid var(--b1);padding-top:7px">
@@ -1687,7 +1748,7 @@ function _richToolbar(editorId, palPfx) {
         </div>
       </div>
     </div>
-    ${btn(`richInsertHR('${editorId}')`,'─','Horizontal rule')}
+    ${btn(`richInsertHR('${editorId}')`,ic('minus'),'Horizontal rule')}
   </div>`;
 }
 
@@ -1777,15 +1838,115 @@ function richInsertHR(editorId) {
 // ── Context toolbar state ─────────────────────────────────────────
 let _rctxCell = null, _rctxImg = null, _rctxEditorId = null;
 
+// anchor: an element, or a plain {top,bottom,left} viewport rect
 function _positionCtxTb(tbId, anchor) {
   const tb = document.getElementById(tbId);
   if (!tb || !anchor) return;
-  const r   = anchor.getBoundingClientRect();
-  const tbH = 38;
-  const top = r.top > tbH + 8 ? r.top - tbH - 4 : r.bottom + 4;
-  tb.style.top  = Math.max(4, Math.min(top, window.innerHeight - tbH - 4)) + 'px';
-  tb.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 480)) + 'px';
   tb.style.display = 'flex';
+  const r  = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
+  const tw = tb.offsetWidth, th = tb.offsetHeight;   // measure, never assume
+  const M  = 6;
+  const top = r.top > th + M * 2 ? r.top - th - M : r.bottom + M;
+  tb.style.top  = Math.max(M, Math.min(top, window.innerHeight - th - M)) + 'px';
+  tb.style.left = Math.max(M, Math.min(r.left, window.innerWidth - tw - M)) + 'px';
+}
+
+/* ── Active cell: the whole point is knowing what you're about to change ──
+   The toolbar anchors to the CELL you clicked (not the table's top-left) and
+   two overlay bands light up the row and column it will act on. The bands are
+   siblings of <body>, never nodes inside the editor, so nothing about this
+   feedback can end up in the saved report HTML. */
+function _cellRect(cells) {
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+  cells.forEach(c => {
+    const k = c.getBoundingClientRect();
+    l = Math.min(l, k.left); t = Math.min(t, k.top);
+    r = Math.max(r, k.right); b = Math.max(b, k.bottom);
+  });
+  return { left: l, top: t, right: r, bottom: b };
+}
+
+function _placeBand(el, rect, clip) {
+  const left   = Math.max(rect.left, clip.left);
+  const top    = Math.max(rect.top, clip.top);
+  const width  = Math.min(rect.right, clip.right) - left;
+  const height = Math.min(rect.bottom, clip.bottom) - top;
+  if (width <= 0 || height <= 0) { el.style.display = 'none'; return; }
+  el.style.cssText = `display:block;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
+}
+
+function _hideBands() {
+  const row = document.getElementById('rich-tbl-hl-row');
+  const col = document.getElementById('rich-tbl-hl-col');
+  if (row) row.style.display = 'none';
+  if (col) col.style.display = 'none';
+}
+
+function _paintTableUi() {
+  const cell = _tblCell();
+  if (!cell) { _hideBands(); _hideCtxTb('rich-ctx-table'); return; }
+
+  const editor = cell.closest('.rich-editor');
+  const table  = cell.closest('table');
+  if (!editor || !table) { _hideBands(); _hideCtxTb('rich-ctx-table'); return; }
+
+  // Scrolled out of its own editor? Then the toolbar has nothing to point at.
+  const clip = editor.getBoundingClientRect();
+  const cr   = cell.getBoundingClientRect();
+  if (cr.bottom < clip.top || cr.top > clip.bottom) { _hideBands(); _hideCtxTb('rich-ctx-table'); return; }
+
+  const idx  = cell.cellIndex;
+  const rows = Array.from(table.rows);
+  _placeBand(document.getElementById('rich-tbl-hl-row'),
+             _cellRect(Array.from(cell.parentNode.cells)), clip);
+  _placeBand(document.getElementById('rich-tbl-hl-col'),
+             _cellRect(rows.map(r => r.cells[idx]).filter(Boolean)), clip);
+
+  // Body rows count from 1; the header is named, not numbered.
+  const pos     = document.getElementById('rich-tbl-pos');
+  const inHead  = !!cell.closest('thead');
+  const bodyIdx = Array.from(table.querySelectorAll('tbody tr')).indexOf(cell.parentNode) + 1;
+  if (pos) pos.textContent = `${inHead ? 'HEAD' : 'R' + bodyIdx}·C${idx + 1}`;
+
+  // Say what can't be done instead of no-oping on click
+  const delRow = document.getElementById('rich-tbl-delrow');
+  const delCol = document.getElementById('rich-tbl-delcol');
+  if (delRow) delRow.disabled = table.querySelectorAll('tbody tr').length <= 1 || !!cell.closest('thead');
+  if (delCol) delCol.disabled = (rows[0]?.cells.length || 0) <= 1;
+
+  /* Anchor to the table's visible edge, not the cell: the bands and the R·C
+     readout already identify the target, so the toolbar's job is to stay put
+     and stop covering the header row you're reading the columns from. */
+  const tr = table.getBoundingClientRect();
+  _positionCtxTb('rich-ctx-table', {
+    top:    Math.max(tr.top, clip.top),
+    bottom: Math.min(tr.bottom, clip.bottom),
+    left:   tr.left,
+  });
+}
+
+/* A re-render (buildEditor) detaches the old node — acting on it would mutate
+   a tree nobody can see. Always re-check before using the reference. */
+function _tblCell() {
+  if (_rctxCell && !_rctxCell.isConnected) _rctxCell = null;
+  return _rctxCell;
+}
+
+function _setTblCell(cell) {
+  _rctxCell     = cell || null;
+  _rctxEditorId = cell?.closest('.rich-editor')?.id || _rctxEditorId;
+  _paintTableUi();
+}
+
+function _focusCell(cell) {
+  if (!cell) return;
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  cell.closest('.rich-editor')?.focus();
 }
 
 function _hideCtxTb(tbId) {
@@ -1796,14 +1957,24 @@ function _hideCtxTb(tbId) {
 function _hideAllCtxTb() {
   _hideCtxTb('rich-ctx-table');
   _hideCtxTb('rich-ctx-img');
+  _hideBands();
   _rctxCell = null; _rctxImg = null;
 }
 
-// Hide context toolbars when any scroll container moves (toolbars are fixed, content moves)
+/* Toolbars are fixed, content scrolls — so follow the anchor rather than
+   dumping the selection. Losing the toolbar on every scroll was the reason
+   editing a table meant re-clicking a cell constantly. */
 document.addEventListener('scroll', e => {
   if (e.target.closest?.('.rich-color-palette, .rich-ctx-tb')) return;
-  _hideAllCtxTb();
+  if (_tblCell()) _paintTableUi();
+  if (_rctxImg?.isConnected) _positionCtxTb('rich-ctx-img', _rctxImg);
+  else if (_rctxImg) { _rctxImg = null; _hideCtxTb('rich-ctx-img'); }
 }, true);
+
+window.addEventListener('resize', () => {
+  if (_tblCell()) _paintTableUi();
+  if (_rctxImg?.isConnected) _positionCtxTb('rich-ctx-img', _rctxImg);
+});
 
 // Global click handler — show/hide context toolbars
 document.addEventListener('click', e => {
@@ -1814,11 +1985,8 @@ document.addEventListener('click', e => {
 
   // Table cell inside a rich editor?
   if (cell?.closest('.rich-editor')) {
-    _rctxCell     = cell;
-    _rctxEditorId = cell.closest('.rich-editor').id;
-    _positionCtxTb('rich-ctx-table', cell.closest('table'));
+    _setTblCell(cell);
     _hideCtxTb('rich-ctx-img');
-    // sync custom px input if image toolbar was open
     return;
   }
 
@@ -1833,9 +2001,49 @@ document.addEventListener('click', e => {
     return;
   }
 
-  _hideCtxTb('rich-ctx-table');
-  _hideCtxTb('rich-ctx-img');
-  _rctxCell = null; _rctxImg = null;
+  _hideAllCtxTb();
+});
+
+/* Arrow keys and typing move the caret between cells without a click — keep
+   the highlight on whatever cell the caret is actually in. */
+// Typing reflows the row — the bands have to follow the cell they outline.
+document.addEventListener('input', () => { if (_tblCell()) _paintTableUi(); });
+
+document.addEventListener('selectionchange', () => {
+  let node = window.getSelection()?.anchorNode;
+  if (!node) return;
+  if (node.nodeType === 3) node = node.parentNode;
+  const cell = node.closest?.('td, th');
+  if (!cell || !cell.closest('.rich-editor')) return;
+  if (cell !== _rctxCell) _setTblCell(cell);
+});
+
+/* Tab / Shift+Tab across cells, and Tab out of the last cell appends a row —
+   the behaviour every other editor has trained people to expect. */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  let node = window.getSelection()?.anchorNode;
+  if (!node) return;
+  if (node.nodeType === 3) node = node.parentNode;
+  const cell = node.closest?.('td, th');
+  if (!cell || !cell.closest('.rich-editor')) return;
+
+  e.preventDefault();
+  const table = cell.closest('table');
+  const cells = Array.from(table.querySelectorAll('td, th'));
+  const next  = cells.indexOf(cell) + (e.shiftKey ? -1 : 1);
+
+  if (next < 0) return;
+  if (next >= cells.length) {
+    _setTblCell(cell);
+    richTableAddRow('below');
+    const added = _tblCell()?.parentNode?.cells[0];
+    _focusCell(added);
+    _setTblCell(added);
+    return;
+  }
+  _focusCell(cells[next]);
+  _setTblCell(cells[next]);
 });
 
 // ── Table operations ──────────────────────────────────────────────
@@ -1844,78 +2052,97 @@ function _richEditorInputEvent() {
   ed?.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function richTableAddRow() {
-  if (!_rctxCell) return;
-  const row   = _rctxCell.closest('tr');
+const _TD_CSS = 'border:1px solid var(--b2,#555);padding:6px 10px;font-size:12px';
+const _TH_CSS = 'border:1px solid var(--b2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left';
+
+function _newCell(isHead) {
+  const cell = document.createElement(isHead ? 'th' : 'td');
+  cell.style.cssText = isHead ? _TH_CSS : _TD_CSS;
+  cell.innerHTML = isHead ? 'Header' : '<br>';
+  return cell;
+}
+
+// where: 'above' | 'below'
+function richTableAddRow(where = 'below') {
+  const cell  = _tblCell();
+  const row   = cell?.closest('tr');
   const table = row?.closest('table');
   if (!row || !table) return;
-  const cols = table.querySelector('tr')?.cells.length || 1;
+
+  const cols = table.rows[0]?.cells.length || 1;
   const tr   = document.createElement('tr');
-  for (let i = 0; i < cols; i++) {
-    const td = document.createElement('td');
-    td.style.cssText = 'border:1px solid var(--b2,#555);padding:6px 10px;font-size:12px';
-    td.innerHTML = ' ';
-    tr.appendChild(td);
-  }
-  // If clicked from header row, insert as first body row; otherwise after current row
+  for (let i = 0; i < cols; i++) tr.appendChild(_newCell(false));
+
+  const tbody = table.querySelector('tbody') || table.createTBody();
   if (row.closest('thead')) {
-    const tbody = table.querySelector('tbody') || table.createTBody();
+    // A header row has no "above" — both directions mean the first body row.
     tbody.insertBefore(tr, tbody.firstChild);
   } else {
-    row.parentNode.insertBefore(tr, row.nextSibling);
+    row.parentNode.insertBefore(tr, where === 'above' ? row : row.nextSibling);
   }
-  _positionCtxTb('rich-ctx-table', table);
+
+  _setTblCell(tr.cells[Math.min(cell.cellIndex, tr.cells.length - 1)]);
   _richEditorInputEvent();
 }
 
-function richTableAddCol() {
-  if (!_rctxCell) return;
-  const table   = _rctxCell.closest('table');
+// where: 'left' | 'right'
+function richTableAddCol(where = 'right') {
+  const cell  = _tblCell();
+  const table = cell?.closest('table');
   if (!table) return;
-  const colIdx  = _rctxCell.cellIndex;
-  table.querySelectorAll('tr').forEach(row => {
-    const isHead = !!row.closest('thead');
-    const cell   = document.createElement(isHead ? 'th' : 'td');
-    cell.style.cssText = isHead
-      ? 'border:1px solid var(--b2,#555);padding:6px 10px;background:var(--bg3,#2a2a2a);font-weight:600;font-size:11px;text-align:left'
-      : 'border:1px solid var(--b2,#555);padding:6px 10px;font-size:12px';
-    cell.innerHTML = isHead ? 'Header' : ' ';
-    const ref = row.cells[colIdx + 1] || null;
-    row.insertBefore(cell, ref);
+
+  const colIdx = cell.cellIndex;
+  const at     = where === 'left' ? colIdx : colIdx + 1;
+  Array.from(table.rows).forEach(row => {
+    row.insertBefore(_newCell(!!row.closest('thead')), row.cells[at] || null);
   });
-  _positionCtxTb('rich-ctx-table', table);
+
+  _setTblCell(cell.parentNode.cells[at]);
   _richEditorInputEvent();
 }
 
 function richTableDelRow() {
-  if (!_rctxCell) return;
-  const row   = _rctxCell.closest('tr');
+  const cell  = _tblCell();
+  const row   = cell?.closest('tr');
   const table = row?.closest('table');
   if (!row || !table) return;
-  if (table.querySelectorAll('tbody tr').length <= 1) return; // keep at least 1 body row
+  if (row.closest('thead')) return;                                  // header defines the columns
+  if (table.querySelectorAll('tbody tr').length <= 1) return;        // keep at least one body row
+
+  // Keep working where the user was: fall to the next row, else the previous.
+  const rows = Array.from(table.rows);
+  const i    = rows.indexOf(row);
+  const heir = rows[i + 1] || rows[i - 1];
+  const idx  = cell.cellIndex;
   row.remove();
-  _rctxCell = null;
-  _hideCtxTb('rich-ctx-table');
+
+  _setTblCell(heir?.cells[Math.min(idx, heir.cells.length - 1)] || null);
   _richEditorInputEvent();
 }
 
 function richTableDelCol() {
-  if (!_rctxCell) return;
-  const table  = _rctxCell.closest('table');
+  const cell  = _tblCell();
+  const table = cell?.closest('table');
   if (!table) return;
-  const colIdx = _rctxCell.cellIndex;
-  if ((table.querySelector('tr')?.cells.length || 0) <= 1) return; // keep at least 1 col
-  table.querySelectorAll('tr').forEach(row => { row.cells[colIdx]?.remove(); });
-  _rctxCell = null;
-  _hideCtxTb('rich-ctx-table');
+  const colIdx = cell.cellIndex;
+  if ((table.rows[0]?.cells.length || 0) <= 1) return;               // keep at least one column
+
+  const row = cell.parentNode;
+  Array.from(table.rows).forEach(r => r.cells[colIdx]?.remove());
+
+  _setTblCell(row.cells[Math.min(colIdx, row.cells.length - 1)] || null);
   _richEditorInputEvent();
 }
 
 function richTableDelete() {
-  if (!_rctxCell) return;
-  _rctxCell.closest('table')?.remove();
-  _rctxCell = null;
-  _hideCtxTb('rich-ctx-table');
+  const cell  = _tblCell();
+  const table = cell?.closest('table');
+  if (!table) return;
+  // Unlike a row or a column, this one throws away everything and there is no undo path back.
+  if (!confirm('Delete the entire table? This cannot be undone.')) return;
+  table.remove();
+  _setTblCell(null);
+  _hideAllCtxTb();
   _richEditorInputEvent();
 }
 
@@ -1979,8 +2206,8 @@ function openRichModal(secId, defaultSplit = false, field = 'content') {
       <div style="padding:8px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
         <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2)">${esc(title)}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
-          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richModalToggleSplit('${secId}')">◫ Split</button>
-          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModal('${secId}')">← Close</button>
+          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richModalToggleSplit('${secId}')">${icon('columns-2',{size:11})} Split</button>
+          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModal('${secId}')">${icon('arrow-left',{size:11})} Close</button>
         </div>
       </div>
       <div class="fe-body">
@@ -2021,7 +2248,7 @@ function richModalToggleSplit(secId) {
   const open = pane.style.display === 'none' || pane.style.display === '';
   pane.style.display = open ? 'block' : 'none';
   inner.classList.toggle('split', open);
-  btn.textContent = open ? '▣ Editor only' : '◫ Split';
+  btn.innerHTML = open ? `${icon('square',{size:11})} Editor only` : `${icon('columns-2',{size:11})} Split`;
   if (open) {
     const html = document.getElementById(`rich-modal-ed-${secId}`)?.innerHTML || '';
     const pv = document.getElementById(`rich-modal-pv-content-${secId}`);
@@ -2056,8 +2283,8 @@ function openRichModalSub(secId, subId) {
       <div style="padding:8px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
         <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2)">${esc(sub.title)}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
-          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richSubModalToggleSplit('${subId}')">◫ Split</button>
-          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModalSub('${secId}','${subId}')">← Close</button>
+          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richSubModalToggleSplit('${subId}')">${icon('columns-2',{size:11})} Split</button>
+          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeRichModalSub('${secId}','${subId}')">${icon('arrow-left',{size:11})} Close</button>
         </div>
       </div>
       <div class="fe-body">
@@ -2094,7 +2321,7 @@ function richSubModalToggleSplit(subId) {
   const open = pane.style.display === 'none' || pane.style.display === '';
   pane.style.display = open ? 'block' : 'none';
   inner.classList.toggle('split', open);
-  btn.textContent = open ? '▣ Editor only' : '◫ Split';
+  btn.innerHTML = open ? `${icon('square',{size:11})} Editor only` : `${icon('columns-2',{size:11})} Split`;
   if (open) {
     const el = document.querySelector(`#rich-modal-inner .rich-editor`);
     const pv = document.getElementById(`rich-sub-modal-pv-${subId}`);
@@ -2118,6 +2345,14 @@ document.addEventListener('mousedown', e => {
     document.querySelectorAll('.rich-color-palette').forEach(el => el.classList.remove('open'));
 });
 
+// Fixed palettes don't follow their button on their own
+window.addEventListener('resize', _repositionOpenPalettes);
+document.addEventListener('scroll', _repositionOpenPalettes, true);
+
+// AI buttons rewrite their own label when a run finishes — build it in one
+// place so the icon survives the round trip (innerHTML, never textContent).
+const _aiLabel = (all = false) => `${icon('sparkles', { size: 11 })} Generate${all ? ' All' : ''}`;
+
 // ── Build a single section item HTML ─────────────────────────────
 function buildSecItem(sec) {
   const PROSE    = new Set(['custom']);
@@ -2131,7 +2366,7 @@ function buildSecItem(sec) {
     ondragover="secDragOver(event,'${sec.id}')"
     ondrop="secDrop(event,'${sec.id}')">
     <div class="sec-row">
-      <span class="sec-drag" title="Drag to reorder" onmousedown="secDragHandleDown()">⠿</span>
+      <span class="sec-drag" title="Drag to reorder" onmousedown="secDragHandleDown()">${icon('grip-vertical',{size:13})}</span>
       <button class="sec-eye ${sec.visible?'':'off'}" id="sec-eye-${sec.id}"
         onclick="secToggleVisible('${sec.id}')" title="${sec.visible?'Hide':'Show'}"><span class="sec-eye-dot"></span></button>
       <div class="sec-title-wrap">
@@ -2139,10 +2374,10 @@ function buildSecItem(sec) {
       </div>
       <button class="sec-btn sec-pb-btn ${sec.pageBreak?'sec-pb-on':''}" id="sec-pb-${sec.id}"
         title="${sec.pageBreak?'Remove page break':'Start on new page'}"
-        onclick="secTogglePageBreak('${sec.id}')">⏎</button>
-      <button class="sec-btn" onclick="openRichModal('${sec.id}',true,${isCustom?`'content'`:`'description'`})" title="Full editor">⤢</button>
-      <button class="sec-btn" id="sec-edit-btn-${sec.id}" onclick="secToggleEdit('${sec.id}')" title="Inline edit">✎</button>
-      ${isCustom ? `<button class="sec-btn del" onclick="secDelete('${sec.id}')">✕</button>` : ''}
+        onclick="secTogglePageBreak('${sec.id}')">${icon('separator-horizontal',{size:12})}</button>
+      <button class="sec-btn" onclick="openRichModal('${sec.id}',true,${isCustom?`'content'`:`'description'`})" title="Full editor">${icon('maximize-2',{size:12})}</button>
+      <button class="sec-btn" id="sec-edit-btn-${sec.id}" onclick="secToggleEdit('${sec.id}')" title="Inline edit">${icon('pencil',{size:12})}</button>
+      ${isCustom ? `<button class="sec-btn del" onclick="secDelete('${sec.id}')" title="Delete section">${icon('trash-2',{size:12})}</button>` : ''}
     </div>`;
 
   html += `<div class="sec-edit-body" id="sec-edit-${sec.id}">`;
@@ -2167,8 +2402,8 @@ function buildSecItem(sec) {
   } else {
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div class="exp-field-label" style="margin:0">Intro text</div>
-      ${sec.type === 'exec-summary' ? `<button class="ai-btn" id="ai-exec-btn" onclick="aiExecSummary('${sec.id}')" title="Generate executive summary from findings">✦ Generate</button>` : ''}
-      ${sec.type === 'remediation-roadmap' ? `<button class="ai-btn" id="ai-roadmap-btn" onclick="aiRoadmapActions('${sec.id}')" title="Generate action items for every finding missing one">✦ Generate All</button>` : ''}
+      ${sec.type === 'exec-summary' ? `<button class="ai-btn" id="ai-exec-btn" onclick="aiExecSummary('${sec.id}')" title="Generate executive summary from findings">${_aiLabel()}</button>` : ''}
+      ${sec.type === 'remediation-roadmap' ? `<button class="ai-btn" id="ai-roadmap-btn" onclick="aiRoadmapActions('${sec.id}')" title="Generate action items for every finding missing one">${_aiLabel(true)}</button>` : ''}
     </div>`;
     html += _richToolbar('desc-'+sec.id, 'desc-'+sec.id);
     html += `<div class="rich-editor" contenteditable="true" id="rich-desc-${sec.id}"
@@ -2371,9 +2606,9 @@ function _renderTemplatesSection(_sh) {
           <div style="font-size:11px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(tpl.name)}</div>
           <div style="font-family:var(--mono);font-size:9px;color:var(--t3)">${tpl.created||''} · ${tpl.sections?.length||0} sections</div>
         </div>
-        <button class="sec-btn" onclick="loadTemplate(${i})" title="Load">↓ Load</button>
-        <button class="sec-btn" onclick="exportTemplate(${i})" title="Export JSON">↓ .json</button>
-        <button class="sec-btn del" onclick="deleteTemplate(${i})" title="Delete">✕</button>
+        <button class="sec-btn" onclick="loadTemplate(${i})" title="Load">${icon('download',{size:11})} Load</button>
+        <button class="sec-btn" onclick="exportTemplate(${i})" title="Export JSON">${icon('braces',{size:11})} .json</button>
+        <button class="sec-btn del" onclick="deleteTemplate(${i})" title="Delete">${icon('trash-2',{size:11})}</button>
       </div>`;
     });
     inner += `</div>`;
@@ -2449,7 +2684,7 @@ function buildSectionList() {
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
       ${(m.coverLogoBase64||m.clientLogoUrl) ? `<img src="${m.coverLogoBase64||m.clientLogoUrl}" style="height:28px;max-width:80px;object-fit:contain;border-radius:4px;border:1px solid var(--b1);flex-shrink:0">` : ''}
       <label class="sec-btn" style="cursor:pointer;flex-shrink:0">Upload<input type="file" accept="image/*" style="display:none" onchange="uploadCoverLogo(this)"></label>
-      ${m.coverLogoBase64 ? `<button class="sec-btn del" onclick="setRptMeta('coverLogoBase64','');buildEditor()">✕</button>` : ''}
+      ${m.coverLogoBase64 ? `<button class="sec-btn del" onclick="setRptMeta('coverLogoBase64','');buildEditor()" title="Remove logo">${icon('x',{size:11})}</button>` : ''}
     </div>
     <input class="exp-input" value="${esc(m.clientLogoUrl||'')}" placeholder="or paste logo URL…"
       oninput="setRptMeta('clientLogoUrl',this.value)" style="margin-bottom:5px">
@@ -2570,7 +2805,7 @@ function buildSectionList() {
             ${modeImg ? `<div style="display:flex;align-items:center;gap:4px">
                 ${col.img ? `<img src="${col.img}" style="height:22px;max-width:64px;object-fit:contain;border-radius:3px;border:1px solid var(--b1);flex-shrink:0;${col.imgShadow?'filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))':''}">` : ''}
                 <label class="sec-btn" style="cursor:pointer;flex-shrink:0">img<input type="file" accept="image/*" style="display:none" onchange="uploadColLogo('${zone}','${key}',this)"></label>
-                ${col.img ? `<button class="sec-btn del" onclick="setPageLayoutColImg('${zone}','${key}','')">✕</button>` : ''}
+                ${col.img ? `<button class="sec-btn del" onclick="setPageLayoutColImg('${zone}','${key}','')" title="Remove image">${icon('x',{size:11})}</button>` : ''}
               </div>
               ${col.img ? `<label class="exp-opt" style="margin-top:3px"><input type="checkbox" ${col.imgShadow?'checked':''} onchange="setPageLayoutColShadow('${zone}','${key}',this.checked)"> Drop shadow</label>` : ''}` : ''}
             ${modeNum ? `<input class="exp-input" value="${esc(col.text||'')}" placeholder="prefix (e.g. Page)"
@@ -2748,8 +2983,8 @@ function openVulnFieldModal(id, field) {
       <div style="padding:8px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
         <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--t2)">${esc(vulnName)} — ${fieldLabel}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
-          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richVulnModalToggleSplit('${id}','${field}')">◫ Split</button>
-          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeVulnFieldModal('${id}','${field}')">← Close</button>
+          <button id="rich-modal-split-btn" class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="richVulnModalToggleSplit('${id}','${field}')">${icon('columns-2',{size:11})} Split</button>
+          <button class="btn-accent" style="padding:4px 11px;font-size:11px" onclick="closeVulnFieldModal('${id}','${field}')">${icon('arrow-left',{size:11})} Close</button>
         </div>
       </div>
       <div class="fe-body">
@@ -2778,7 +3013,7 @@ function richVulnModalToggleSplit(id, field) {
   const open = pane.style.display === 'none' || pane.style.display === '';
   pane.style.display = open ? 'block' : 'none';
   inner.classList.toggle('split', open);
-  btn.textContent = open ? '▣ Editor only' : '◫ Split';
+  btn.innerHTML = open ? `${icon('square',{size:11})} Editor only` : `${icon('columns-2',{size:11})} Split`;
   if (open) {
     const html = document.getElementById(`vfield-modal-ed-${id}-${field}`)?.innerHTML || '';
     const pv = document.getElementById(`vfield-modal-pv-${id}-${field}`);
@@ -2853,7 +3088,7 @@ function renderEvidenceList(id, isWSTG) {
         <div class="exp-evidence-row">
           <img src="${img.data}" class="exp-evidence-thumb">
           <span class="exp-evidence-name">${esc(img.name||'image')}</span>
-          <button class="btn-remove" onclick="removeEvidence('${id}',${i},${isWSTG})">✕</button>
+          <button class="btn-remove" onclick="removeEvidence('${id}',${i},${isWSTG})" title="Remove evidence">${icon('x',{size:11})}</button>
         </div>`).join('')
     : `<div style="font-family:var(--mono);font-size:10px;color:var(--t3)">No images</div>`;
   buildReport();
@@ -2938,7 +3173,7 @@ async function aiExecSummary(secId) {
   } catch(e) {
     alert('AI error: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = _aiLabel(); }
   }
 }
 
@@ -2978,7 +3213,7 @@ async function aiBusinessImpact(vulnId) {
   } catch(e) {
     alert('AI error: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = _aiLabel(); }
   }
 }
 
@@ -3019,7 +3254,7 @@ async function aiRemediationAction(vulnId) {
   } catch(e) {
     alert('AI error: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = _aiLabel(); }
   }
 }
 
@@ -3027,7 +3262,7 @@ async function aiRemediationAction(vulnId) {
 async function aiRoadmapActions(secId) {
   const btn = document.getElementById('ai-roadmap-btn');
   const vulns = (state.customVulns || []).filter(v => !getEdit(v.id).execAction);
-  if (!vulns.length) { if (btn) btn.textContent = 'Nothing to generate'; setTimeout(() => { if (btn) btn.textContent = '✦ Generate All'; }, 1500); return; }
+  if (!vulns.length) { if (btn) btn.textContent = 'Nothing to generate'; setTimeout(() => { if (btn) btn.innerHTML = _aiLabel(true); }, 1500); return; }
   if (btn) btn.disabled = true;
   let done = 0;
   for (const v of vulns) {
@@ -3044,7 +3279,7 @@ async function aiRoadmapActions(secId) {
     }
     done++;
   }
-  if (btn) { btn.disabled = false; btn.textContent = '✦ Generate All'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = _aiLabel(true); }
   buildReport();
 }
 
@@ -3185,7 +3420,7 @@ function findingEditorRich(id, v) {
       <div style="margin-bottom:8px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
           <div class="exp-field-label" style="margin:0">Descripción</div>
-          <button class="sec-btn" onclick="openVulnFieldModal('${id}','description')" title="Full editor">⤢</button>
+          <button class="sec-btn" onclick="openVulnFieldModal('${id}','description')" title="Full editor">${icon('maximize-2',{size:12})}</button>
         </div>
         ${_richToolbar(`vfield-${id}-description`, `rpal-vf-${id}-desc`)}
         <div class="rich-editor" contenteditable="true" id="vfield-inline-${id}-description"
@@ -3195,7 +3430,7 @@ function findingEditorRich(id, v) {
       <div style="margin-bottom:8px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
           <div class="exp-field-label" style="margin:0">Remediación</div>
-          <button class="sec-btn" onclick="openVulnFieldModal('${id}','remediation')" title="Full editor">⤢</button>
+          <button class="sec-btn" onclick="openVulnFieldModal('${id}','remediation')" title="Full editor">${icon('maximize-2',{size:12})}</button>
         </div>
         ${_richToolbar(`vfield-${id}-remediation`, `rpal-vf-${id}-rem`)}
         <div class="rich-editor" contenteditable="true" id="vfield-inline-${id}-remediation"
@@ -3205,7 +3440,7 @@ function findingEditorRich(id, v) {
       ${isCriticalHigh ? `<div style="margin-bottom:8px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
           <div class="exp-field-label" style="margin:0">Impacto de Negocio (Ejecutivo)</div>
-          <button class="ai-btn" id="ai-biz-${id}" onclick="aiBusinessImpact('${id}')" title="Generate business-impact summary from this finding">✦ Generate</button>
+          <button class="ai-btn" id="ai-biz-${id}" onclick="aiBusinessImpact('${id}')" title="Generate business-impact summary from this finding">${_aiLabel()}</button>
         </div>
         <textarea class="exp-textarea" id="ebiz-${id}" placeholder="Consecuencia para el negocio en términos no técnicos..."
           oninput="saveVulnBizImpact('${id}',this.value)"
@@ -3234,7 +3469,7 @@ function findingEditorRich(id, v) {
       <div style="margin-bottom:8px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
           <div class="exp-field-label" style="margin:0">Acción Recomendada (Hoja de Ruta)</div>
-          <button class="ai-btn" id="ai-action-${id}" onclick="aiRemediationAction('${id}')" title="Generate a short, non-technical action item">✦ Generate</button>
+          <button class="ai-btn" id="ai-action-${id}" onclick="aiRemediationAction('${id}')" title="Generate a short, non-technical action item">${_aiLabel()}</button>
         </div>
         <textarea class="exp-textarea" id="eaction-${id}" placeholder="Acción de alto nivel, sin jerga técnica..."
           oninput="saveVulnExecAction('${id}',this.value)"
@@ -4032,7 +4267,7 @@ async function exportPdf() {
   const password = m.pdfPassword?.trim();
 
   const btn = document.querySelector('[onclick="exportPdf()"]');
-  const origText = btn.textContent;
+  const origText = btn.innerHTML;
   btn.textContent = 'Generating…';
   btn.disabled = true;
 
@@ -4069,14 +4304,14 @@ async function exportPdf() {
   } catch (e) {
     showToast('PDF generation failed: ' + e.message, 'error');
   } finally {
-    btn.textContent = origText;
+    btn.innerHTML = origText;
     btn.disabled = false;
   }
 }
 
 async function exportDocx() {
   const btn = document.querySelector('[onclick="exportDocx()"]');
-  const origText = btn.textContent;
+  const origText = btn.innerHTML;
   btn.textContent = 'Generating…';
   btn.disabled = true;
   try {
@@ -4108,7 +4343,7 @@ async function exportDocx() {
   } catch (e) {
     showToast('DOCX generation failed: ' + e.message, 'error');
   } finally {
-    btn.textContent = origText;
+    btn.innerHTML = origText;
     btn.disabled = false;
   }
 }

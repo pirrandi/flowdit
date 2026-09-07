@@ -320,50 +320,20 @@
 
       <!-- Tool buttons (icon-only) + floating draw panel -->
       <div style="position:relative;display:flex;gap:2px">
-        <button class="wb-tool-btn active" id="wb-btn-select" onclick="setWbMode('select')" title="Select (V)">
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
-            <path d="M2 1l8 5-4.5 1-2 4L2 1z" fill="currentColor"/>
-          </svg>
-        </button>
-        <button class="wb-tool-btn" id="wb-btn-pan" onclick="setWbMode('pan')" title="Pan (H)">
-          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
-            <path d="M5 1v4H1l2.5 2.5L1 10h4v3l2.5-2.5L10 13V9h3l-2.5-2.5L13 4H9V1L6.5 3.5 5 1z" stroke="currentColor" stroke-width="1.2" fill="none"/>
-          </svg>
-        </button>
-        <button class="wb-tool-btn" id="wb-btn-draw" onclick="setWbMode('draw')" title="Draw (D)">
-          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
-            <path d="M1 12L3.5 9 9 3.5 10.5 2l1 1-1.5 1.5-5.5 5.5L1 12z" stroke="currentColor" stroke-width="1.2"/>
-            <circle cx="10.5" cy="2.5" r="1.5" fill="currentColor"/>
-          </svg>
-        </button>
-        <button class="wb-tool-btn" id="wb-btn-eraser" onclick="setWbMode('eraser')" title="Eraser (E)">
-          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
-            <path d="M8 2L11 5L6 10L3 7Z" stroke="currentColor" stroke-width="1.2" fill="none"/>
-            <path d="M3 7l3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-            <rect x="1" y="9.5" width="11" height="2" rx="1" fill="currentColor" opacity="0.25"/>
-          </svg>
-        </button>
-        <button class="wb-tool-btn" id="wb-btn-connect" onclick="setWbMode('connect')" title="Connect nodes (C)">
-          <svg width="14" height="13" viewBox="0 0 13 12" fill="none">
-            <circle cx="2" cy="6" r="1.8" stroke="currentColor" stroke-width="1.2"/>
-            <circle cx="11" cy="6" r="1.8" stroke="currentColor" stroke-width="1.2"/>
-            <path d="M3.8 6H7.5" stroke="currentColor" stroke-width="1.2"/>
-            <path d="M7.2 4.5L9.2 6L7.2 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button class="wb-tool-btn" id="wb-btn-note" onclick="setWbMode('note')" title="Sticky note (N)">
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
-            <rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/>
-            <path d="M3.5 4.5h5M3.5 6.5h5M3.5 8.5h3" stroke="currentColor" stroke-width="1.2"/>
-          </svg>
-        </button>
-        <button class="wb-tool-btn" id="wb-btn-card" onclick="setWbMode('card')" title="Custom card (A)">
-          <svg width="14" height="13" viewBox="0 0 14 13" fill="none">
-            <rect x="1" y="1" width="12" height="11" rx="2.5" stroke="currentColor" stroke-width="1.2"/>
-            <rect x="1" y="1" width="12" height="4" rx="2.5" fill="currentColor" opacity="0.25"/>
-            <path d="M3.5 8h7M3.5 10h4.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
-          </svg>
-        </button>
+        <button class="wb-tool-btn active" id="wb-btn-select" onclick="setWbMode('select')" title="Select (V)"
+          data-icon="mouse-pointer-2"></button>
+        <button class="wb-tool-btn" id="wb-btn-pan" onclick="setWbMode('pan')" title="Pan (H)"
+          data-icon="move"></button>
+        <button class="wb-tool-btn" id="wb-btn-draw" onclick="setWbMode('draw')" title="Draw (D)"
+          data-icon="pencil"></button>
+        <button class="wb-tool-btn" id="wb-btn-eraser" onclick="setWbMode('eraser')" title="Eraser (E)"
+          data-icon="eraser"></button>
+        <button class="wb-tool-btn" id="wb-btn-connect" onclick="setWbMode('connect')" title="Connect nodes (C)"
+          data-icon="workflow"></button>
+        <button class="wb-tool-btn" id="wb-btn-note" onclick="setWbMode('note')" title="Sticky note (N)"
+          data-icon="sticky-note"></button>
+        <button class="wb-tool-btn" id="wb-btn-card" onclick="setWbMode('card')" title="Custom card (A)"
+          data-icon="credit-card"></button>
 
         <!-- Draw/eraser options (floating panel) -->
         <div class="wb-draw-panel" id="wb-draw-panel">
@@ -386,63 +356,31 @@
             <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/></svg>
           </button>
           <div class="wb-tool-sep"></div>
-          <button class="wb-btn" onclick="clearDrawing()" title="Clear all strokes" style="padding:4px 8px;font-size:10px">
-            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-              <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5"/>
-            </svg>
-            Clear
-          </button>
+          <button class="wb-btn" onclick="clearDrawing()" title="Clear all strokes" style="padding:4px 8px;font-size:10px"
+            data-icon="x" data-icon-size="12">Clear</button>
         </div>
       </div>
 
       <div class="wb-tool-sep"></div>
 
       <!-- Action buttons -->
-      <button class="wb-btn" onclick="syncTargets()" title="Add targets not yet on the board">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M6 3.5v5M3.5 6h5" stroke="currentColor" stroke-width="1.5"/>
-        </svg>
-        Sync
-      </button>
-      <button class="wb-btn" onclick="fitToScreen()" title="Fit all to screen (F)">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M1 4V1h3M8 1h3v3M11 8v3H8M4 11H1V8" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
-        Fit
-      </button>
+      <button class="wb-btn" onclick="syncTargets()" title="Add targets not yet on the board"
+        data-icon="circle-plus" data-icon-size="13">Sync</button>
+      <button class="wb-btn" onclick="fitToScreen()" title="Fit all to screen (F)"
+        data-icon="maximize" data-icon-size="13">Fit</button>
 
       <div class="wb-tool-sep"></div>
 
       <!-- Undo / Redo -->
-      <button class="wb-tool-btn" onclick="undoStroke()" title="Undo (Ctrl+Z)">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-          <path d="M3 7a5 5 0 105 5"/>
-          <polyline points="3,4 3,7 6,7"/>
-        </svg>
-      </button>
-      <button class="wb-tool-btn" onclick="redoStroke()" title="Redo (Ctrl+Y)">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-          <path d="M13 7a5 5 0 11-5 5"/>
-          <polyline points="13,4 13,7 10,7"/>
-        </svg>
-      </button>
-      <button class="wb-tool-btn" id="wb-export-btn" onclick="exportPng()" title="Export as PNG">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
+      <button class="wb-tool-btn" onclick="undoStroke()" title="Undo (Ctrl+Z)" data-icon="undo-2"></button>
+      <button class="wb-tool-btn" onclick="redoStroke()" title="Redo (Ctrl+Y)" data-icon="redo-2"></button>
+      <button class="wb-tool-btn" id="wb-export-btn" onclick="exportPng()" title="Export as PNG" data-icon="download"></button>
 
       <div class="wb-tool-sep"></div>
 
       <!-- Search -->
       <div class="wb-search-wrap">
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-          <circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.3"/>
-          <path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
+        <span data-icon="search" data-icon-size="12" style="display:flex"></span>
         <input type="text" id="wb-search" placeholder="Search… (/)" autocomplete="off"
                oninput="wbSearch(this.value)">
         <span class="wb-search-count" id="wb-search-count"></span>
