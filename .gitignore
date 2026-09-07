@@ -20,3 +20,8 @@ flowdit_pgdata/
 flowdit_pgdata.backup/
 *.dump
 DB_RECOVERY.md
+
+# Client deliverables — pentest reports never belong in the repo
+*.pdf
+*.docx
+Informe*
