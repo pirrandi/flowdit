@@ -30,7 +30,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_00000000000000000000000000000000}
       JWT_EXPIRES_IN: 7d
       JWT_REFRESH_EXPIRES_IN: 30d
-      CORS_ORIGIN: http://localhost
+      # Must include INTERNAL_APP_URL's origin below — Puppeteer's headless
+      # render (routes/export.js) calls the API from that origin, and a
+      # missing entry here makes every PDF/DOCX export silently time out.
+      CORS_ORIGIN: http://localhost,http://nginx
       INTERNAL_APP_URL: http://nginx
       RATE_LIMIT_MAX: 500
       GROQ_API_KEY: ${GROQ_API_KEY:-}
