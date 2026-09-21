@@ -68,6 +68,7 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'remediation_status_changed':
       if (meta?.remediation_status === 'remediated')       return `marked ${name} as <span class="activity-status-pill pill-done">remediated</span>`;
       if (meta?.remediation_status === 'verified_closed')  return `verified ${name} as <span class="activity-status-pill pill-done">closed</span>`;
+      if (meta?.remediation_status === 'not_remediated')   return `marked ${name} as <span class="activity-status-pill pill-fail">${icon('x',{size:10})} not remediated</span>`;
       return `reopened ${name}`;
     case 'lab_completed': return `completed lab ${name}`;
     case 'vuln_created':

@@ -123,9 +123,9 @@ router.patch('/:vulnId', requireEditor, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /:vulnId/remediation — remediation/retest lifecycle (open -> remediated -> verified_closed)
+// PATCH /:vulnId/remediation — remediation/retest lifecycle (open -> remediated -> verified_closed | not_remediated)
 router.patch('/:vulnId/remediation', requireEditor, [
-  body('remediation_status').isIn(['open', 'remediated', 'verified_closed']),
+  body('remediation_status').isIn(['open', 'remediated', 'not_remediated', 'verified_closed']),
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -151,7 +151,8 @@ router.patch('/:vulnId/remediation', requireEditor, [
         updates.push(`verified_at=NOW()`, `verified_by=$${values.length+1}`);
         values.push(req.user.id);
       } else {
-        // Reopened — clear the trail, the finding is being tracked as open again.
+        // 'open' or 'not_remediated' — no confirmed fix stands, so the
+        // remediated/verified trail from a prior claim no longer applies.
         updates.push(`remediated_at=NULL`, `verified_at=NULL`, `verified_by=NULL`);
       }
     }

@@ -324,8 +324,8 @@ function severityBadge(sev) {
   return `<span class="sev-badge sev-${s}">${SEVERITY_LABELS[s]||s}</span>`;
 }
 
-const REMEDIATION_LABELS = { open: 'Open', remediated: 'Remediated', verified_closed: 'Verified Closed' };
-const REMEDIATION_COLORS = { open: 'var(--t3)', remediated: 'var(--c-med)', verified_closed: 'var(--c-low)' };
+const REMEDIATION_LABELS = { open: 'Open', remediated: 'Remediated', not_remediated: 'Not Remediated', verified_closed: 'Verified Closed' };
+const REMEDIATION_COLORS = { open: 'var(--t3)', remediated: 'var(--c-med)', not_remediated: 'var(--c-crit)', verified_closed: 'var(--c-low)' };
 
 function remediationBadge(status) {
   const s = status || 'open';
@@ -387,7 +387,11 @@ function buildVulnCard(v) {
     ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','remediated')">Marcar como remediado</button>`
     : remStatus === 'remediated'
     ? `<button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','verified_closed')">Verificar y cerrar</button>
-       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`
+       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','not_remediated')">Marcar como no remediado</button>
+       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`
+    : remStatus === 'not_remediated'
+    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','remediated')">Marcar como remediado</button>
+       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`
     : `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`;
 
   const remTrailH = [
@@ -529,7 +533,7 @@ async function setRemediationStatus(vulnId, status) {
     Object.assign(v, updated);
     renderCustomVulns();
     if (typeof updateDashboard === 'function') updateDashboard();
-    const msg = status === 'verified_closed' ? 'Verificado y cerrado' : status === 'remediated' ? 'Marcado como remediado' : 'Reabierto';
+    const msg = status === 'verified_closed' ? 'Verificado y cerrado' : status === 'remediated' ? 'Marcado como remediado' : status === 'not_remediated' ? 'Marcado como no remediado' : 'Reabierto';
     showToast(msg, 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }

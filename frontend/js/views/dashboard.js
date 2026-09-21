@@ -356,7 +356,7 @@ function updateDashboard() {
   vulns.forEach(v => { const s = v.severity||'medium'; if(sevCount[s]!==undefined) sevCount[s]++; });
 
   // ── Remediation progress ───────────────────────────────────────
-  const remCount = { open:0, remediated:0, verified_closed:0 };
+  const remCount = { open:0, remediated:0, not_remediated:0, verified_closed:0 };
   vulns.forEach(v => { const s = v.remediation_status||'open'; if(remCount[s]!==undefined) remCount[s]++; });
   const remPct = vulns.length ? Math.round((remCount.remediated + remCount.verified_closed) / vulns.length * 100) : 0;
 
@@ -648,14 +648,16 @@ function updateDashboard() {
           <div class="section-body">
             ${vulns.length === 0
               ? `<div class="empty-state" style="padding:20px 0"><div class="empty-icon">${icon('inbox', { size: 20 })}</div><div class="empty-sub">No findings yet</div></div>`
-              : `<div style="display:flex;gap:16px;margin-bottom:12px">
+              : `<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
                   <div><span style="font-size:18px;font-weight:700;color:var(--c-low)">${remCount.verified_closed}</span> <span style="font-size:9px;color:var(--t3)">verified</span></div>
                   <div><span style="font-size:18px;font-weight:700;color:var(--c-med)">${remCount.remediated}</span> <span style="font-size:9px;color:var(--t3)">remediated</span></div>
+                  ${remCount.not_remediated ? `<div><span style="font-size:18px;font-weight:700;color:var(--c-crit)">${remCount.not_remediated}</span> <span style="font-size:9px;color:var(--t3)">not remediated</span></div>` : ''}
                   <div><span style="font-size:18px;font-weight:700;color:var(--t3)">${remCount.open}</span> <span style="font-size:9px;color:var(--t3)">open</span></div>
                 </div>
                 <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--b1)">
                   <div style="width:${vulns.length ? remCount.verified_closed/vulns.length*100 : 0}%;background:var(--c-low)"></div>
                   <div style="width:${vulns.length ? remCount.remediated/vulns.length*100 : 0}%;background:var(--c-med)"></div>
+                  <div style="width:${vulns.length ? remCount.not_remediated/vulns.length*100 : 0}%;background:var(--c-crit)"></div>
                 </div>`
             }
           </div>

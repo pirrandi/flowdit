@@ -271,9 +271,10 @@ function buildFindingsSection(vulns) {
     const target     = state.targets.find(t => t.id === v.target_id);
     const color      = SEV_COLORS[v.severity] || 'var(--t3)';
     const remStatus   = v.remediation_status || 'open';
-    const statusColor = remStatus === 'verified_closed' ? 'var(--c-low)' : remStatus === 'remediated' ? 'var(--c-med)' : 'var(--t3)';
+    const statusColor = remStatus === 'verified_closed' ? 'var(--c-low)' : remStatus === 'remediated' ? 'var(--c-med)' : remStatus === 'not_remediated' ? 'var(--c-crit)' : 'var(--t3)';
     const statusText  = remStatus === 'verified_closed' ? icon('check',{size:10}) + ' resolved & verified'
                        : remStatus === 'remediated'      ? icon('zap',{size:10}) + ' fix applied — pending verification'
+                       : remStatus === 'not_remediated'  ? icon('x',{size:10}) + ' still vulnerable after retest'
                        : '— open';
 
     return `

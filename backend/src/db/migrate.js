@@ -394,6 +394,14 @@ const migrations = [
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS verified_at    TIMESTAMPTZ`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS verified_by    UUID REFERENCES users(id) ON DELETE SET NULL`,
 
+  // 'not_remediated' — retest confirmed the finding is still present despite
+  // a claimed fix. ADD COLUMN's inline CHECK above doesn't re-apply once the
+  // column already exists (same trap as ai_provider below), so the allowed
+  // values are updated explicitly here.
+  `ALTER TABLE custom_vulns DROP CONSTRAINT IF EXISTS custom_vulns_remediation_status_check`,
+  `ALTER TABLE custom_vulns ADD CONSTRAINT custom_vulns_remediation_status_check
+     CHECK (remediation_status IN ('open','remediated','not_remediated','verified_closed'))`,
+
   // ── ORGANIZATIONS (foundational layer for company/enterprise use) ────
   // An organization groups multiple projects under one company account,
   // with its own membership separate from any single project's sharing.

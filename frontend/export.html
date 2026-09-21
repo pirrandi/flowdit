@@ -179,6 +179,7 @@
 .rpt-status-fail { color:var(--c-crit);background:var(--c-crit)18;border:1px solid var(--c-crit)30; }
 .rpt-status-pending { color:var(--t3);background:var(--bg3);border:1px solid var(--b1); }
 .rpt-status-remediated { color:var(--c-med);background:var(--c-med)18;border:1px solid var(--c-med)30; }
+.rpt-status-not_remediated { color:var(--c-crit);background:var(--c-crit)18;border:1px solid var(--c-crit)30; }
 .rpt-status-verified_closed { color:var(--c-low);background:var(--c-low)18;border:1px solid var(--c-low)30; }
 .rpt-status-open { color:var(--t3);background:var(--bg3);border:1px solid var(--b1); }
 .rpt-field { padding:10px 14px;border-top:1px solid var(--b1); }
@@ -345,6 +346,7 @@
   .rpt-status-done { background:#f0fdf4!important;color:#15803d!important;border-color:#86efac!important; }
   .rpt-status-fail { background:#fef2f2!important;color:#b91c1c!important;border-color:#fca5a5!important; }
   .rpt-status-remediated      { background:#fffbeb!important;color:#b45309!important;border-color:#fde68a!important; }
+  .rpt-status-not_remediated  { background:#fef2f2!important;color:#b91c1c!important;border-color:#fca5a5!important; }
   .rpt-status-verified_closed { background:#f0fdf4!important;color:#15803d!important;border-color:#86efac!important; }
   .rpt-status-open            { background:#f0f0f0!important;color:#444!important;border-color:#ddd!important; }
 .rpt-toc { background:#f7f7f7!important;border-color:#ddd!important; }
@@ -770,6 +772,7 @@ function renderMdStyled(raw) {
 
 const SEV_ORDER = ['critical','high','medium','low','info'];
 const SEV_LABEL = { critical:'Crítico', high:'Alto', medium:'Medio', low:'Bajo', info:'Info' };
+const REM_LABEL = { open:'Abierto', remediated:'Remediado', not_remediated:'No Remediado', verified_closed:'Verificado' };
 const SEV_EMOJI = { critical:'', high:'', medium:'', low:'', info:'' };
 
 // ── Overall risk banner (executive report) ─────────────────────────
@@ -2422,6 +2425,7 @@ function buildSecItem(sec) {
         <label class="exp-opt"><input type="checkbox" id="opt-pay"   checked onchange="buildReport()"> Payloads</label>
         <label class="exp-opt"><input type="checkbox" id="opt-notes"        onchange="buildReport()"> Notes</label>
         <label class="exp-opt"><input type="checkbox" id="opt-evid"  checked onchange="buildReport()"> Evidence</label>
+        <label class="exp-opt"><input type="checkbox" id="opt-retest" checked onchange="buildReport()"> Retest</label>
       </div>
     </div>`;
   }
@@ -3515,6 +3519,7 @@ function buildReport() {
   const showPay   = opt('opt-pay');
   const showNotes = opt('opt-notes');
   const showEvid  = opt('opt-evid');
+  const showRetest= opt('opt-retest');
 
   const data     = getReportData();
   const m        = data.meta;
@@ -3759,7 +3764,6 @@ function buildReport() {
     if (sec.type === 'findings-index' && scope !== 'wstg' && vulns.length) {
       _secNum++;
       const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
-      const REM_LABEL = { open:'Abierto', remediated:'Remediado', verified_closed:'Verificado' };
       md('## Índice de Hallazgos'); md('| ID | Severidad | Vulnerabilidad | Categoría | Remediación |'); md('|----|-----------|----------------|-----------|-------------|');
       html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
         <table class="rpt-table" style="table-layout:fixed;width:100%"><thead><tr>
@@ -3881,6 +3885,9 @@ function buildReport() {
           const evid    = edit.evidence    || v.evidence    || [];
           const notesVal= (edit.notes != null ? edit.notes : v.notes) || '';
           const sl      = v.status==='done'?'Confirmado':v.status==='fail'?'Reproducido':'Pendiente';
+          const remStatus  = v.remediation_status || 'open';
+          const remLabel   = REM_LABEL[remStatus] || remStatus;
+          const hasRetest  = showRetest && remStatus !== 'open' && (v.retest_date || v.retest_notes);
           const wstgLinks = wstgForVuln[v.id] || [];
           const num = vulnNumMap[v.id];
           md(`### ${num} — ${v.name}`);
@@ -3891,11 +3898,13 @@ function buildReport() {
           if (v.cvss_score != null) md(`**CVSS:** ${(+v.cvss_score).toFixed(1)}`);
           if ((v.compliance_tags||[]).length) md(`**PCI-DSS:** ${v.compliance_tags.map(t=>t.control_id).join(', ')}`);
           md(`**Estado:** ${sl}`);
+          if (showRetest && remStatus !== 'open') md(`**Remediación:** ${remLabel}${v.retest_date ? `  ·  **Fecha de retest:** ${v.retest_date}` : ''}`);
           if (wstgLinks.length) md(`**WSTG:** ${wstgLinks.join(', ')}`);
           if (showDesc && desc) { md(''); md('**Descripción**'); md(isRich && edit.description ? edit.description.replace(/<[^>]+>/g,' ') : desc); }
           if (showPay  && (v.payloads||[]).length) { md(''); md('**Payloads**'); v.payloads.forEach(p => md('```\n' + p + '\n```')); }
           if (showNotes && notesVal) { md(''); md('**Notas**'); md(notesVal); }
           if (showRem  && rem)  { md(''); md('**Remediación**'); md(isRich && edit.remediation ? edit.remediation.replace(/<[^>]+>/g,' ') : rem); }
+          if (hasRetest && v.retest_notes) { md(''); md('**Notas de Retest**'); md(v.retest_notes); }
           md('');
           const _cvssColor = {critical:'#dc2626',high:'#f97316',medium:'#f59e0b',low:'#059669',info:'#64748b'}[sev]||'#64748b';
           const _meta = [
@@ -3921,6 +3930,16 @@ function buildReport() {
           if ((v.compliance_tags||[]).length) html += `<div class="rpt-field"><div class="rpt-field-label">Cobertura PCI-DSS</div><div>${v.compliance_tags.map(t=>`<div style="font-size:12px;color:var(--t2);padding:2px 0"><span style="font-family:var(--mono);font-weight:700;color:var(--a)">${esc(t.control_id)}</span> — ${esc(t.title)}</div>`).join('')}</div></div>`;
           if (showNotes && notesVal) html += `<div class="rpt-field"><div class="rpt-field-label">Notas</div><div class="rpt-field-val">${esc(notesVal)}</div></div>`;
           if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediación</div><div class="rpt-field-rem">${isRich && edit.remediation ? edit.remediation : renderMd(rem)}</div></div>`;
+          if (showRetest && remStatus !== 'open') {
+            html += `<div class="rpt-field">
+              <div class="rpt-field-label">Retest</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:${v.retest_notes?'6px':'0'}">
+                <span class="rpt-vuln-status rpt-status-${remStatus}">${esc(remLabel)}</span>
+                ${v.retest_date ? `<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${esc(v.retest_date)}</span>` : ''}
+              </div>
+              ${v.retest_notes ? `<div class="rpt-field-val">${renderMd(v.retest_notes)}</div>` : ''}
+            </div>`;
+          }
           if (showEvid && evid.length) {
             html += `<div class="rpt-field"><div class="rpt-field-label">Evidencia</div><div class="rpt-evidence-grid">`;
             evid.forEach(img => { html += `<div style="break-inside:avoid;page-break-inside:avoid"><img src="${img.data}" class="rpt-evidence-img"></div>`; });
