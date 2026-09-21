@@ -5,7 +5,9 @@
 const { chatCompletionAt, chatWithToolsAt } = require('./openaiCompatible');
 
 const GROQ_API_URL  = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+// llama-3.3-70b-versatile was retired by Groq; gpt-oss-120b is the closest
+// current replacement (large, supports tool use + JSON mode).
+const DEFAULT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
 function generateJSON({ systemPrompt, userPrompt, temperature, maxTokens, model }) {
   return chatCompletionAt({ apiUrl: GROQ_API_URL, apiKey: process.env.GROQ_API_KEY, systemPrompt, messages: [{ role: 'user', content: userPrompt }], temperature, maxTokens, model: model || DEFAULT_MODEL });

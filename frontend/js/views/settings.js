@@ -69,7 +69,7 @@ async function renderSettings() {
             <div>
               <div class="form-label" style="margin-bottom:4px">Proveedor</div>
               <select class="form-input" id="cfg-ai-provider" onchange="setAiProvider(this.value)">
-                <option value="groq"      ${(p.ai_provider||'groq')==='groq'      ? 'selected' : ''}>Groq (Llama 3.3 70B)</option>
+                <option value="groq"      ${(p.ai_provider||'groq')==='groq'      ? 'selected' : ''}>Groq (GPT-OSS 120B)</option>
                 <option value="anthropic" ${p.ai_provider==='anthropic'           ? 'selected' : ''}>Anthropic (Claude)</option>
                 <option value="deepseek"  ${p.ai_provider==='deepseek'            ? 'selected' : ''}>DeepSeek</option>
                 <option value="kimi"      ${p.ai_provider==='kimi'                ? 'selected' : ''}>Kimi K3 (Moonshot AI)</option>
@@ -187,8 +187,8 @@ async function renderSettings() {
 
 const AI_MODELS = {
   groq: [
-    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (versatile)' },
-    { value: 'llama-3.1-8b-instant',    label: 'Llama 3.1 8B (rápido)' },
+    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (más capaz)' },
+    { value: 'openai/gpt-oss-20b',  label: 'GPT-OSS 20B (rápido)' },
   ],
   anthropic: [
     { value: 'claude-opus-4-8',  label: 'Claude Opus 4.8 (más capaz)' },

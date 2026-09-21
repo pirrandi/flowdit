@@ -8,9 +8,11 @@ const PRICING = {
     'claude-sonnet-5':  { input: 3,    output: 15 },
     'claude-haiku-4-5': { input: 1,    output: 5  },
   },
+  // llama-3.3-70b-versatile / llama-3.1-8b-instant were retired by Groq.
+  // gpt-oss prices confirmed against console.groq.com/docs/model/openai/... 2026-09-15.
   groq: {
-    'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 },
-    'llama-3.1-8b-instant':    { input: 0.05, output: 0.08 },
+    'openai/gpt-oss-120b': { input: 0.15,  output: 0.60 },
+    'openai/gpt-oss-20b':  { input: 0.075, output: 0.30 },
   },
   // Kimi K3 (Moonshot AI) — confirmado contra platform.kimi.ai, 2026-08-14:
   // $3.00/M input (cache-miss), $0.30/M (cache-hit), $15.00/M output. Sin
