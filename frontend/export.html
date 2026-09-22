@@ -186,6 +186,8 @@
 .rpt-field-label { font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:5px; }
 .rpt-field-val  { font-size:12px;color:var(--t2);line-height:1.6; }
 .rpt-field-rem  { font-size:12px;color:var(--c-low);line-height:1.6; }
+.rpt-field-retest { background:var(--c-med)0d;border:1px solid var(--c-med)30;border-left:3px solid var(--c-med);border-radius:6px;padding:10px 14px;margin:10px 14px 0 22px; }
+.rpt-field-retest .rpt-field-label { color:var(--c-med); }
 .rpt-code { background:var(--bg);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--t2);line-height:1.6;border:1px solid var(--b1);white-space:pre-wrap;word-break:break-all; }
 .rpt-divider { border:none;border-top:1px solid var(--b1);margin:32px 0; }
 
@@ -332,6 +334,8 @@
   .rpt-field-label { color:#888!important; }
   .rpt-field-rem   { color:#155724!important; }
   .rpt-field-val   { color:#333!important; }
+  .rpt-field-retest { background:#fffbeb!important;border-color:#fde68a!important;color:#92400e!important; }
+  .rpt-field-retest .rpt-field-label { color:#92400e!important; }
   .rpt-code        { background:#f4f4f4!important;color:#333!important;border-color:#ddd!important; }
   .rpt-wstg-vuln   { background:#fafafa!important;border-color:#ddd!important;border-left-color:#ef4444!important; }
   .rpt-table th    { background:#f5f5f5!important;color:#666!important;border-color:#ddd!important; }
@@ -602,6 +606,7 @@
           <select id="report-type" class="form-input" style="width:118px;cursor:pointer;padding:4px 8px;font-size:12px" onchange="buildReport()">
             <option value="technical">Technical</option>
             <option value="executive">Executive</option>
+            <option value="retest">Retest</option>
           </select>
         </div>
       </div>
@@ -708,6 +713,7 @@ initCsel('export-scope', [
 initCsel('report-type', [
   { value: 'technical', label: 'Technical' },
   { value: 'executive', label: 'Executive' },
+  { value: 'retest',    label: 'Retest' },
 ]);
 </script>
 <script>
@@ -920,9 +926,11 @@ const _targetFull = {};
 // ── Default sections ──────────────────────────────────────────────
 const DEFAULT_SECTIONS = [
   { id:'exec-summary',      type:'exec-summary',      title:'Resumen Ejecutivo',        visible:true  },
+  { id:'retest-summary',    type:'retest-summary',    title:'Resumen de Retest',        visible:false },
   { id:'findings-index',    type:'findings-index',    title:'Índice de Hallazgos',      visible:true  },
   { id:'wstg',              type:'wstg',              title:'Cobertura OWASP WSTG',     visible:true  },
   { id:'detailed-findings', type:'detailed-findings', title:'Hallazgos Detallados',     visible:true  },
+  { id:'retest-findings',   type:'retest-findings',   title:'Hallazgos — Estado de Retest', visible:false },
   { id:'risk-matrix',       type:'risk-matrix',       title:'Matriz de Riesgo',         visible:false },
   { id:'remediation-roadmap', type:'remediation-roadmap', title:'Hoja de Ruta de Remediación', visible:false },
   { id:'targets',           type:'targets',           title:'Alcance — Objetivos',      visible:true  },
@@ -2954,6 +2962,20 @@ function setPriority(id, val) {
   buildReport();
 }
 
+// Config de presentación del reporte de retest (no de la vulnerabilidad en
+// sí) — por eso vive en report_config vía vulnEdits, igual que probability/
+// remediationPriority, y no toca custom_vulns.evidence como sí hace
+// removeEvidence()/scheduleVulnSave().
+function toggleHideOriginalEvidence(id, checked) {
+  getEdit(id).hideOriginalEvidence = checked;
+  const d = getReportData();
+  if (!d.vulnEdits) d.vulnEdits = {};
+  if (!d.vulnEdits[id]) d.vulnEdits[id] = {};
+  d.vulnEdits[id].hideOriginalEvidence = checked;
+  saveReportData(d, false);
+  buildReport();
+}
+
 // Persiste descripción/remediación en localStorage del reporte (no en la DB)
 function saveVulnEdit(id, field, html) {
   getEdit(id)[field]    = html;
@@ -3414,6 +3436,9 @@ function findingEditorRich(id, v) {
   const bizImpact = edit.businessImpact || '';
   const execAction = edit.execAction || '';
   const isCriticalHigh = sev === 'critical' || sev === 'high';
+  // Solo aplica al reporte de retest — es el único tipo que separa
+  // evidencia original de evidencia de retest en el hallazgo.
+  const isRetestReport = document.getElementById('report-type')?.value === 'retest';
   return `<div class="exp-finding">
     <div class="exp-finding-header" onclick="toggleFinding('${id}')">
       ${sevBadge}
@@ -3484,6 +3509,12 @@ function findingEditorRich(id, v) {
         <div id="evid-list-${id}"></div>
         <button class="btn-add-row" style="margin-top:5px;font-size:10px" onclick="pickEvidence('${id}',false)">+ Adjuntar imagen</button>
       </div>
+      ${isRetestReport ? `<div style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);cursor:pointer">
+          <input type="checkbox" ${edit.hideOriginalEvidence ? 'checked' : ''} onchange="toggleHideOriginalEvidence('${id}',this.checked)">
+          Ocultar evidencia original en este reporte
+        </label>
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -3611,8 +3642,11 @@ function buildReport() {
   </div>`;
 
   // ── TOC (derived from visible sections) ───────────────────────────
-  const FORCE_EXEC_TYPES = new Set(['risk-matrix', 'remediation-roadmap']);
-  const visibleSections = sections.filter(s => s.visible || (reportType === 'executive' && FORCE_EXEC_TYPES.has(s.type)));
+  const FORCE_EXEC_TYPES   = new Set(['risk-matrix', 'remediation-roadmap']);
+  const FORCE_RETEST_TYPES = new Set(['retest-summary', 'retest-findings']);
+  const visibleSections = sections.filter(s => s.visible
+    || (reportType === 'executive' && FORCE_EXEC_TYPES.has(s.type))
+    || (reportType === 'retest'    && FORCE_RETEST_TYPES.has(s.type)));
   const _tocItems = [];
   const PROSE_TYPES = new Set(['custom']);
   let _tocSecNum = 0;
@@ -3622,13 +3656,17 @@ function buildReport() {
     const sid = `rpt-sec-${sec.id}`;
     if (PROSE_TYPES.has(sec.type)) {
       if (sec.content || _tocSubs(sec).length) _tocPush(sec, sid);
-    } else if (sec.type === 'exec-summary' && scope !== 'wstg') {
+    } else if (sec.type === 'exec-summary' && scope !== 'wstg' && reportType !== 'retest') {
+      _tocPush(sec, sid);
+    } else if (sec.type === 'retest-summary' && scope !== 'wstg' && reportType === 'retest') {
       _tocPush(sec, sid);
     } else if (sec.type === 'findings-index' && scope !== 'wstg' && vulns.length) {
       _tocPush(sec, sid);
     } else if (sec.type === 'wstg' && scope !== 'vulns') {
       _tocPush(sec, sid);
     } else if (sec.type === 'detailed-findings' && scope !== 'wstg' && vulns.length && reportType === 'technical') {
+      _tocPush(sec, sid);
+    } else if (sec.type === 'retest-findings' && scope !== 'wstg' && vulns.length && reportType === 'retest') {
       _tocPush(sec, sid);
     } else if (sec.type === 'risk-matrix' && scope !== 'wstg' && vulns.length) {
       _tocPush(sec, sid);
@@ -3694,7 +3732,7 @@ function buildReport() {
     }
 
     // ── Executive Summary ─────────────────────────────────────────
-    if (sec.type === 'exec-summary' && scope !== 'wstg') {
+    if (sec.type === 'exec-summary' && scope !== 'wstg' && reportType !== 'retest') {
       _secNum++;
       const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
       if (vulns.length) {
@@ -3753,6 +3791,44 @@ function buildReport() {
           }
         }
         html += _ce;
+      } else {
+        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<p style="color:var(--t3);font-style:italic">Sin hallazgos registrados para este proyecto.</p>${_ce}`;
+      }
+      html += _subsHtml(sec, _secNum);
+      continue;
+    }
+
+    // ── Retest Summary ─────────────────────────────────────────────
+    if (sec.type === 'retest-summary' && scope !== 'wstg' && reportType === 'retest') {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
+      if (vulns.length) {
+        const remCount = { open:0, remediated:0, not_remediated:0, verified_closed:0 };
+        vulns.forEach(v => { const s = v.remediation_status||'open'; if (remCount[s]!==undefined) remCount[s]++; });
+        const remPct = Math.round((remCount.remediated + remCount.verified_closed) / vulns.length * 100);
+        const REM_CARD = [
+          ['verified_closed', 'Verificado',     'low'],
+          ['remediated',      'Remediado',      'medium'],
+          ['not_remediated',  'No Remediado',   'critical'],
+          ['open',            'Abierto',        'info'],
+        ];
+        const REM_BAR_COLOR = { verified_closed:'#059669', remediated:'#eab308', not_remediated:'#ef4444', open:'#6b7280' };
+        md('## Resumen de Retest');
+        md(`**Progreso de remediación: ${remPct}%**`);
+        md('|Estado|Cantidad|'); md('|------|--------|');
+        REM_CARD.forEach(([k, label]) => { if (remCount[k]) md(`|${label}|${remCount[k]}|`); });
+        md('');
+        html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}
+          <div class="rpt-summary">
+            ${REM_CARD.map(([k, label, card]) => remCount[k]
+              ? `<div class="rpt-summary-card card-${card}"><div class="rpt-count">${remCount[k]}</div><div class="rpt-label">${label}</div></div>`
+              : '').join('')}
+          </div>
+          <div class="rpt-risk-wrap"><div class="rpt-risk-bar">
+            ${REM_CARD.map(([k, label]) => remCount[k]
+              ? `<div class="rpt-risk-seg" style="width:${Math.round(remCount[k]/vulns.length*100)}%;background:${REM_BAR_COLOR[k]}" title="${label}: ${remCount[k]}"></div>`
+              : '').join('')}
+          </div></div>${_ce}`;
       } else {
         html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}<p style="color:var(--t3);font-style:italic">Sin hallazgos registrados para este proyecto.</p>${_ce}`;
       }
@@ -3931,7 +4007,7 @@ function buildReport() {
           if (showNotes && notesVal) html += `<div class="rpt-field"><div class="rpt-field-label">Notas</div><div class="rpt-field-val">${esc(notesVal)}</div></div>`;
           if (showRem && rem) html += `<div class="rpt-field"><div class="rpt-field-label">Remediación</div><div class="rpt-field-rem">${isRich && edit.remediation ? edit.remediation : renderMd(rem)}</div></div>`;
           if (showRetest && remStatus !== 'open') {
-            html += `<div class="rpt-field">
+            html += `<div class="rpt-field rpt-field-retest">
               <div class="rpt-field-label">Retest</div>
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:${v.retest_notes?'6px':'0'}">
                 <span class="rpt-vuln-status rpt-status-${remStatus}">${esc(remLabel)}</span>
@@ -3960,6 +4036,58 @@ function buildReport() {
             });
             html += '</div>';
           }
+          html += '</div></div>';
+        });
+      });
+      html += _ce;
+      html += _subsHtml(sec, _secNum);
+      continue;
+    }
+
+    // ── Retest Findings ─────────────────────────────────────────────
+    if (sec.type === 'retest-findings' && scope !== 'wstg' && vulns.length && reportType === 'retest') {
+      _secNum++;
+      const _np = m.numbering ? `<span class="sec-num-prefix">${_secNum}.</span>` : '';
+      md('## Hallazgos — Estado de Retest');
+      html += `<h2 id="${secId}" style="${_pb}">${_np}${esc(sec.title)}</h2>${_cw}${_desc}`;
+      SEV_ORDER.forEach(sev => {
+        if (!bySev[sev].length) return;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px;page-break-after:avoid;break-after:avoid">
+          <span class="sev-badge sev-${sev}" style="font-size:11px;padding:3px 10px;width:auto;white-space:nowrap">${SEV_LABEL[sev]}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t3)">${bySev[sev].length} hallazgo${bySev[sev].length>1?'s':''}</span>
+          <div style="flex:1;height:1px;background:var(--b1);margin-left:4px"></div>
+        </div>`;
+        bySev[sev].forEach(v => {
+          const edit      = _localEdits[v.id] || {};
+          const isRich    = !!edit._richHtml;
+          const desc      = edit.description || v.description || '';
+          const remStatus = v.remediation_status || 'open';
+          const remLabel  = REM_LABEL[remStatus] || remStatus;
+          const num       = vulnNumMap[v.id];
+          const evid      = edit.evidence || v.evidence || [];
+          const evidOriginal = edit.hideOriginalEvidence ? [] : evid.filter(img => (img.phase||'original') === 'original');
+          const evidRetest   = evid.filter(img => img.phase === 'retest');
+          md(`### ${num} — ${v.name}`);
+          md(`**Severidad:** ${SEV_LABEL[sev]}  ·  **Estado:** ${remLabel}${v.retest_date ? `  ·  **Fecha de retest:** ${v.retest_date}` : ''}`);
+          if (desc) { md(''); md(isRich && edit.description ? edit.description.replace(/<[^>]+>/g,' ') : desc); }
+          if (v.retest_notes) { md(''); md('**Notas de Retest**'); md(v.retest_notes); }
+          md('');
+          html += `<div class="rpt-vuln rpt-vuln-${sev}">
+            <div class="rpt-vuln-header" style="flex-direction:column;align-items:stretch;gap:5px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="sev-badge sev-${sev}" style="flex-shrink:0">${SEV_LABEL[sev]}</span>
+                <span style="font-family:var(--mono);font-size:11px;font-weight:800;color:var(--t3);flex-shrink:0">${num}</span>
+                <div class="rpt-vuln-name">${esc(v.name)}</div>
+              </div>
+              <div style="padding-left:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span class="rpt-vuln-status rpt-status-${remStatus}">${esc(remLabel)}</span>
+                ${v.retest_date ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(v.retest_date)}</span>` : ''}
+              </div>
+            </div><div>`;
+          if (desc) html += `<div class="rpt-field"><div class="rpt-field-label">Descripción</div><div class="rpt-field-val">${isRich && edit.description ? edit.description : renderMd(desc)}</div></div>`;
+          if (v.retest_notes) html += `<div class="rpt-field rpt-field-retest"><div class="rpt-field-label">Notas de Retest</div><div class="rpt-field-val">${renderMd(v.retest_notes)}</div></div>`;
+          if (evidOriginal.length) html += `<div class="rpt-field"><div class="rpt-field-label">Evidencia Original</div><div class="rpt-evidence-grid">${evidOriginal.map(img=>`<div style="break-inside:avoid;page-break-inside:avoid"><img src="${img.data}" class="rpt-evidence-img"></div>`).join('')}</div></div>`;
+          if (evidRetest.length) html += `<div class="rpt-field"><div class="rpt-field-label">Evidencia de Retest</div><div class="rpt-evidence-grid">${evidRetest.map(img=>`<div style="break-inside:avoid;page-break-inside:avoid"><img src="${img.data}" class="rpt-evidence-img"></div>`).join('')}</div></div>`;
           html += '</div></div>';
         });
       });

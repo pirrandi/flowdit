@@ -399,6 +399,15 @@ function buildVulnCard(v) {
     v.verified_at   ? `Verificado: ${new Date(v.verified_at).toLocaleDateString()}${v.verifier_username ? ' por ' + esc(v.verifier_username) : ''}` : '',
   ].filter(Boolean).join(' · ');
 
+  const evidAll      = (v.evidence||[]).map((img,i) => ({ img, i }));
+  const evidOriginal = evidAll.filter(e => (e.img.phase||'original') === 'original');
+  const evidRetest   = evidAll.filter(e => e.img.phase === 'retest');
+  const evidThumb = ({img,i}) => `<img src="${img.data}" class="evidence-thumb" alt="${esc(img.name||'')}" onclick="openEvidenceViewer('${v.id}',${i})">`;
+
+  // Sección con acento propio (mismo color que "Notas de Retest" en el
+  // reporte exportado) — antes se confundía visualmente con cualquier otro
+  // .items-section genérico, y el retest es justo la parte del ciclo de
+  // vida que más importa distinguir de un vistazo.
   const remH2 = `<div class="items-section">
     <div class="items-label">Remediation Status</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -406,14 +415,29 @@ function buildVulnCard(v) {
       ${remActionsH}
     </div>
     ${remTrailH ? `<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:8px">${remTrailH}</div>` : ''}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-      <div>
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Fecha retest</div>
-        <input type="date" class="form-input" style="font-size:11px" value="${v.retest_date ? v.retest_date.slice(0,10) : ''}" onchange="setRetestDate('${v.id}', this.value)">
+    <div style="border:1px solid var(--c-med)44;background:var(--c-med)0d;border-radius:8px;padding:12px 14px;margin-top:4px">
+      <div style="font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-med);margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        ${icon('rotate-ccw',{size:12})} Retest
       </div>
-      <div style="flex:1;min-width:180px">
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Notas retest</div>
-        <input type="text" class="form-input" style="font-size:11px" placeholder="Notas del reintento..." value="${esc(v.retest_notes||'')}" onblur="setRetestNotes('${v.id}', this.value)">
+      <div style="margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Fecha</div>
+        <input type="date" class="form-input" style="font-size:11px;max-width:170px" value="${v.retest_date ? v.retest_date.slice(0,10) : ''}" onchange="setRetestDate('${v.id}', this.value)">
+      </div>
+      <div style="margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Notas — qué se probó y qué resultado se observó</div>
+        <textarea class="form-input note-textarea" id="retest-notes-${v.id}" rows="3" placeholder="Ej: se reintentó la validación del ticket QR con parámetros forjados; el endpoint ahora rechaza la solicitud..." style="font-size:12px;width:100%;box-sizing:border-box;resize:vertical">${esc(v.retest_notes||'')}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px">
+          <button class="btn btn-prim" style="font-size:11px;padding:5px 12px" onclick="setRetestNotes('${v.id}', document.getElementById('retest-notes-${v.id}').value)">Guardar nota</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:5px;display:flex;align-items:center;justify-content:space-between">
+          <span>Evidencia de retest${evidRetest.length ? ` (${evidRetest.length})` : ''}</span>
+          <label class="btn btn-ghost" style="font-size:10px;padding:2px 8px;cursor:pointer">+ Agregar
+            <input type="file" accept="image/*" style="display:none" onchange="addEvidenceFile('${v.id}',this,'retest')">
+          </label>
+        </div>
+        ${evidRetest.length ? `<div class="evidence-thumbs">${evidRetest.map(evidThumb).join('')}</div>` : `<div style="font-family:var(--mono);font-size:11px;color:var(--t3);font-style:italic">Sin evidencia de retest todavía</div>`}
       </div>
     </div>
   </div>`;
@@ -425,11 +449,18 @@ function buildVulnCard(v) {
     <div class="md-body" style="color:var(--t2)">${renderMd(v.description)}</div></div>` : '';
   const remH  = v.remediation ? `<div class="items-section"><div class="items-label">Remediation</div>
     <div class="md-body" style="color:var(--c-low)">${renderMd(v.remediation)}</div></div>` : '';
-  const evidH = (v.evidence||[]).length ? `<div class="items-section">
-    <div class="items-label">Evidence (${v.evidence.length})</div>
-    <div class="evidence-thumbs">${v.evidence.map((img,i) =>
-      `<img src="${img.data}" class="evidence-thumb" alt="${esc(img.name||'')}" onclick="openEvidenceViewer('${v.id}',${i})">`
-    ).join('')}</div></div>` : '';
+  // Evidencia de retest se ve en su propia sección más abajo (dentro de
+  // "Retest", junto a la fecha y las notas) — mostrarla acá también sería
+  // duplicar las mismas miniaturas dos veces en la misma card.
+  const evidH = `<div class="items-section">
+    <div class="items-label" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Evidence (${evidOriginal.length})</span>
+      <label class="btn btn-ghost" style="font-size:10px;padding:2px 8px;cursor:pointer">+ Agregar evidencia original
+        <input type="file" accept="image/*" style="display:none" onchange="addEvidenceFile('${v.id}',this,'original')">
+      </label>
+    </div>
+    ${evidOriginal.length ? `<div class="evidence-thumbs">${evidOriginal.map(evidThumb).join('')}</div>` : ''}
+  </div>`;
 
   const proofs = (v.http_proofs || []);
   const httpH = proofs.length ? `<div class="items-section">
@@ -546,6 +577,7 @@ async function setRetestDate(vulnId, date) {
       remediation_status: v.remediation_status || 'open', retest_date: date || null, retest_notes: v.retest_notes || null,
     });
     Object.assign(v, updated);
+    showToast('Fecha de retest guardada', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -557,6 +589,7 @@ async function setRetestNotes(vulnId, notes) {
       remediation_status: v.remediation_status || 'open', retest_date: v.retest_date || null, retest_notes: notes,
     });
     Object.assign(v, updated);
+    showToast('Nota de retest guardada', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
 
@@ -854,6 +887,26 @@ async function submitImport() {
     document.getElementById('import-error').textContent        = err.message || 'Import failed';
     document.getElementById('import-submit-btn').style.display = '';
   }
+}
+
+async function addEvidenceFile(vulnId, input, phase) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { showToast('Imagen demasiado grande (max 3 MB)', 'error'); input.value = ''; return; }
+  const v = state.customVulns.find(x => x.id === vulnId);
+  if (!v) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const evidence = [...(v.evidence||[]), { data: e.target.result, name: file.name, phase: phase || 'original' }];
+    try {
+      const updated = await api.vulns.update(state.currentProject.id, vulnId, { evidence });
+      Object.assign(v, updated);
+      const card = document.getElementById(`vuln-${vulnId}`);
+      if (card) card.replaceWith(buildVulnCard(v));
+      showToast('Evidencia agregada', 'success');
+    } catch(err) { showToast(err.message, 'error'); }
+  };
+  reader.readAsDataURL(file);
 }
 
 async function toggleHttpProofInclude(vulnId, idx, checked) {
