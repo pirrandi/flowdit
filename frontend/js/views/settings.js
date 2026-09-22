@@ -79,9 +79,21 @@ async function renderSettings() {
             <div>
               <div class="form-label" style="margin-bottom:4px">Modelo</div>
               <select class="form-input" id="cfg-ai-model" onchange="setAiModel(this.value)">
-                ${buildAiModelOptions(p.ai_provider || 'groq', p.ai_model)}
+                ${buildAiModelPlaceholder(p.ai_model)}
               </select>
             </div>
+            ${(p.ai_provider || 'groq') !== 'custom' ? `
+            <div>
+              <div class="form-label" style="margin-bottom:4px">API Key propia (opcional)</div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="password" class="form-input" id="cfg-ai-apikey"
+                  placeholder="Dejar en blanco para usar la del servidor" style="flex:1;font-size:12px">
+                <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="saveAiApiKey()">Set</button>
+              </div>
+              <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:4px 0 0;line-height:1.5">
+                ${p.ai_api_keys_set?.[p.ai_provider || 'groq'] ? 'Key configurada para este proveedor. Ingresá una nueva para reemplazarla, o "Set" en blanco para volver a la del servidor.' : 'Sin key propia — usando la key global del servidor para este proveedor.'}
+              </p>
+            </div>` : ''}
             ${p.ai_provider === 'custom' ? `
             <div>
               <div class="form-label" style="margin-bottom:4px">Tool-calling</div>
@@ -181,35 +193,100 @@ async function renderSettings() {
       </div>
     </div>` : '<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Solo el owner puede ver la configuración del proyecto.</div>'}
   `;
+
+  // Fetch-after-render: el select de modelo se pinta con un placeholder de
+  // entrada (arriba) y se completa acá con la lista real del proveedor, sin
+  // bloquear el resto de la página mientras responde.
+  if (isOwner) loadAiModels(pid, p.ai_provider || 'groq', p.ai_model);
 }
 
 // ── helpers ───────────────────────────────────────────────────────────
 
-const AI_MODELS = {
-  groq: [
-    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (más capaz)' },
-    { value: 'openai/gpt-oss-20b',  label: 'GPT-OSS 20B (rápido)' },
-  ],
-  anthropic: [
-    { value: 'claude-opus-4-8',  label: 'Claude Opus 4.8 (más capaz)' },
-    { value: 'claude-sonnet-5',  label: 'Claude Sonnet 5 (equilibrado)' },
-    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (más rápido/económico)' },
-  ],
-  deepseek: [
-    { value: 'deepseek-chat',     label: 'DeepSeek Chat (V3)' },
-    { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner (R1)' },
-  ],
-  kimi: [
-    { value: 'kimi-k3', label: 'Kimi K3 (2.8T, 1M contexto)' },
-  ],
+// El listado de modelos ya no es una lista fija a mano (se desactualizaba
+// en cuanto el proveedor retiraba un modelo — pasó dos veces en esta misma
+// sesión con Groq y DeepSeek) — se pide en vivo a GET /ai/models. Este
+// objeto solo cachea esa respuesta por proveedor durante la vida de la
+// página, para no repetir el fetch cada vez que se cambia de proveedor y
+// se vuelve.
+const _modelListCache = {};
+
+function buildAiModelPlaceholder(selected) {
+  if (selected) return `<option value="${esc(selected)}" selected>${esc(selected)} (cargando…)</option>`;
+  return `<option value="" selected disabled>Cargando modelos…</option>`;
+}
+
+function renderAiModelOptions(select, models, selected) {
+  const opts = models.map(m =>
+    `<option value="${esc(m.id)}" ${selected === m.id ? 'selected' : ''}>${esc(m.id)}</option>`
+  ).join('');
+  select.innerHTML = `<option value="" ${!selected ? 'selected' : ''}>Predeterminado (.env)</option>${opts}`;
+}
+
+// IDs conocidos al 2026-09-22 (espejo de backend/src/services/ai/pricing.js)
+// — solo para el fallback de abajo cuando el fetch en vivo a /ai/models
+// falla (sin key todavía, key recién revocada, proveedor caído). No se usa
+// mientras el fetch funcione; existe únicamente para que un proyecto sin
+// key configurada todavía no se quede sin ningún modelo para elegir.
+const AI_MODELS_FALLBACK = {
+  groq:      ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+  anthropic: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+  deepseek:  ['deepseek-flash', 'deepseek-v4-pro'],
+  kimi:      ['kimi-k3'],
 };
 
-function buildAiModelOptions(provider, selected) {
-  const models = AI_MODELS[provider] || [];
-  const opts = models.map(m =>
-    `<option value="${m.value}" ${selected === m.value ? 'selected' : ''}>${m.label}</option>`
-  ).join('');
-  return `<option value="" ${!selected ? 'selected' : ''}>Predeterminado (.env)</option>${opts}`;
+// Si el listado en vivo falla, el proyecto no debe quedar sin poder elegir
+// modelo. Para los proveedores hosteados conocidos, se cae a la lista
+// estática de arriba (sigue siendo un <select>). 'custom' (runtimes locales
+// sin /models, ver services/ai/custom.js) no tiene lista posible — ahí se
+// reemplaza el <select> por un <input> de texto libre, mismo id
+// (cfg-ai-model) y mismo onchange, para que setAiModel() no tenga que saber
+// cuál de los dos está renderizado.
+function renderAiModelFallback(select, provider, selected) {
+  const known = AI_MODELS_FALLBACK[provider];
+  if (known?.length) {
+    const opts = known.map(id => `<option value="${esc(id)}" ${selected === id ? 'selected' : ''}>${esc(id)}</option>`).join('');
+    select.outerHTML = `
+      <select class="form-input" id="cfg-ai-model" onchange="setAiModel(this.value)">
+        <option value="" ${!selected ? 'selected' : ''}>Predeterminado (.env)</option>${opts}
+      </select>
+      <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:4px 0 0;line-height:1.5">
+        No se pudo obtener el listado en vivo — mostrando modelos conocidos. Verificá la API key para la lista actualizada.
+      </p>`;
+    return;
+  }
+  select.outerHTML = `
+    <input type="text" class="form-input" id="cfg-ai-model" style="font-size:12px"
+      placeholder="ID del modelo (ej. deepseek-flash)" value="${esc(selected || '')}"
+      onchange="setAiModel(this.value)">
+    <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:4px 0 0;line-height:1.5">
+      No se pudo obtener el listado de modelos de este proveedor — verificá su API key. Podés escribir el ID del modelo manualmente.
+    </p>`;
+}
+
+async function loadAiModels(pid, provider, selected) {
+  // Keyed por proyecto+proveedor: una key propia de un proyecto puede
+  // exponer un listado de modelos distinto al de otro proyecto usando el
+  // mismo proveedor (o la key global) — cachear solo por `provider` mezclaba
+  // el listado de un proyecto con el de otro al cambiar de contexto.
+  const cacheKey = `${pid}:${provider}`;
+  const cached = _modelListCache[cacheKey];
+  if (cached) {
+    const select = document.getElementById('cfg-ai-model');
+    if (select) renderAiModelOptions(select, cached, selected);
+    return;
+  }
+  try {
+    const { models } = await request('GET', `/projects/${pid}/ai/models?provider=${provider}`);
+    _modelListCache[cacheKey] = models;
+    // renderSettings() puede haber vuelto a correr (cambio de proveedor,
+    // otro guardado) mientras este fetch estaba en vuelo — re-leer el
+    // elemento en vez de guardar la referencia de antes del await.
+    const select = document.getElementById('cfg-ai-model');
+    if (select) renderAiModelOptions(select, models, selected);
+  } catch (e) {
+    const select = document.getElementById('cfg-ai-model');
+    if (select) renderAiModelFallback(select, provider, selected);
+  }
 }
 
 function buildAiUsageCard(usage) {
@@ -461,6 +538,25 @@ async function saveGithubPat() {
     const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
     if (idx > -1) state.projects[idx] = state.currentProject;
     showToast('Token guardado', 'success');
+    renderSettings();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function saveAiApiKey() {
+  const input    = document.getElementById('cfg-ai-apikey');
+  const key      = input?.value.trim() || '';
+  const provider = state.currentProject.ai_provider || 'groq';
+  try {
+    const updated = await api.projects.update(state.currentProject.id, { ai_api_keys: { [provider]: key } });
+    state.currentProject = { ...state.currentProject, ...updated };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = state.currentProject;
+    // Invalidar el cache del listado de modelos de este proyecto+proveedor —
+    // si la key estaba mal (o no existía) y el fetch anterior había
+    // fallado, un cache de fallo pegaría al usuario en el <input> manual
+    // hasta refrescar.
+    delete _modelListCache[`${state.currentProject.id}:${provider}`];
+    showToast(key ? 'Key guardada' : 'Key eliminada — usando la del servidor', 'success');
     renderSettings();
   } catch(e) { showToast(e.message, 'error'); }
 }

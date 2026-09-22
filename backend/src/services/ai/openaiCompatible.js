@@ -75,7 +75,7 @@ function toOpenAIMessages(messages) {
 // Chat plano (sin tools) — usado por generateJSON/chat de cada proveedor,
 // que a su vez alimentan las rutas existentes /ai/generate y /ai/chat
 // (no relacionadas al scanner — sugerencias de campos, chat de preguntas).
-async function chatCompletionAt({ apiUrl, apiKey, systemPrompt, messages, temperature = 0.4, maxTokens = 1024, model }) {
+async function chatCompletionAt({ apiUrl, apiKey, systemPrompt, messages, temperature = 0.4, maxTokens = 1024, model, extraBody }) {
   if (!apiKey) throw new Error('API key not configured');
 
   const response = await fetchWithRetry(apiUrl, {
@@ -86,6 +86,7 @@ async function chatCompletionAt({ apiUrl, apiKey, systemPrompt, messages, temper
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       temperature,
       max_tokens: maxTokens,
+      ...extraBody,
     }),
   });
 
@@ -186,7 +187,7 @@ function parseTextAction(text) {
 // Chat con tools — usado por agentLoop.js. Ver anthropic.js para el
 // equivalente nativo de Anthropic (formato distinto, misma forma de salida
 // { type: 'text'|'tool_use', ... } para que el loop no sepa la diferencia).
-async function chatWithToolsAt({ apiUrl, apiKey, systemPrompt, messages, tools, maxTokens = 4096, model, temperature = 0.4, signal, toolMode = 'native' }) {
+async function chatWithToolsAt({ apiUrl, apiKey, systemPrompt, messages, tools, maxTokens = 4096, model, temperature = 0.4, signal, toolMode = 'native', extraBody }) {
   if (!apiKey) throw new Error('API key not configured');
 
   const isTextMode = toolMode === 'text';
@@ -199,6 +200,7 @@ async function chatWithToolsAt({ apiUrl, apiKey, systemPrompt, messages, tools, 
     ],
     temperature,
     max_tokens: maxTokens,
+    ...extraBody,
   };
   if (!isTextMode) {
     // scanTools.js define { name, description, input_schema } — el
@@ -259,4 +261,40 @@ async function chatWithToolsAt({ apiUrl, apiKey, systemPrompt, messages, tools, 
   return { type: 'text', text: choice?.message?.content || '', usage, model };
 }
 
-module.exports = { toOpenAIMessages, chatCompletionAt, chatWithToolsAt, parseTextAction };
+// Deriva la URL de /models a partir de la URL de /chat/completions ya
+// configurada por cada proveedor (GROQ_API_URL, DEEPSEEK_API_URL, etc.) —
+// evita mantener una segunda constante de URL por proveedor solo para
+// esto. Tira un error claro (en vez de armar un request mal formado) si la
+// URL no termina donde se espera — un CUSTOM_API_URL con otra forma cae acá.
+function deriveModelsUrl(apiUrl) {
+  const stripped = apiUrl.replace(/\/+$/, '');
+  const suffix = '/chat/completions';
+  if (!stripped.endsWith(suffix)) {
+    throw new Error(`Cannot derive a /models endpoint from ${apiUrl}`);
+  }
+  return stripped.slice(0, -suffix.length) + '/models';
+}
+
+// Lista de modelos disponibles — mismo shape de respuesta OpenAI-compatible
+// que /chat/completions ({ data: [{ id, ... }] }), así que un solo GET
+// alcanza para Groq/DeepSeek/Kimi/custom (Anthropic tiene su propio
+// listModels en anthropic.js, formato y auth distintos).
+async function listModelsAt({ apiUrl, apiKey }) {
+  if (!apiKey) throw new Error('No API key configured for this provider');
+
+  const response = await fetch(deriveModelsUrl(apiUrl), {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`AI service error (${response.status}): ${errBody.slice(0, 300)}`);
+  }
+
+  const data = await response.json();
+  return (data.data || [])
+    .map(m => ({ id: m.id }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+module.exports = { toOpenAIMessages, chatCompletionAt, chatWithToolsAt, parseTextAction, listModelsAt };

@@ -44,6 +44,56 @@ const MAX_ITERATIONS_PER_TURN = 80;
 // calls de trabajo autónomo continuo antes de necesitar a un humano.
 const MAX_AUTO_CHECKPOINTS = 5;
 
+// Freno anti-loop encontrado en vivo (2026-09-22, DeepSeek en modo
+// non-thinking + autónomo): el modelo llamó fetch_endpoint sobre el MISMO
+// path 570 veces seguidas, siempre con el mismo resultado, sin ningún
+// progreso. El checkpoint de arriba solo cuenta VOLUMEN de tool calls, no si
+// son informativamente redundantes — en modo autónomo esto podía correr
+// durante el presupuesto completo de 400 tool calls antes de que alguien se
+// entere. Corta la ejecución real (ahorra el costo del request también) en
+// cuanto una misma tool+input se repite esta cantidad de veces dentro del
+// turno actual, y le devuelve al modelo un error explícito en vez de
+// silenciarla — le da la chance de corregirse solo antes del próximo
+// checkpoint, en vez de descubrirlo recién 400 llamadas después.
+//
+// NO exige que sean consecutivas: la primera versión de este freno sí lo
+// exigía, y en la misma sesión (retomada tras el aviso) el modelo esquivó
+// la detección alternando fetch_endpoint/search_page_source sobre el mismo
+// /js/qrcode.js — cada llamada individual no repetía a la inmediatamente
+// anterior, así que nunca cortaba la racha. Contar el total en el turno
+// (sin importar el orden ni qué otras tools se intercalen) cierra ese hueco.
+const MAX_DUPLICATE_CALLS_PER_TURN = 3;
+
+// JSON.stringify serializa objetos en el orden de inserción de las keys,
+// pero Postgres NO preserva ese orden en columnas JSONB — el mismo input,
+// leído de vuelta de ai_scan_events.payload, puede volver con las keys en
+// otro orden. Sin esto, toolCallSignature() nunca matcheaba entre la call
+// en memoria y las ya persistidas para cualquier tool con 2+ parámetros,
+// dejando el freno anti-loop de MAX_DUPLICATE_CALLS_PER_TURN inoperante.
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function toolCallSignature(name, input) {
+  return `${name}:${stableStringify(input)}`;
+}
+
+// Cuenta cuántas llamadas con esta firma exacta ya hubo en el turno actual
+// (desde `turnStart`, no desde el principio del thread) — en cualquier
+// posición, no solo las inmediatamente anteriores.
+function countDuplicatesInTurn(eventRows, turnStart, signature) {
+  let count = 0;
+  for (let i = turnStart; i < eventRows.length; i++) {
+    if (eventRows[i].type !== 'tool.called') continue;
+    if (toolCallSignature(eventRows[i].payload.name, eventRows[i].payload.input) === signature) count++;
+  }
+  return count;
+}
+
 // Tools de Nivel 0-3 (sin gate hasta tier 2). delegate_to_subagent (abajo)
 // se suma aparte porque solo el thread coordinador puede usarla.
 const BASE_TOOL_REGISTRY = [...scanTools, ...scanToolsLevel1, ...scanToolsLevel2, ...scanToolsLevel3];
@@ -495,6 +545,7 @@ async function advance(sessionId, threadId) {
       tools,
       model: effective.ai_model || undefined,
       toolMode: effective.ai_tool_mode || 'native',
+      project: effective,
       signal: controller.signal,
     });
   } catch (err) {
@@ -558,6 +609,21 @@ async function advance(sessionId, threadId) {
     }
 
     const calledEv = await persistEvent(sessionId, threadId, 'tool.called', { name: tool.name, input: call.input, tier: tool.tier });
+    eventRows.push(calledEv);
+
+    const duplicateCount = countDuplicatesInTurn(eventRows, turnStart, toolCallSignature(tool.name, call.input));
+    if (duplicateCount >= MAX_DUPLICATE_CALLS_PER_TURN) {
+      // Bloqueado antes de ejecutar — ni gasta el request real ni espera
+      // aprobación de un gate para algo que ya sabemos que es un loop.
+      broadcast(session.project_id, sessionId, session.status, calledEv);
+      const resultEv = await persistEvent(sessionId, threadId, 'tool.result', {
+        call_id: calledEv.id, name: tool.name,
+        result: { error: `Blocked: you already called ${tool.name} with these exact same arguments ${duplicateCount} times this turn (not necessarily back to back — alternating with other calls does not reset this), always with the same result. Repeating it again will not produce new information — try a materially different approach (a different path, parameter, or technique), or if you've exhausted what this avenue has to offer, move on to something else or conclude with a summary of what you found.` },
+      });
+      eventRows.push(resultEv);
+      broadcast(session.project_id, sessionId, session.status, resultEv);
+      continue;
+    }
 
     if (needsGate(tool, effective)) {
       await setThreadStatus(threadId, 'waiting_approval');

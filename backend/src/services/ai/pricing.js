@@ -22,11 +22,15 @@ const PRICING = {
   kimi: {
     'kimi-k3': { input: 3, output: 15 },
   },
-  // deepseek: sin entrada a propósito — no se confirmaron precios actuales
-  // al agregar el proveedor. `estimateCost` ya devuelve null (costo
-  // desconocido) para lo que no está en esta tabla, que es preferible a
-  // adivinar un número y mostrar un costo estimado incorrecto en /ai/usage.
-  // Agregar acá cuando se verifique contra api-docs.deepseek.com/quick_start/pricing.
+  // DeepSeek tiene tarifa peak/off-peak (off-peak es la mitad, madrugada UTC
+  // China) — confirmado contra api-docs.deepseek.com/quick_start/pricing,
+  // 2026-09-21. Sin forma de saber acá en qué franja cae un request puntual,
+  // así que se usa la tarifa peak (más cara) para ambos, mismo criterio de
+  // sobreestimar-antes-que-subestimar que Kimi arriba.
+  deepseek: {
+    'deepseek-flash':  { input: 0.30, output: 1.20 },
+    'deepseek-v4-pro': { input: 1.32, output: 3.96 },
+  },
   // custom: sin entrada a propósito, y para siempre — es un modelo local
   // autohosteado, no tiene un precio por token que estimar.
 };

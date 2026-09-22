@@ -4,7 +4,7 @@
 // API usa el mismo shape de chat-completions/tools que OpenAI, así que no
 // hace falta lógica de traducción propia.
 
-const { chatCompletionAt, chatWithToolsAt } = require('./openaiCompatible');
+const { chatCompletionAt, chatWithToolsAt, listModelsAt } = require('./openaiCompatible');
 
 const KIMI_API_URL  = 'https://api.moonshot.ai/v1/chat/completions';
 const DEFAULT_MODEL = process.env.KIMI_MODEL || 'kimi-k3';
@@ -16,16 +16,20 @@ const DEFAULT_MODEL = process.env.KIMI_MODEL || 'kimi-k3';
 // justo lo que rompe con este modelo en particular.
 const FORCED_TEMPERATURE = 1;
 
-function generateJSON({ systemPrompt, userPrompt, maxTokens, model }) {
-  return chatCompletionAt({ apiUrl: KIMI_API_URL, apiKey: process.env.KIMI_API_KEY, systemPrompt, messages: [{ role: 'user', content: userPrompt }], temperature: FORCED_TEMPERATURE, maxTokens, model: model || DEFAULT_MODEL });
+function generateJSON({ systemPrompt, userPrompt, maxTokens, model, apiKey }) {
+  return chatCompletionAt({ apiUrl: KIMI_API_URL, apiKey: apiKey || process.env.KIMI_API_KEY, systemPrompt, messages: [{ role: 'user', content: userPrompt }], temperature: FORCED_TEMPERATURE, maxTokens, model: model || DEFAULT_MODEL });
 }
 
-function chat({ systemPrompt, messages, maxTokens, model }) {
-  return chatCompletionAt({ apiUrl: KIMI_API_URL, apiKey: process.env.KIMI_API_KEY, systemPrompt, messages, temperature: FORCED_TEMPERATURE, maxTokens, model: model || DEFAULT_MODEL });
+function chat({ systemPrompt, messages, maxTokens, model, apiKey }) {
+  return chatCompletionAt({ apiUrl: KIMI_API_URL, apiKey: apiKey || process.env.KIMI_API_KEY, systemPrompt, messages, temperature: FORCED_TEMPERATURE, maxTokens, model: model || DEFAULT_MODEL });
 }
 
-function chatWithTools({ systemPrompt, messages, tools, maxTokens, model, signal }) {
-  return chatWithToolsAt({ apiUrl: KIMI_API_URL, apiKey: process.env.KIMI_API_KEY, systemPrompt, messages, tools, maxTokens, model: model || DEFAULT_MODEL, temperature: FORCED_TEMPERATURE, signal });
+function chatWithTools({ systemPrompt, messages, tools, maxTokens, model, signal, apiKey }) {
+  return chatWithToolsAt({ apiUrl: KIMI_API_URL, apiKey: apiKey || process.env.KIMI_API_KEY, systemPrompt, messages, tools, maxTokens, model: model || DEFAULT_MODEL, temperature: FORCED_TEMPERATURE, signal });
 }
 
-module.exports = { generateJSON, chat, chatWithTools };
+function listModels({ apiKey } = {}) {
+  return listModelsAt({ apiUrl: KIMI_API_URL, apiKey: apiKey || process.env.KIMI_API_KEY });
+}
+
+module.exports = { generateJSON, chat, chatWithTools, listModels };

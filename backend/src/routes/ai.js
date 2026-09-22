@@ -4,6 +4,8 @@ const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess } = require('../middleware/project');
 const ai = require('../services/ai');
 const { logUsage } = require('../services/ai/usage');
+const { resolveProjectApiKey } = require('../utils/aiKeys');
+const modelCache = require('../services/ai/modelCache');
 
 const router = express.Router({ mergeParams: true });
 
@@ -201,6 +203,7 @@ Respond with this exact JSON schema:
       temperature: 0.4,
       maxTokens: 1024,
       model: req.project.ai_model || undefined,
+      project: req.project,
     });
     const raw = result.text;
 
@@ -322,6 +325,7 @@ router.post('/chat', async (req, res) => {
       temperature: 0.5,
       maxTokens: 1024,
       model: req.project.ai_model || undefined,
+      project: req.project,
     });
 
     logUsage({
@@ -365,6 +369,28 @@ router.get('/usage', async (req, res, next) => {
     }, { calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 });
     res.json({ byModel: rows, totals });
   } catch (err) { next(err); }
+});
+
+// GET /api/projects/:projectId/ai/models?provider=X — live model list from
+// the provider itself (defaults to this project's configured provider).
+// Cached 1h per provider+key (modelCache.js) — every settings-page load
+// would otherwise hit the provider's /models endpoint.
+router.get('/models', async (req, res) => {
+  const provider = ai.PROVIDERS.includes(req.query.provider) ? req.query.provider : req.project.ai_provider;
+  const apiKey = resolveProjectApiKey(req.project, provider);
+  const cacheKey = `${provider}:${apiKey || 'env'}`;
+
+  const cached = modelCache.get(cacheKey);
+  if (cached) return res.json({ models: cached });
+
+  try {
+    const models = await ai.listModels(provider, { apiKey });
+    modelCache.set(cacheKey, models);
+    res.json({ models });
+  } catch (err) {
+    const status = /not configured|no api key/i.test(err.message) ? 400 : 502;
+    res.status(status).json({ error: err.message });
+  }
 });
 
 module.exports = router;

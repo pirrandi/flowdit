@@ -500,6 +500,14 @@ const migrations = [
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_repo VARCHAR(255)`,
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_pat_enc TEXT`,
 
+  // Per-project AI provider API keys (Groq/DeepSeek/Anthropic/Kimi) — same
+  // AES-256-GCM encryption as github_pat_enc above, keyed jsonb so a
+  // project can override some providers and fall back to the host's
+  // global env-var key for the rest. The 'custom' provider is deliberately
+  // excluded — its base_url is host-level only (SSRF concern, see
+  // services/ai/custom.js), unrelated to this.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_api_keys_enc JSONB NOT NULL DEFAULT '{}'::jsonb`,
+
   // external_status exists now but is unwritten in v1 — reserved for a
   // future webhook handler to record GitHub's side of the issue without a
   // schema change. provider is already a column (not assumed to be
@@ -731,6 +739,20 @@ const migrations = [
   )`,
 
   `CREATE INDEX IF NOT EXISTS idx_report_templates_user ON report_templates(created_by, created_at DESC)`,
+
+  // ── DEEPSEEK — migrar proyectos/sesiones de los modelos retirados ────
+  // deepseek.js cambió DEFAULT_MODEL de 'deepseek-chat' a 'deepseek-flash'
+  // (retirados por DeepSeek el 2026-07-24), pero ese default de CÓDIGO
+  // nunca se aplica a una fila que ya tiene ai_model seteado explícitamente
+  // (no NULL) — cualquier proyecto/sesión que eligió "DeepSeek Chat (V3)" o
+  // "DeepSeek Reasoner (R1)" antes de este cambio queda apuntando para
+  // siempre a un modelo que la API de DeepSeek ya rechaza. Reescrito acá a
+  // los equivalentes vigentes: deepseek-chat -> deepseek-flash (chat plano),
+  // deepseek-reasoner -> deepseek-v4-pro (con razonamiento).
+  `UPDATE projects SET ai_model='deepseek-flash' WHERE ai_provider='deepseek' AND ai_model='deepseek-chat'`,
+  `UPDATE projects SET ai_model='deepseek-v4-pro' WHERE ai_provider='deepseek' AND ai_model='deepseek-reasoner'`,
+  `UPDATE ai_scan_sessions SET ai_model='deepseek-flash' WHERE ai_provider='deepseek' AND ai_model='deepseek-chat'`,
+  `UPDATE ai_scan_sessions SET ai_model='deepseek-v4-pro' WHERE ai_provider='deepseek' AND ai_model='deepseek-reasoner'`,
 
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`

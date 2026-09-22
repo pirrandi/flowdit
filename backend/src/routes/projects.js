@@ -7,16 +7,26 @@ const activity = require('../services/activity');
 const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
 const { requireProjectAccess, requireOwner } = require('../middleware/project');
 const { encrypt } = require('../utils/crypto');
+const { PROVIDERS: ALL_AI_PROVIDERS } = require('../services/ai');
 
 router.use(requireAuth);
+
+// 'custom' queda afuera a propósito — su base_url es host-level únicamente
+// (ver services/ai/custom.js), no hay key por-proyecto que tenga sentido.
+// Derivado de services/ai/index.js en vez de una lista hardcodeada acá para
+// que sumar un proveedor nuevo no requiera acordarse de tocar este archivo
+// también.
+const AI_KEY_PROVIDERS = ALL_AI_PROVIDERS.filter(p => p !== 'custom');
 
 // Strip secrets from project objects — frontend only needs boolean flags
 function sanitizeProject(p) {
   const out = { ...p };
   out.has_portal_password = !!out.portal_password_hash;
   out.has_github_pat = !!out.github_pat_enc;
+  out.ai_api_keys_set = Object.fromEntries(AI_KEY_PROVIDERS.map(k => [k, !!out.ai_api_keys_enc?.[k]]));
   delete out.portal_password_hash;
   delete out.github_pat_enc;
+  delete out.ai_api_keys_enc;
   return out;
 }
 
@@ -113,7 +123,39 @@ router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res,
     values.push(req.body.github_pat ? encrypt(req.body.github_pat) : null);
   }
 
-  if (!updates.length) return res.json(req.project);
+  // ai_api_keys — per-project override of a hosted AI provider's API key
+  // (Groq/DeepSeek/Anthropic/Kimi only; 'custom' stays host-level, see
+  // services/ai/custom.js). Same omitted/cleared/set semantics as
+  // github_pat above, but jsonb-keyed so one PATCH can touch several
+  // providers at once without clobbering the ones it doesn't mention.
+  // Composed as a single atomic read-modify-write expression (remove the
+  // cleared keys, then overlay the newly-set ones) rather than a
+  // SELECT-then-UPDATE round trip.
+  if (req.body.ai_api_keys && typeof req.body.ai_api_keys === 'object') {
+    const removeKeys = [];
+    const setPairs   = [];
+    AI_KEY_PROVIDERS.forEach(provider => {
+      if (!(provider in req.body.ai_api_keys)) return;
+      const raw = req.body.ai_api_keys[provider];
+      const val = typeof raw === 'string' ? raw.trim() : raw;
+      if (val) {
+        values.push(encrypt(val));
+        setPairs.push([provider, values.length]);
+      } else {
+        removeKeys.push(provider);
+      }
+    });
+    if (removeKeys.length || setPairs.length) {
+      let expr = 'ai_api_keys_enc';
+      removeKeys.forEach(k => { expr += ` - '${k}'`; });
+      if (setPairs.length) {
+        expr += ` || jsonb_build_object(${setPairs.map(([k, idx]) => `'${k}', $${idx}::text`).join(', ')})`;
+      }
+      updates.push(`ai_api_keys_enc = ${expr}`);
+    }
+  }
+
+  if (!updates.length) return res.json(sanitizeProject(req.project));
   values.push(req.params.projectId);
   try {
     const { rows } = await db.query(`UPDATE projects SET ${updates.join(',')} WHERE id=$${values.length} RETURNING *`, values);

@@ -3,17 +3,21 @@ const Anthropic = require('@anthropic-ai/sdk');
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
 let client = null;
-function getClient() {
+// A per-project apiKey bypasses the singleton (built fresh each call —
+// project keys are the exception, not the hot path, so no cache needed).
+// Without an override, the module-level singleton is reused as before.
+function getClient(apiKey) {
+  if (apiKey) return new Anthropic({ apiKey });
   if (!client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-    client = new Anthropic({ apiKey });
+    const envKey = process.env.ANTHROPIC_API_KEY;
+    if (!envKey) throw new Error('ANTHROPIC_API_KEY not configured');
+    client = new Anthropic({ apiKey: envKey });
   }
   return client;
 }
 
-async function chatCompletion({ systemPrompt, messages, maxTokens = 1024, model }) {
-  const anthropic = getClient(); // throws 'ANTHROPIC_API_KEY not configured' before any API call
+async function chatCompletion({ systemPrompt, messages, maxTokens = 1024, model, apiKey }) {
+  const anthropic = getClient(apiKey); // throws 'ANTHROPIC_API_KEY not configured' before any API call
 
   let response;
   try {
@@ -43,12 +47,12 @@ async function chatCompletion({ systemPrompt, messages, maxTokens = 1024, model 
   };
 }
 
-function generateJSON({ systemPrompt, userPrompt, maxTokens, model }) {
-  return chatCompletion({ systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens, model });
+function generateJSON({ systemPrompt, userPrompt, maxTokens, model, apiKey }) {
+  return chatCompletion({ systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens, model, apiKey });
 }
 
-function chat({ systemPrompt, messages, maxTokens, model }) {
-  return chatCompletion({ systemPrompt, messages, maxTokens, model });
+function chat({ systemPrompt, messages, maxTokens, model, apiKey }) {
+  return chatCompletion({ systemPrompt, messages, maxTokens, model, apiKey });
 }
 
 // ── Tool use (agente de scanner de IA — ver AI_PENTEST_AGENT.md) ─────────
@@ -77,8 +81,8 @@ function toAnthropicMessages(messages) {
   });
 }
 
-async function chatWithTools({ systemPrompt, messages, tools, maxTokens = 4096, model, signal }) {
-  const anthropic = getClient(); // throws 'ANTHROPIC_API_KEY not configured' before any API call
+async function chatWithTools({ systemPrompt, messages, tools, maxTokens = 4096, model, signal, apiKey }) {
+  const anthropic = getClient(apiKey); // throws 'ANTHROPIC_API_KEY not configured' before any API call
 
   let response;
   try {
@@ -120,4 +124,16 @@ async function chatWithTools({ systemPrompt, messages, tools, maxTokens = 4096, 
   return { type: 'text', text: textBlock?.text || '', usage, model: model || DEFAULT_MODEL };
 }
 
-module.exports = { generateJSON, chat, chatWithTools };
+// Lista todos los modelos disponibles, paginando con la iteración
+// automática del SDK (Page implementa el protocolo async-iterable) — no
+// asumir que entran en una sola página.
+async function listModels({ apiKey } = {}) {
+  const anthropic = getClient(apiKey); // throws 'ANTHROPIC_API_KEY not configured' before any API call
+  const models = [];
+  for await (const m of anthropic.models.list()) {
+    models.push({ id: m.id });
+  }
+  return models.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+module.exports = { generateJSON, chat, chatWithTools, listModels };

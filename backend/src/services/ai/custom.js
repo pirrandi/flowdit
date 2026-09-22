@@ -15,7 +15,7 @@
 // chatCompletionAt/chatWithToolsAt (que sí la exige para los proveedores
 // hosteados).
 
-const { chatCompletionAt, chatWithToolsAt } = require('./openaiCompatible');
+const { chatCompletionAt, chatWithToolsAt, listModelsAt } = require('./openaiCompatible');
 
 const CUSTOM_API_URL = process.env.CUSTOM_API_URL || '';
 const CUSTOM_API_KEY = process.env.CUSTOM_API_KEY || 'not-needed';
@@ -40,4 +40,13 @@ function chatWithTools({ systemPrompt, messages, tools, maxTokens, model, temper
   return chatWithToolsAt({ apiUrl: CUSTOM_API_URL, apiKey: CUSTOM_API_KEY, systemPrompt, messages, tools, maxTokens, model: model || DEFAULT_MODEL, temperature, signal, toolMode });
 }
 
-module.exports = { generateJSON, chat, chatWithTools };
+function listModels() {
+  assertConfigured();
+  // Muchos runtimes locales (Ollama, LM Studio) no implementan /models, o
+  // lo implementan distinto — listModelsAt tira un error claro en ambos
+  // casos (URL no derivable, o el fetch/response falla), que la ruta
+  // convierte en la respuesta de error que el fallback del frontend espera.
+  return listModelsAt({ apiUrl: CUSTOM_API_URL, apiKey: CUSTOM_API_KEY });
+}
+
+module.exports = { generateJSON, chat, chatWithTools, listModels };
