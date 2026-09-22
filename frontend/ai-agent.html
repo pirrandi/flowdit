@@ -14,296 +14,338 @@
      See js/vendor/README.md for versions and how to update them. -->
 <script src="js/vendor/marked.umd.js"></script>
 <script src="js/vendor/purify.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
+  /* ── Rediseño AI Agent (2026-09-22) — design_handoff_ai_agent/ ──────────
+     Tokens escopeados a .scan-main a propósito: el sidebar/topbar/activity
+     de alrededor son fijos del producto (fuera de alcance del rediseño,
+     ver README del handoff) y comparten los --bg/--t1/--a/etc. globales de
+     main.css — redefinir esas variables acá pisaría también su look. Este
+     bloque define su PROPIO set de tokens (--scan-*) con los valores
+     exactos del handoff, y toda regla .scan-* de acá para abajo usa esos,
+     nunca los globales. */
+  .scan-main {
+    --scan-bg: #0a0a0c; --scan-panel: #111114; --scan-panel2: #16161a;
+    --scan-card: #141417; --scan-card2: #1c1c21;
+    --scan-border: #232327; --scan-border2: #1c1c21; --scan-border3: #1a1a1e; --scan-border4: #1e1e22;
+    --scan-code-bg: #0d0d0f; --scan-code-text: #9fb8ff;
+    --scan-text1: #e8e8ea; --scan-text2: #f2f2f3; --scan-text3: #f5f5f6; --scan-text4: #dcdce0; --scan-text5: #f0f0f1;
+    --scan-muted1: #8f8f96; --scan-muted2: #75757b; --scan-muted3: #6d6d73; --scan-muted4: #63636a; --scan-muted5: #9b9ba1;
+    --scan-accent: oklch(0.65 0.16 45); --scan-accent-alt: oklch(0.68 0.15 45); --scan-accent-btn: oklch(0.62 0.15 45); --scan-accent-oncontrast: #1a0f00;
+    --scan-crit: oklch(0.62 0.22 25);   --scan-crit-bg: oklch(0.28 0.1 25);
+    --scan-high: oklch(0.68 0.17 45);   --scan-high-bg: oklch(0.3 0.08 45);
+    --scan-med:  oklch(0.78 0.15 90);   --scan-med-bg:  oklch(0.3 0.07 90);
+    --scan-low:  oklch(0.65 0.1 230);   --scan-low-bg:  oklch(0.28 0.05 230);
+    --scan-info: oklch(0.65 0.02 240);  --scan-info-bg: oklch(0.26 0.01 240);
+    --scan-status-running: oklch(0.68 0.16 145); --scan-status-paused: oklch(0.7 0.13 85); --scan-status-done: #6d6d73;
+    --scan-status-error: oklch(0.62 0.22 25);
+    --scan-tag-bg: oklch(0.28 0.06 145); --scan-tag-text: oklch(0.8 0.13 145);
+    --scan-user-bg: oklch(0.3 0.07 45); --scan-user-border: oklch(0.4 0.08 45); --scan-user-text: oklch(0.8 0.1 45);
+    --scan-interrupt-bg: oklch(0.3 0.08 25); --scan-interrupt-border: oklch(0.4 0.1 25); --scan-interrupt-text: oklch(0.85 0.1 25);
+    --scan-font: 'Inter', system-ui, sans-serif;
+    --scan-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    background: var(--scan-bg);
+    font-family: var(--scan-font);
+  }
+  .scan-main .mono { font-family: var(--scan-mono); }
+
   /* Layout tipo consola — sin scroll de página, el transcript scrollea
      adentro. Mismo patrón que whiteboard.html. */
   .workarea { overflow: hidden; }
   .main.scan-main { padding: 0 !important; overflow: hidden !important; display: flex; flex-direction: column; }
-  .scan-main .page-header { padding: 18px 24px 14px; flex-shrink: 0; }
-  .scan-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 24px 18px; gap: 10px; }
+  .scan-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
-  .scan-status-badge { font-family: var(--mono); font-size: 10px; padding: 3px 9px; border-radius: 999px; letter-spacing: .03em; text-transform: uppercase; border: 1px solid transparent; }
-  .scan-status-badge.idle       { color: var(--t3); background: var(--bg3); border-color: var(--b1); }
-  .scan-status-badge.running    { color: #4ade80; background: rgba(74,222,128,.12); border-color: rgba(74,222,128,.3); }
-  .scan-status-badge.waiting_approval { color: var(--a); background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.35); }
-  .scan-status-badge.paused     { color: var(--t2); background: var(--bg3); border-color: var(--b1); }
-  .scan-status-badge.error      { color: var(--c-crit); background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.3); }
-  .scan-status-badge.completed  { color: var(--c-low); background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.25); }
+  /* ── Header ─────────────────────────────────────────────────────────── */
+  .scan-header { flex-shrink: 0; padding: 18px 28px 14px; border-bottom: 1px solid var(--scan-border2); display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .scan-header-titles { min-width: 0; flex: 1 1 200px; }
+  .scan-title { font-size: 20px; font-weight: 700; color: var(--scan-text3); }
+  .scan-subtitle { font-size: 12px; color: var(--scan-muted2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scan-header-right { display: flex; align-items: center; gap: 10px; position: relative; flex-shrink: 0; flex-wrap: wrap; }
 
-  /* Barra única: antes contexto/sesión, toggle Resumen-Detalle y estado
-     vivían en 3 cajas apiladas, cada una con su propio borde/padding —
-     reportado: "las opciones usan mucho espacio... el chat se siente
-     apretado". Ahora son grupos de una sola fila flex, sin borde propio; la
-     caja (fondo/borde) vive una sola vez, en el contenedor .scan-toolbar. */
-  .scan-toolbar { flex-shrink: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r); }
-  .scan-toolbar-info { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
-  .scan-toolbar-spacer { flex: 1 1 auto; min-width: 0; }
-
-  .scan-context { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--t3); }
-  .scan-context strong { color: var(--t1); font-weight: 600; }
-
-  /* Picker de sesiones — antes un <select> nativo sin ningún estilo propio
-     (feo, reportado). Reusa exactamente el mismo patrón que .user-dropdown/
-     .dropdown-item del menú de usuario (page.js) en vez de inventar uno
-     nuevo, para que combine con el resto de la app. */
+  /* Selector de sesión — pill con dot + nombre truncado + chevron, abre el
+     mismo dropdown que ya existía (gestión de sesiones completa: crear,
+     buscar, renombrar, borrar), solo restyleado a los tokens nuevos. */
   .scan-session-picker { position: relative; }
   .scan-session-trigger {
-    display: flex; align-items: center; gap: 7px;
-    background: var(--bg3); border: 1px solid var(--b1); border-radius: var(--r-sm);
-    padding: 4px 8px; font-family: var(--mono); font-size: 11px; color: var(--t1);
+    display: flex; align-items: center; gap: 8px; max-width: 190px;
+    padding: 7px 12px; border-radius: 8px; background: var(--scan-panel2); border: 1px solid var(--scan-border);
+    font-family: var(--scan-font); font-size: 12.5px; font-weight: 600; color: #e0e0e2;
     cursor: pointer; transition: border-color .15s;
   }
-  .scan-session-trigger:hover { border-color: var(--b2); }
-  .scan-session-dropdown { min-width: 340px; max-height: 380px; overflow-y: auto; }
-  .scan-session-row { display: flex; align-items: center; gap: 2px; }
-  .scan-session-row .dropdown-item { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--mono); min-width: 0; }
-  .scan-session-row.active .dropdown-item { color: var(--t1); background: var(--bg3); }
-  .scan-session-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
-  .scan-session-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scan-session-meta { font-size: 9px; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scan-session-rename, .scan-session-delete {
-    flex-shrink: 0; background: none; border: none; color: var(--t3); cursor: pointer;
-    padding: 5px 7px; border-radius: var(--r-sm); display: flex; transition: background .1s, color .1s;
+  .scan-session-trigger:hover { border-color: var(--scan-muted3); }
+  .scan-session-trigger .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .scan-session-trigger .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .scan-session-trigger .chev { font-size: 11px; color: var(--scan-muted2); flex-shrink: 0; }
+  .scan-session-dropdown {
+    position: absolute; top: 44px; right: 0; width: 340px; max-height: 380px; overflow-y: auto;
+    background: var(--scan-panel2); border: 1px solid #29292e; border-radius: 11px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.5); z-index: 20; display: none; padding: 0;
   }
-  .scan-session-rename:hover { background: var(--bg3); color: var(--t1); }
-  .scan-session-delete:hover { background: var(--c-crit-bg); color: var(--c-crit); }
-  .scan-session-status { font-size: 9px; padding: 1px 6px; border-radius: 999px; flex-shrink: 0; }
-  .scan-session-status.idle,.scan-session-status.paused { color: var(--t3); background: var(--bg2); }
-  .scan-session-status.running { color: #4ade80; background: rgba(74,222,128,.12); }
-  .scan-session-status.waiting_approval { color: var(--a); background: rgba(245,158,11,.15); }
-  .scan-session-status.error { color: var(--c-crit); background: rgba(239,68,68,.12); }
-  .scan-session-status.completed { color: var(--c-low); background: rgba(34,197,94,.1); }
+  .scan-session-dropdown.open { display: block; }
+  .scan-session-dropdown-head { padding: 12px 16px; border-bottom: 1px solid var(--scan-border); font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--scan-muted1); }
   .scan-session-search {
-    width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 5px 8px;
-    background: var(--bg); border: 1px solid var(--b1); border-radius: var(--r-sm);
-    font-family: var(--mono); font-size: 11px; color: var(--t1);
+    width: calc(100% - 24px); box-sizing: border-box; margin: 8px 12px; padding: 6px 9px;
+    background: var(--scan-bg); border: 1px solid var(--scan-border); border-radius: 6px;
+    font-family: var(--scan-mono); font-size: 11px; color: var(--scan-text1);
   }
-  .scan-session-search:focus { outline: none; border-color: var(--b2); }
+  .scan-session-search:focus { outline: none; border-color: var(--scan-muted3); }
+  .scan-session-row { display: flex; align-items: flex-start; gap: 2px; padding: 0 4px; border-bottom: 1px solid var(--scan-border4); }
+  .scan-session-row:last-child { border-bottom: none; }
+  .scan-session-row.active { background: var(--scan-card2); border-radius: 7px; }
+  .scan-session-row-btn { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 11px 8px; background: none; border: none; cursor: pointer; text-align: left; }
+  .scan-session-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .scan-session-main { flex: 1; min-width: 0; }
+  .scan-session-name { font-size: 13px; font-weight: 600; color: var(--scan-text1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scan-session-meta { font-family: var(--scan-mono); font-size: 11px; color: var(--scan-muted2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scan-session-status { font-size: 10px; font-weight: 700; letter-spacing: .03em; padding: 3px 7px; border-radius: 5px; background: transparent; flex-shrink: 0; height: fit-content; margin-top: 2px; border: 1px solid currentColor; }
+  .scan-session-status.running { color: var(--scan-status-running); }
+  .scan-session-status.paused, .scan-session-status.waiting_approval { color: var(--scan-status-paused); }
+  .scan-session-status.completed, .scan-session-status.idle { color: var(--scan-status-done); }
+  .scan-session-status.error { color: var(--scan-status-error); }
+  .scan-session-rename, .scan-session-delete {
+    flex-shrink: 0; background: none; border: none; color: var(--scan-muted3); cursor: pointer;
+    padding: 11px 6px; display: flex; align-items: flex-start; transition: color .1s;
+  }
+  .scan-session-rename:hover { color: var(--scan-text1); }
+  .scan-session-delete:hover { color: var(--scan-crit); }
   .scan-session-name-input {
-    flex: 1; box-sizing: border-box; padding: 5px 8px; margin: 1px 0;
-    background: var(--bg); border: 1px solid var(--a); border-radius: var(--r-sm);
-    font-family: var(--mono); font-size: 12px; color: var(--t1);
+    flex: 1; box-sizing: border-box; padding: 6px 9px; margin: 6px 8px;
+    background: var(--scan-bg); border: 1px solid var(--scan-accent); border-radius: 6px;
+    font-family: var(--scan-font); font-size: 12px; color: var(--scan-text1);
   }
   .scan-session-name-input:focus { outline: none; }
+  .scan-session-new {
+    padding: 12px 16px; border-top: 1px solid var(--scan-border); font-size: 13px; font-weight: 600;
+    color: var(--scan-accent-alt); cursor: pointer; display: flex; align-items: center; gap: 6px; background: none; border: none; width: 100%; text-align: left;
+  }
 
-  /* Tira de threads — solo visible con multi-agente (>1 thread). Da la
-     visibilidad de "qué está haciendo cada agente" que antes no existía:
-     todo vivía mezclado en una sola lista lineal sin distinción. */
-  .scan-threads { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-  .scan-thread-chip { font-family: var(--mono); font-size: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--b1); background: var(--bg2); color: var(--t2); display: flex; align-items: center; gap: 5px; }
-  .scan-thread-chip .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--t3); }
-  .scan-thread-chip.running .dot     { background: #4ade80; animation: scan-pulse 1.4s ease-in-out infinite; }
-  .scan-thread-chip.waiting_approval .dot { background: var(--a); }
-  .scan-thread-chip.completed .dot   { background: var(--c-low); }
-  .scan-thread-chip.error .dot       { background: var(--c-crit); }
+  .scan-lang-toggle { display: flex; gap: 6px; background: var(--scan-panel2); border-radius: 7px; padding: 3px; flex-shrink: 0; }
+  .scan-lang-btn { font-family: var(--scan-font); font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 5px; border: none; background: none; color: var(--scan-muted2); cursor: pointer; transition: background .12s, color .12s; }
+  .scan-lang-btn:hover { color: var(--scan-text1); }
+  .scan-lang-btn.active { background: var(--scan-border); color: var(--scan-text1); }
 
-  .scan-transcript { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+  /* ── Status strip ───────────────────────────────────────────────────── */
+  .scan-status-strip { flex-shrink: 0; padding: 14px 28px; border-bottom: 1px solid var(--scan-border2); display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+  .scan-status-dot-label { display: flex; align-items: center; gap: 6px; }
+  .scan-status-dot-label .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .scan-status-dot-label .label { font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+  .scan-status-sep { width: 1px; height: 16px; background: var(--scan-border); }
+  .scan-counter { display: flex; align-items: baseline; gap: 5px; }
+  .scan-counter .n { font-size: 14px; font-weight: 700; color: var(--scan-text1); }
+  .scan-counter .n.accent { color: var(--scan-accent-alt); }
+  .scan-counter .label { font-size: 12px; color: var(--scan-muted1); }
+  .scan-counter.clickable { cursor: pointer; border-radius: 5px; padding: 2px 5px; margin: -2px -5px; transition: background .12s; }
+  .scan-counter.clickable:hover { background: var(--scan-card2); }
+  .scan-status-spacer { flex: 1 1 auto; min-width: 12px; }
 
-  .scan-empty { margin: auto; max-width: 480px; text-align: center; padding: 30px 20px; }
+  /* Popover de un contador (endpoints / para revisar) — mismo look que el
+     dropdown de sesiones, angosto y colgando debajo del número. */
+  .scan-counter-popover-wrap { position: relative; }
+  .scan-counter-popover {
+    position: absolute; top: 28px; left: 0; min-width: 260px; max-width: 380px; max-height: 260px; overflow-y: auto;
+    background: var(--scan-panel2); border: 1px solid #29292e; border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.5); z-index: 20; display: none; padding: 0;
+  }
+  .scan-counter-popover.open { display: block; }
+  .scan-counter-popover-head { padding: 10px 14px; border-bottom: 1px solid var(--scan-border); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--scan-muted1); }
+  .scan-counter-popover-list { padding: 4px 0; }
+  .scan-counter-popover-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--scan-border4); font-size: 12px; }
+  .scan-counter-popover-row:last-child { border-bottom: none; }
+  .scan-counter-popover-row .url { color: var(--scan-text1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .scan-counter-popover-row .status { font-size: 11px; color: var(--scan-muted2); flex-shrink: 0; }
+  .scan-counter-popover-row.col { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .scan-counter-popover-row.col .label { font-weight: 600; color: var(--scan-text1); }
+  .scan-counter-popover-row.col .detail { color: var(--scan-muted2); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  .scan-live-activity { font-family: var(--scan-mono); font-size: 12px; color: var(--scan-muted2); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+  .scan-status-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .scan-btn-pause { padding: 7px 14px; border-radius: 7px; background: var(--scan-border3); border: 1px solid #29292e; font-size: 12px; font-weight: 600; color: #c8c8cc; cursor: pointer; font-family: var(--scan-font); display: inline-flex; align-items: center; gap: 6px; }
+  .scan-btn-pause:hover { border-color: var(--scan-muted3); }
+  .scan-btn-interrupt { padding: 7px 14px; border-radius: 7px; background: var(--scan-interrupt-bg); border: 1px solid var(--scan-interrupt-border); font-size: 12px; font-weight: 600; color: var(--scan-interrupt-text); cursor: pointer; font-family: var(--scan-font); display: inline-flex; align-items: center; gap: 6px; }
+  .scan-btn-resume { padding: 7px 14px; border-radius: 7px; background: var(--scan-accent-btn); border: none; font-size: 12px; font-weight: 700; color: var(--scan-accent-oncontrast); cursor: pointer; font-family: var(--scan-font); display: inline-flex; align-items: center; gap: 6px; }
+
+  /* Tira de threads (multi-agente) — se mantiene, solo restyleada a los
+     tokens nuevos; sigue oculta con 1 solo thread (el caso normal). */
+  .scan-threads { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 28px 0; }
+  .scan-thread-chip { font-family: var(--scan-mono); font-size: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--scan-border); background: var(--scan-card); color: var(--scan-muted1); display: flex; align-items: center; gap: 5px; }
+  .scan-thread-chip .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--scan-muted3); }
+  .scan-thread-chip.running .dot { background: var(--scan-status-running); animation: scan-pulse 1.4s ease-in-out infinite; }
+  .scan-thread-chip.waiting_approval .dot { background: var(--scan-status-paused); }
+  .scan-thread-chip.completed .dot { background: var(--scan-status-running); }
+  .scan-thread-chip.error .dot { background: var(--scan-status-error); }
+
+  /* ── Tabs ───────────────────────────────────────────────────────────── */
+  .scan-tabs { flex-shrink: 0; padding: 0 28px; display: flex; gap: 4px; border-bottom: 1px solid var(--scan-border2); }
+  .scan-tab { padding: 10px 4px; margin: 0 14px -1px 0; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--scan-muted2); border: none; background: none; border-bottom: 2px solid transparent; font-family: var(--scan-font); }
+  .scan-tab:hover { color: var(--scan-text1); }
+  .scan-tab.active { color: var(--scan-text2); border-bottom-color: var(--scan-accent); }
+
+  /* ── Tab panels ─────────────────────────────────────────────────────── */
+  .scan-tab-panels { flex: 1; min-height: 0; position: relative; }
+  .scan-tab-panel { position: absolute; inset: 0; overflow-y: auto; padding: 22px 28px; display: none; flex-direction: column; }
+  .scan-tab-panel.active { display: flex; }
+  .scan-panel-heading { font-size: 13px; font-weight: 600; color: #c8c8cc; margin-bottom: 14px; flex-shrink: 0; }
+
+  .scan-empty { margin: auto; max-width: 480px; text-align: center; padding: 30px 20px; font-family: var(--scan-font); color: var(--scan-text1); }
   .scan-empty .form-group { text-align: left; }
+  .scan-empty-desc { font-family: var(--scan-mono); font-size: 12px; color: var(--scan-muted5); margin-bottom: 14px; }
 
-  .scan-line { text-align: center; font-family: var(--mono); font-size: 10.5px; color: var(--t3); padding: 2px 0; }
-  .scan-line.err { color: var(--c-crit); }
-  .scan-line.warn { color: var(--a); }
+  .scan-line { text-align: center; font-family: var(--scan-mono); font-size: 10.5px; color: var(--scan-muted3); padding: 2px 0; }
+  .scan-line.err { color: var(--scan-crit); }
+  .scan-line.warn { color: var(--scan-accent); }
   .scan-cost-cap-raise { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; vertical-align: middle; }
-  .scan-cost-cap-input { width: 70px; font-family: var(--mono); font-size: 10.5px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r-sm); color: var(--t1); padding: 3px 6px; }
-  .scan-cost-cap-btn { font-family: var(--mono); font-size: 10.5px; background: transparent; border: 1px solid var(--a); color: var(--a); border-radius: var(--r-sm); padding: 3px 8px; cursor: pointer; }
+  .scan-cost-cap-input { width: 70px; font-family: var(--scan-mono); font-size: 10.5px; background: var(--scan-card); border: 1px solid var(--scan-border); border-radius: 5px; color: var(--scan-text1); padding: 3px 6px; }
+  .scan-cost-cap-btn { font-family: var(--scan-mono); font-size: 10.5px; background: transparent; border: 1px solid var(--scan-accent); color: var(--scan-accent); border-radius: 5px; padding: 3px 8px; cursor: pointer; }
   .scan-cost-cap-btn:hover { background: rgba(245,158,11,.1); }
   .scan-cost-cap-btn:disabled { opacity: .5; cursor: default; }
 
-  /* align-items:flex-start (no center) — con el <details> abierto y su JSON
-     largo adentro, la fila crece mucho y "center" empujaba el tier-badge y
-     el check al medio de todo ese alto en vez de dejarlos pegados arriba,
-     al lado del nombre (reportado: "el ticket verde se corre al centro"). */
-  .scan-tool { display: flex; align-items: flex-start; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--t2); padding: 6px 10px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r-sm); transition: border-color .15s ease, background .15s ease; }
-  .scan-tool:hover { border-color: var(--b2); }
-  .scan-tool .tier-badge { font-size: 9px; padding: 1px 6px; border-radius: 999px; background: var(--bg3); color: var(--t3); flex-shrink: 0; cursor: help; }
-  .scan-tool details { flex: 1; min-width: 0; }
-  .scan-tool summary { cursor: pointer; }
-  /* Estado por fila — reemplaza el sufijo de texto "— ejecutando..." que
-     era fácil de no notar. Punto pulsando mientras no hay resultado, check
-     verde apenas llega. */
-  .scan-tool-spinner { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; flex-shrink: 0; animation: scan-pulse 1.4s ease-in-out infinite; }
-  .scan-tool-done { color: var(--c-low); flex-shrink: 0; }
-  @keyframes scan-pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
-  .scan-tool pre { margin: 6px 0 0; font-size: 10.5px; white-space: pre-wrap; word-break: break-all; color: var(--t3); max-height: 220px; overflow-y: auto; }
+  /* ── Tab: Chat ──────────────────────────────────────────────────────── */
+  /* Sin padding propio a diferencia de los otros paneles — .scan-transcript
+     ya trae el suyo, así el scroll interno arranca pegado al borde del tab
+     panel en vez de duplicar el espaciado de los dos. */
+  #scan-panel-chat { padding: 0; }
+  .scan-transcript { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 22px 28px; width: 100%; box-sizing: border-box; }
 
-  .scan-msg { display: flex; flex-direction: column; gap: 4px; max-width: 80%; min-width: 0; }
-  .scan-msg.user { align-self: flex-end; align-items: flex-end; }
+  /* Nivel 0-1 (recon pasivo, ruido individual) SIEMPRE se filtra del Chat —
+     ver renderTranscript()/shouldRenderInTranscript() en ai-agent.js. Antes
+     esto era un toggle "Resumen/Detalle" a mano; ahora la separación en sí
+     ES la pestaña: Chat = conversación (esto), Detalle = el feed completo
+     de eventos, incluyendo cada tool call individual. */
+  .scan-msg { display: flex; flex-direction: column; gap: 6px; max-width: 80%; min-width: 0; }
+  .scan-msg.user { align-self: flex-end; align-items: flex-end; max-width: 60%; }
   .scan-msg.assistant { align-self: flex-start; max-width: 94%; } /* los reportes del agente son largos — 80% quedaba angosto y forzaba mucho wrap */
-  .scan-msg .who { font-family: var(--mono); font-size: 9.5px; color: var(--t3); text-transform: uppercase; letter-spacing: .04em; }
-  .scan-msg .bubble { padding: 10px 14px; border-radius: var(--r); font-size: 13px; line-height: 1.6; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
-  .scan-msg.user .bubble { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.25); color: var(--t1); }
-  .scan-msg.assistant .bubble { background: var(--bg2); border: 1px solid var(--b1); color: var(--t1); }
+  .scan-msg .who { font-family: var(--scan-font); font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--scan-muted1); }
+  .scan-msg.user .who { color: var(--scan-user-text); }
+  .scan-msg .bubble { padding: 13px 16px; border-radius: 12px; font-size: 13px; line-height: 1.6; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; color: var(--scan-text4); transition: border-color .2s ease, background .2s ease; }
+  .scan-msg.user .bubble { background: var(--scan-user-bg); border: 1px solid var(--scan-user-border); color: var(--scan-text1); }
+  .scan-msg.assistant .bubble { background: var(--scan-card); border: 1px solid var(--scan-border); }
   .scan-msg .bubble p:first-child, .scan-msg .bubble h1:first-child, .scan-msg .bubble h2:first-child, .scan-msg .bubble h3:first-child { margin-top: 0; }
   .scan-msg .bubble p:last-child, .scan-msg .bubble ul:last-child, .scan-msg .bubble ol:last-child { margin-bottom: 0; }
-  /* marked no tenía NINGÚN estilo propio para headers/listas acá — heredaba
-     el default del navegador (tamaños/márgenes inconsistentes con el resto
-     de la app, "se ve raro" reportado). Tipografía propia, escalada para
-     convivir dentro de una burbuja de chat, no una página entera. */
   .scan-msg .bubble h1, .scan-msg .bubble h2, .scan-msg .bubble h3 {
-    font-size: 13px; font-weight: 700; color: var(--t1); letter-spacing: .01em;
-    margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--b1);
+    font-size: 13px; font-weight: 700; color: var(--scan-text1); letter-spacing: .01em;
+    margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--scan-border);
   }
-  .scan-msg .bubble strong { color: var(--t1); font-weight: 700; }
+  .scan-msg .bubble strong { color: var(--scan-text1); font-weight: 700; }
   .scan-msg .bubble ul, .scan-msg .bubble ol { margin: 6px 0; padding-left: 19px; }
   .scan-msg .bubble li { margin: 4px 0; }
-  .scan-msg .bubble li::marker { color: var(--t3); }
-  .scan-msg .bubble li > p { margin: 0; display: inline; } /* listas con párrafo interno (marked) no deben saltar de línea de más */
-  .scan-msg .bubble hr { border: none; border-top: 1px solid var(--b1); margin: 12px 0; }
-  .scan-msg .bubble a { color: var(--a); text-decoration: underline; text-underline-offset: 2px; }
-  .scan-msg .bubble code { font-family: var(--mono); font-size: 11.5px; background: var(--bg3); padding: 1px 5px; border-radius: 3px; color: var(--a); word-break: break-all; }
-  .scan-msg .bubble pre { background: var(--bg3); padding: 8px 10px; border-radius: var(--r-sm); overflow-x: auto; margin: 8px 0; }
+  .scan-msg .bubble li::marker { color: var(--scan-muted3); }
+  .scan-msg .bubble li > p { margin: 0; display: inline; }
+  .scan-msg .bubble hr { border: none; border-top: 1px solid var(--scan-border); margin: 12px 0; }
+  .scan-msg .bubble a { color: var(--scan-accent); text-decoration: underline; text-underline-offset: 2px; }
+  .scan-msg .bubble code { font-family: var(--scan-mono); font-size: 11.5px; background: var(--scan-border); padding: 1px 5px; border-radius: 3px; color: var(--scan-accent); word-break: break-all; }
+  .scan-msg .bubble pre { background: var(--scan-code-bg); border: 1px solid var(--scan-border4); padding: 8px 10px; border-radius: 7px; overflow-x: auto; margin: 8px 0; }
   .scan-msg .bubble pre code { background: none; padding: 0; color: inherit; }
 
-  /* Entrada suave de cada mensaje nuevo — la clase la agrega appendLiveEvent()
-     SOLO a lo que llega en vivo, nunca al rebuild completo (renderTranscript),
-     así al abrir una sesión no parpadea todo el historial de golpe. */
+  /* Toggle "ver log técnico" dentro de un mensaje del agente — expande el
+     mismo tipo de bloque mono/oscuro que el resto del detalle técnico. */
+  .scan-log-toggle { margin-top: 10px; font-size: 11px; font-weight: 600; color: #7a9eff; cursor: pointer; display: inline-block; background: none; border: none; padding: 0; font-family: var(--scan-font); }
+  .scan-log-block { margin-top: 8px; background: var(--scan-code-bg); border: 1px solid var(--scan-border4); border-radius: 7px; padding: 10px 12px; font-size: 11.5px; color: var(--scan-code-text); line-height: 1.6; overflow-x: auto; white-space: pre-wrap; }
+
   @keyframes scanMsgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   .scan-msg-enter { animation: scanMsgIn .26s cubic-bezier(.22,.61,.36,1); }
-  /* La burbuja en sí tiene una transición sutil de fondo/borde para hovers
-     y cambios de estado, sin afectar el layout. */
-  .scan-msg .bubble { transition: border-color .2s ease, background .2s ease; }
 
-  /* Burbuja de "escribiendo..." — pedido explícito: animación en el chat
-     mismo que indique que la IA está formulando la respuesta. */
   .scan-typing-dots { display: flex; align-items: center; gap: 4px; padding: 13px 14px; }
-  .scan-typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--t3); animation: scan-typing-bounce 1.2s ease-in-out infinite; }
+  .scan-typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--scan-muted3); animation: scan-typing-bounce 1.2s ease-in-out infinite; }
   .scan-typing-dots span:nth-child(2) { animation-delay: .15s; }
   .scan-typing-dots span:nth-child(3) { animation-delay: .3s; }
   @keyframes scan-typing-bounce { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 
-  .scan-gate { border: 1px solid rgba(245,158,11,.4); background: rgba(245,158,11,.06); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-  .scan-gate .scan-gate-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--a); }
-  .scan-gate pre { margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; background: var(--bg3); padding: 8px; border-radius: var(--r-sm); max-height: 260px; overflow-y: auto; }
+  .scan-gate { border: 1px solid rgba(245,158,11,.4); background: rgba(245,158,11,.06); border-radius: 12px; padding: 13px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .scan-gate .scan-gate-head { display: flex; align-items: center; gap: 8px; font-family: var(--scan-mono); font-size: 11px; color: var(--scan-accent); }
+  .scan-gate pre { margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; background: var(--scan-code-bg); padding: 8px; border-radius: 6px; max-height: 260px; overflow-y: auto; color: var(--scan-code-text); }
   .scan-gate-actions { display: flex; gap: 8px; }
-  .scan-gate-resolved { font-family: var(--mono); font-size: 11px; color: var(--t3); }
-  .scan-gate-resolved.accepted { color: var(--c-low); }
-  .scan-gate-resolved.rejected { color: var(--c-crit); }
+  .scan-gate-resolved { font-family: var(--scan-mono); font-size: 11px; color: var(--scan-muted3); }
+  .scan-gate-resolved.accepted { color: var(--scan-status-running); }
+  .scan-gate-resolved.rejected { color: var(--scan-crit); }
 
-  /* Tarjeta de hallazgo propuesto/actualizado — reemplaza el JSON.stringify
-     crudo que se mostraba antes (ilegible, sobre todo los http_proofs con
-     los \n escapados). Se usa dentro de .scan-gate, así que hereda su fondo/
-     borde — acá solo va la tipografía y el layout del contenido. */
   .scan-finding-card { display: flex; flex-direction: column; gap: 8px; }
   .scan-finding-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .scan-finding-head strong { font-size: 12.5px; color: var(--t1); }
-  .scan-finding-tag { font-size: 10px; padding: 1px 7px; border-radius: 999px; background: var(--bg3); color: var(--t3); }
-  .scan-finding-desc { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--t2); }
-  .scan-finding-remediation summary { cursor: pointer; font-size: 11px; color: var(--t3); list-style: none; }
+  .scan-finding-head strong { font-size: 12.5px; color: var(--scan-text1); }
+  .scan-finding-tag { font-size: 10px; padding: 1px 7px; border-radius: 999px; background: var(--scan-border); color: var(--scan-muted3); }
+  .scan-finding-desc { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--scan-muted5); }
+  .scan-finding-remediation summary { cursor: pointer; font-size: 11px; color: var(--scan-muted3); list-style: none; }
   .scan-finding-remediation summary::-webkit-details-marker { display: none; }
   .scan-finding-remediation summary::before { content: '▸ '; }
   .scan-finding-remediation[open] summary::before { content: '▾ '; }
-  .scan-finding-remediation p { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--t2); }
-  .scan-finding-meta { font-family: var(--mono); font-size: 10px; color: var(--t3); }
+  .scan-finding-remediation p { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--scan-muted5); }
+  .scan-finding-meta { font-family: var(--scan-mono); font-size: 10px; color: var(--scan-muted3); }
   .scan-finding-proofs { display: flex; flex-direction: column; gap: 6px; }
-  .scan-proof-item { background: var(--bg3); border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 6px 10px; }
-  .scan-proof-item summary { cursor: pointer; font-family: var(--mono); font-size: 10.5px; color: var(--t2); list-style: none; }
+  .scan-proof-item { background: var(--scan-border); border: 1px solid var(--scan-border); border-radius: 6px; padding: 6px 10px; }
+  .scan-proof-item summary { cursor: pointer; font-family: var(--scan-mono); font-size: 10.5px; color: var(--scan-muted5); list-style: none; }
   .scan-proof-item summary::-webkit-details-marker { display: none; }
   .scan-proof-item summary::before { content: '▸ '; }
   .scan-proof-item[open] summary::before { content: '▾ '; }
-  .scan-proof-item pre { margin: 8px 0 0; font-family: var(--mono); font-size: 10.5px; white-space: pre-wrap; word-break: break-all; color: var(--t2); background: var(--bg2); padding: 8px; border-radius: var(--r-sm); max-height: 240px; overflow-y: auto; }
+  .scan-proof-item pre { margin: 8px 0 0; font-family: var(--scan-mono); font-size: 10.5px; white-space: pre-wrap; word-break: break-all; color: var(--scan-code-text); background: var(--scan-code-bg); padding: 8px; border-radius: 6px; max-height: 240px; overflow-y: auto; }
   .scan-proof-item pre + pre { margin-top: 6px; }
 
-  /* Vista simple/avanzada — pedido explícito: la vista simple resume en
-     tarjetas clickeables (puertos/endpoints/subdominios/hallazgos/para
-     revisar) en vez de mostrar cada tool call individual; la avanzada
-     sigue siendo el transcript crudo de siempre, sin cambios. */
-  .scan-view-toggle { flex-shrink: 0; display: flex; gap: 6px; align-items: center; }
+  /* ── Tab: Detalle ───────────────────────────────────────────────────── */
+  .scan-detail-row { border-top: 1px solid var(--scan-border3); }
+  .scan-detail-row:first-child { border-top: none; }
+  .scan-detail-row-head { display: flex; gap: 12px; padding: 12px 0; cursor: pointer; }
+  .scan-detail-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .scan-detail-dot.done { background: var(--scan-status-running); }
+  .scan-detail-dot.running { background: var(--scan-accent); box-shadow: 0 0 0 3px oklch(0.65 0.16 45 / 0.2); }
+  .scan-detail-dot.pending { background: transparent; border: 1.5px solid var(--scan-border4); }
+  .scan-detail-body { flex: 1; min-width: 0; }
+  .scan-detail-text { font-family: var(--scan-mono); font-size: 13px; }
+  .scan-detail-sub { font-family: var(--scan-mono); font-size: 11.5px; color: var(--scan-muted3); margin-top: 4px; overflow-wrap: anywhere; }
+  .scan-detail-time { font-family: var(--scan-mono); font-size: 11px; color: var(--scan-muted4); flex-shrink: 0; }
+  .scan-detail-chevron { margin-left: 8px; color: var(--scan-muted4); font-size: 14px; flex-shrink: 0; transition: transform .15s ease; }
+  .scan-detail-row.expanded .scan-detail-chevron { transform: rotate(90deg); }
+  .scan-detail-full { margin: 0 0 14px 20px; background: var(--scan-code-bg); border: 1px solid var(--scan-border4); border-radius: 7px; padding: 12px 14px; font-family: var(--scan-mono); font-size: 11.5px; color: var(--scan-code-text); line-height: 1.65; white-space: pre-wrap; overflow-x: auto; word-break: break-all; }
+  .scan-detail-empty { text-align: center; padding: 40px 20px; font-family: var(--scan-mono); font-size: 12px; color: var(--scan-muted3); }
 
-  /* Indicador de actividad en vivo — pedido explícito: "sería bueno que
-     haya algún icono moviéndose... algo más visual, con un mensaje breve
-     de lo que está haciendo la IA". Solo en Resumen — en Detalle cada tool
-     call ya se ve una por una, sería redundante. */
-  /* Antes una caja propia (fondo/borde/padding) apilada arriba del chat —
-     ahora es una línea suelta dentro de .scan-toolbar-info, al lado de los
-     contadores. El color sigue marcando corriendo (verde) vs esperando
-     aprobación (ámbar); ya no necesita su propio fondo para destacar. */
-  .scan-live-activity { flex-shrink: 0; display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--c-low); min-width: 0; }
-  .scan-live-activity.waiting { color: var(--a); }
-  .scan-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-low); flex-shrink: 0; animation: livePulse 1.2s ease-in-out infinite; }
-  .scan-live-activity.waiting .scan-live-dot { background: var(--a); animation: none; } /* esperándote a vos, no "trabajando" — sin pulso */
-  .scan-live-text { color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+  /* ── Tab: Resumen ───────────────────────────────────────────────────── */
+  .scan-sev-cards { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-bottom: 22px; }
+  .scan-sev-card { background: var(--scan-card); border: 1px solid var(--scan-border); border-radius: 10px; padding: 12px 14px; }
+  .scan-sev-card .n { font-size: 22px; font-weight: 700; }
+  .scan-sev-card .label { font-family: var(--scan-mono); font-size: 11px; color: var(--scan-muted1); margin-top: 2px; text-transform: uppercase; letter-spacing: .04em; }
+  .scan-findings-table { border: 1px solid var(--scan-border4); border-radius: 10px; overflow: hidden; }
+  .scan-findings-row { display: flex; align-items: center; gap: 14px; padding: 11px 16px; border-bottom: 1px solid #17171a; background: var(--scan-panel); }
+  .scan-findings-row:last-child { border-bottom: none; }
+  .scan-findings-row .text { flex: 1; font-size: 13px; color: var(--scan-text4); }
+  .scan-findings-tag { font-size: 11px; padding: 2px 8px; border-radius: 5px; background: var(--scan-tag-bg); color: var(--scan-tag-text); flex-shrink: 0; }
+  .scan-sev-badge { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; padding: 3px 8px; border-radius: 5px; border: 1px solid currentColor; flex-shrink: 0; }
+  .scan-sev-badge.critical, .scan-sev-card.critical .n { color: var(--scan-crit); }
+  .scan-sev-badge.critical { background: var(--scan-crit-bg); }
+  .scan-sev-badge.high, .scan-sev-card.high .n { color: var(--scan-high); }
+  .scan-sev-badge.high { background: var(--scan-high-bg); }
+  .scan-sev-badge.medium, .scan-sev-card.medium .n { color: var(--scan-med); }
+  .scan-sev-badge.medium { background: var(--scan-med-bg); }
+  .scan-sev-badge.low, .scan-sev-card.low .n { color: var(--scan-low); }
+  .scan-sev-badge.low { background: var(--scan-low-bg); }
+  .scan-sev-badge.info, .scan-sev-card.info .n { color: var(--scan-info); }
+  .scan-sev-badge.info { background: var(--scan-info-bg); }
 
-  /* Antes el detalle expandido de un highlight era un bloque más en la
-     columna, empujando el transcript hacia abajo cada vez que se abría uno
-     (reportado, junto con el resto del chrome apilado). Ahora cada chip es
-     el ancla de su propio popover flotante (position:absolute) — abrir uno
-     nunca cambia la altura del resto de la página. */
-  .scan-highlights { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-  .scan-hl-item-wrap { position: relative; }
-  .scan-hl-chip {
-    display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px;
-    padding: 7px 12px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r);
-    cursor: pointer; color: var(--t2); transition: border-color .15s, color .15s, transform .12s ease, background .15s;
-  }
-  .scan-hl-chip:hover { border-color: var(--b2); color: var(--t1); transform: translateY(-1px); }
-  .scan-hl-chip:active { transform: translateY(0); }
-  .scan-hl-chip.expanded { border-color: var(--a); color: var(--t1); }
-  .scan-hl-chip .scan-hl-count { background: var(--bg3); color: var(--t1); padding: 1px 8px; border-radius: 999px; font-weight: 600; }
-  .scan-hl-chip.review .scan-hl-count    { background: rgba(245,158,11,.15); color: var(--a); }
-  .scan-hl-chip.findings .scan-hl-count  { background: rgba(239,68,68,.12); color: var(--c-crit); }
-  .scan-hl-detail {
-    position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
-    width: max(320px, 100%); max-width: min(400px, 88vw);
-    background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r);
-    padding: 4px 12px; max-height: 320px; overflow-y: auto;
-    box-shadow: 0 12px 28px rgba(0,0,0,.4);
-  }
-  .scan-hl-detail-item, .scan-hl-item summary { padding: 8px 0; border-bottom: 1px solid var(--b1); font-family: var(--mono); font-size: 11px; color: var(--t2); display: flex; justify-content: space-between; gap: 10px; }
-  .scan-hl-detail-item:last-child, .scan-hl-item:last-child summary { border-bottom: none; }
-  .scan-hl-detail-item .val, .scan-hl-item .val { color: var(--t1); text-align: right; word-break: break-all; flex-shrink: 0; }
-  .scan-hl-detail-item span:first-child, .scan-hl-item summary span:first-child { word-break: break-all; }
-  .scan-highlights-empty { text-align: center; padding: 24px; font-family: var(--mono); font-size: 11.5px; color: var(--t3); }
-  /* Items expandibles — pedido explícito: "al hacer click se muestre la
-     respuesta también, y el código de respuesta" — antes solo se veía
-     label+value, sin forma de ver el body/error real detrás. */
-  .scan-hl-item summary { cursor: pointer; list-style: none; }
-  .scan-hl-item summary::-webkit-details-marker { display: none; }
-  .scan-hl-item-meta { font-family: var(--mono); font-size: 10.5px; color: var(--t3); padding: 4px 0; }
-  .scan-hl-item-error { font-family: var(--mono); font-size: 10.5px; color: var(--c-crit); padding: 4px 0; }
-  .scan-hl-item pre { font-family: var(--mono); font-size: 10.5px; color: var(--t2); background: var(--bg3); padding: 8px; border-radius: var(--r-sm); white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; margin: 4px 0 8px; }
-  .scan-hl-warning { display: flex; align-items: flex-start; gap: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--a); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3); border-radius: var(--r-sm); padding: 8px 10px; margin: 6px 0; }
-
-  /* Píldora "nuevos mensajes" — aparece flotando sobre el input cuando la IA
-     responde mientras estás scrolleado hacia arriba leyendo historial. Sin
-     esto no había ninguna señal de que llegó respuesta si no estabas al fondo. */
+  /* ── Píldora "nuevos mensajes" + composer ─────────────────────────────── */
   .scan-jump-btn {
     position: absolute; left: 50%; transform: translateX(-50%);
-    bottom: 70px; z-index: 5;
+    bottom: 78px; z-index: 5;
     display: none; align-items: center; gap: 6px;
     padding: 6px 14px; border-radius: 999px; cursor: pointer;
-    background: var(--a); color: #1a1206; border: none;
-    font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    background: var(--scan-accent); color: var(--scan-accent-oncontrast); border: none;
+    font-family: var(--scan-mono); font-size: 11px; font-weight: 600; letter-spacing: .02em;
     box-shadow: 0 4px 14px rgba(0,0,0,.35);
     animation: scanJumpIn .18s ease;
   }
   .scan-jump-btn.show { display: inline-flex; }
   .scan-jump-btn:hover { filter: brightness(1.08); }
   @keyframes scanJumpIn { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
-  .scan-input-row { flex-shrink: 0; display: flex; gap: 8px; align-items: flex-end; }
-  .scan-input-row textarea { flex: 1; resize: none; font-family: inherit; font-size: 13px; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--b1); border-radius: var(--r); color: var(--t1); max-height: 120px; }
-  /* Sin esto quedaba el outline nativo del navegador al hacer foco (celeste/
-     blanco, reportado como "feo, no pega con el diseño") — nunca se le
-     definió un :focus propio, a diferencia de .form-input (main.css). */
-  .scan-input-row textarea:focus { outline: none; border-color: rgba(245,158,11,.45); }
+
+  .scan-input-row { flex-shrink: 0; display: flex; gap: 10px; padding: 16px 28px; border-top: 1px solid var(--scan-border2); align-items: flex-end; }
+  .scan-input-row textarea {
+    flex: 1; resize: none; font-family: var(--scan-font); font-size: 13px; padding: 11px 14px;
+    background: var(--scan-card); border: 1px solid var(--scan-border); border-radius: 9px; color: var(--scan-text1); max-height: 120px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .scan-input-row textarea:focus { outline: none; border-color: var(--scan-accent); box-shadow: 0 0 0 3px oklch(0.65 0.16 45 / 0.15); }
   .scan-input-row textarea:disabled { opacity: .5; }
-
-  /* Toggle de idioma ES/EN — pedido explícito: "quiero que esté en spanish,
-     o bueno... demos la opción de configurar tanto en spanish como
-     english". Acotado a esta página (ver ai-agent.js AI_I18N/t()), no un
-     i18n de toda la app. */
-  .scan-lang-toggle { display: flex; gap: 2px; background: var(--bg3); border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 2px; }
-  .scan-lang-btn { font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 3px; border: none; background: none; color: var(--t3); cursor: pointer; transition: background .12s, color .12s; }
-  .scan-lang-btn:hover { color: var(--t1); }
-  .scan-lang-btn.active { background: var(--bg2); color: var(--t1); }
-
-  /* Micro-feedback al presionar Enviar — un hundido apenas perceptible, nada
-     exagerado. El textarea del chat también anima suave su enfoque. */
-  .scan-input-row .btn-prim { transition: filter .12s ease, transform .1s ease; }
-  .scan-input-row .btn-prim:active { transform: translateY(1px); }
-  .scan-input-row textarea { transition: border-color .15s ease, box-shadow .15s ease; }
-  .scan-input-row textarea:focus { box-shadow: 0 0 0 3px rgba(245,158,11,.08); }
+  .scan-send-btn {
+    padding: 11px 20px; border-radius: 9px; background: var(--scan-accent-btn); color: var(--scan-accent-oncontrast);
+    font-size: 13px; font-weight: 700; font-family: var(--scan-font); border: none; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; transition: filter .12s ease, transform .1s ease; flex-shrink: 0;
+  }
+  .scan-send-btn:active { transform: translateY(1px); }
+  .scan-send-btn:disabled { opacity: .5; cursor: default; }
 
   /* Accesibilidad: quien pide menos movimiento no recibe ninguno de estos
      efectos (los pulsos/typing tampoco). */
@@ -311,11 +353,13 @@
     .scan-msg-enter,
     .scan-jump-btn,
     .scan-typing-dots span,
-    .scan-tool-spinner,
     .scan-thread-chip.running .dot,
-    .scan-live-dot { animation: none !important; }
-    .scan-hl-chip:hover,
-    .scan-input-row .btn-prim:active { transform: none; }
+    .scan-detail-dot.running { animation: none !important; }
+    .scan-send-btn:active { transform: none; }
+  }
+
+  @media (max-width: 900px) {
+    .scan-sev-cards { grid-template-columns: repeat(2,1fr); }
   }
 </style>
 </head>
@@ -327,34 +371,38 @@
 
 <div class="workarea">
   <main class="main scan-main">
-    <div class="page-header">
-      <div>
-        <div class="page-title">AI Agent</div>
-        <div class="page-subtitle" id="scan-subtitle" data-i18n="subtitle">// scanner de pentest autónomo — conectado con este proyecto</div>
+    <div class="scan-header">
+      <div class="scan-header-titles">
+        <div class="scan-title">AI Agent</div>
+        <div class="scan-subtitle mono" id="scan-subtitle" data-i18n="subtitle">// scanner de pentest autónomo — conectado con este proyecto</div>
       </div>
-      <div class="scan-lang-toggle" id="scan-lang-toggle"></div>
+      <div class="scan-header-right">
+        <div id="scan-session-picker-wrap"></div>
+        <div class="scan-lang-toggle" id="scan-lang-toggle"></div>
+      </div>
     </div>
 
     <div class="scan-body">
-      <div class="scan-toolbar">
-        <div class="scan-toolbar-info">
-          <div class="scan-context" id="scan-context"></div>
-          <div class="scan-live-activity" id="scan-live-activity" style="display:none"></div>
-        </div>
-        <div class="scan-toolbar-spacer"></div>
-        <div class="scan-view-toggle" id="scan-view-toggle" style="display:none"></div>
-        <div id="scan-controls-top" style="display:flex;gap:8px;align-items:center"></div>
-      </div>
-      <div class="scan-highlights" id="scan-highlights" style="display:none"></div>
+      <div class="scan-status-strip" id="scan-status-strip"></div>
       <div class="scan-threads" id="scan-threads" style="display:none"></div>
-      <div class="scan-transcript" id="scan-transcript"></div>
+      <div class="scan-tabs" id="scan-tabs" style="display:none"></div>
+
+      <div class="scan-tab-panels" id="scan-tab-panels" style="display:none">
+        <div class="scan-tab-panel active" id="scan-panel-chat">
+          <div class="scan-transcript" id="scan-transcript"></div>
+        </div>
+        <div class="scan-tab-panel" id="scan-panel-detalle"></div>
+        <div class="scan-tab-panel" id="scan-panel-resumen"></div>
+      </div>
+      <div id="scan-empty-wrap"></div>
+
       <button class="scan-jump-btn" id="scan-jump-btn" onclick="scanScrollToBottom(true)">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         <span data-i18n="newMessages">Nuevos mensajes</span>
       </button>
       <div class="scan-input-row" id="scan-input-row" style="display:none">
         <textarea id="scan-chat-input" rows="1" data-i18n-placeholder="chatPlaceholder" placeholder="Hablale al agente — preguntale algo o dale una instrucción..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();scanSendMessage();}"></textarea>
-        <button class="btn btn-prim" onclick="scanSendMessage()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg> <span data-i18n="send">Enviar</span></button>
+        <button class="scan-send-btn" onclick="scanSendMessage()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg> <span data-i18n="send">Enviar</span></button>
       </div>
     </div>
   </main>

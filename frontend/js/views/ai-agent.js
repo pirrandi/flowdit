@@ -18,15 +18,17 @@ let _scanEditCallId = null; // call_id de la propuesta que se está editando en 
 let _sessionSearchQuery = ''; // buscador del dropdown de sesiones (>6 sesiones) — persiste entre renders en vivo
 let _renamingSessionId  = null; // sesión con el input de rename abierto ahora mismo, si hay alguna
 
-// Vista simple (default) vs avanzada — pedido explícito: "una vista mas
-// reducida... highlights, endpoints encontrados, puertos encontrados...
-// y una vista avanzada, que ahi si se muestre todo mas sucio". Simple
-// esconde las tools de Nivel 0/1 (ruido individual: cada fetch_endpoint,
-// cada port_scan) y las resume en tarjetas agregadas — la conversación
-// real (chat, gates, reportes de sub-agentes) se sigue viendo en ambas,
-// esa no es "ruido". Avanzada es el transcript de siempre, sin cambios.
-let _scanViewMode = 'simple';
-let _expandedHighlights = new Set(); // categorías de highlights abiertas — se preserva entre re-renders
+// Rediseño 2026-09-22 (design_handoff_ai_agent/): el panel central se
+// organiza en pestañas en vez del viejo toggle Resumen/Detalle. Chat es
+// SIEMPRE la vista filtrada (equivalente a lo que antes era el modo
+// "simple" — tools de Nivel 0/1 escondidas, conversación real siempre
+// visible); Detalle es el feed completo de acciones de la IA, incluyendo
+// cada tool call individual con su detalle técnico expandible. La
+// separación en sí reemplaza al toggle — no quedó ningún modo "avanzado"
+// alternativo para el chat porque Detalle ya cubre exactamente ese caso.
+let _scanActiveTab = 'chat'; // 'chat' | 'detalle' | 'resumen'
+let _expandedDetailIds = new Set(); // ids de tool.called expandidos en Detalle — se preserva entre re-renders
+let _scanCounterPopoverOpen = null; // 'endpoints' | 'review' | null — cuál popover del status strip está abierto
 
 // V1.5 — sin vista multi-columna todavía (ver AI_PENTEST_AGENT.md, gap
 // conocido): el transcript sigue siendo una sola lista lineal, pero los
@@ -68,6 +70,13 @@ const AI_I18N = {
     confirmDeleteText: '¿Borrar la sesión del {date}? Esto borra todo su historial, no se puede deshacer.',
     sessionDeleted: 'Sesión borrada',
     coordinator: 'Coordinador', subAgent: 'Sub-agente',
+    tabChat: 'Chat', tabDetalle: 'Detalle', tabResumen: 'Resumen',
+    inScopeLabel: 'target en scope', inScopeLabel_other: 'targets en scope',
+    findingsLabel: 'hallazgos', endpointsLabel: 'endpoints', reviewLabel: 'para revisar',
+    detailHeading: 'Qué está haciendo la IA ahora', detailEmpty: 'Sin actividad todavía en esta sesión.',
+    resumenHeading: 'Hallazgos por severidad', resumenEmpty: 'Sin hallazgos todavía en este proyecto.',
+    rem_open: 'Abierto', rem_remediated: 'Remediado', rem_not_remediated: 'No Remediado', rem_verified_closed: 'Verificado',
+    newSessionShort: 'Nueva sesión', sessionsDropdownHeader: 'SESIONES DE AI AGENT',
     summaryView: 'Resumen', detailView: 'Detalle',
     waitingApprovalFor: 'Esperando tu aprobación para {tool}...', executingTool: 'Ejecutando {tool}...',
     waitingApproval: 'Esperando tu aprobación...', thinking: 'Pensando en el próximo paso...',
@@ -135,6 +144,13 @@ const AI_I18N = {
     confirmDeleteText: 'Delete the session from {date}? This deletes its entire history, cannot be undone.',
     sessionDeleted: 'Session deleted',
     coordinator: 'Coordinator', subAgent: 'Sub-agent',
+    tabChat: 'Chat', tabDetalle: 'Detail', tabResumen: 'Summary',
+    inScopeLabel: 'target in scope', inScopeLabel_other: 'targets in scope',
+    findingsLabel: 'findings', endpointsLabel: 'endpoints', reviewLabel: 'needs review',
+    detailHeading: 'What the AI is doing now', detailEmpty: 'No activity yet in this session.',
+    resumenHeading: 'Findings by severity', resumenEmpty: 'No findings yet in this project.',
+    rem_open: 'Open', rem_remediated: 'Remediated', rem_not_remediated: 'Not Remediated', rem_verified_closed: 'Verified Closed',
+    newSessionShort: 'New session', sessionsDropdownHeader: 'AI AGENT SESSIONS',
     summaryView: 'Summary', detailView: 'Detail',
     waitingApprovalFor: 'Waiting for your approval for {tool}...', executingTool: 'Running {tool}...',
     waitingApproval: 'Waiting for your approval...', thinking: 'Thinking about the next step...',
@@ -199,17 +215,15 @@ function setAiLang(lang) {
   document.documentElement.lang = lang;
   applyStaticI18n();
   renderLangToggle();
-  renderContextStrip();
+  renderSessionPicker();
   renderThreadsStrip();
-  renderViewToggle();
-  renderLiveActivity();
-  renderScanHighlights();
-  renderControls();
+  renderTabsBar();
+  renderStatusStrip();
   renderInputRow();
-  // El transcript entero depende del idioma (labels de sistema, gates,
-  // "Agente"/"Vos"...) — rebuild completo, mismo criterio que un cambio de
-  // vista simple/avanzada (setScanViewMode()), no un evento en vivo.
-  if (_scanSession) renderTranscript(); else if (document.getElementById('scan-transcript')) renderEmptyState();
+  // El transcript y las pestañas dependen del idioma (labels de sistema,
+  // gates, "Agente"/"Vos"...) — rebuild completo, no un evento en vivo.
+  if (_scanSession) { renderTranscript(); renderActiveTabPanel(); }
+  else if (document.getElementById('scan-transcript')) renderEmptyState();
 }
 
 function renderLangToggle() {
@@ -245,7 +259,7 @@ async function initAiAgent() {
     _scanSessions = [];
   }
 
-  renderContextStrip();
+  renderSessionPicker();
 
   const active = _scanSessions.find(s => ['running', 'idle', 'waiting_approval', 'paused'].includes(s.status));
   if (active) {
@@ -254,12 +268,10 @@ async function initAiAgent() {
     _scanSession = null;
     _scanThreads = [];
     renderEmptyState();
-    renderControls();
     renderInputRow();
     renderThreadsStrip();
-    renderViewToggle();
-    renderLiveActivity();
-    renderScanHighlights();
+    renderTabsBar();
+    renderStatusStrip();
   }
 }
 
@@ -307,10 +319,14 @@ function _sessionProfileLabel(s) {
   return null;
 }
 
-function renderContextStrip() {
-  const inScope   = (state.targets || []).filter(t => t.scope === 'in').length;
-  const findings  = (state.customVulns || []).length;
-  const el = document.getElementById('scan-context');
+// Pill con dot de estado + nombre truncado (190px, ver CSS) + chevron —
+// abre el dropdown de gestión de sesiones completo (crear, buscar,
+// renombrar, borrar). Sigue siendo la MISMA lógica de siempre, restyleada
+// a los tokens del rediseño; los contadores que antes vivían acá al lado
+// (target en scope/hallazgos) se movieron a renderStatusStrip().
+function renderSessionPicker() {
+  const el = document.getElementById('scan-session-picker-wrap');
+  if (!el) return;
   // handleScanEvent() llama a esto en CADA evento en vivo — sin preservar
   // esto, el dropdown de sesiones se cerraba solo apenas llegaba cualquier
   // evento de un scan activo (mismo tipo de bug que ya arreglamos para los
@@ -324,57 +340,59 @@ function renderContextStrip() {
   const activeVal = active?.value;
   const activeSelStart = active?.selectionStart;
 
-  const triggerLabel = _scanSession ? `${_sessionLabel(_scanSession)} · ${statusLabel(_scanSession.status)}` : t('noSession');
-  const findingWord = t(findings === 1 ? 'finding_one' : 'finding_other');
+  if (!_scanSessions.length) { el.innerHTML = ''; return; }
+
+  const triggerLabel = _scanSession ? _sessionLabel(_scanSession) : t('noSession');
+  const triggerColor = _scanSession ? _sessionStatusColorVar(_scanSession.status) : 'var(--scan-muted3)';
 
   const q = _sessionSearchQuery.trim().toLowerCase();
   const visibleSessions = q ? _scanSessions.filter(s => _sessionLabel(s).toLowerCase().includes(q)) : _scanSessions;
 
   el.innerHTML = `
-    <span><strong>${inScope}</strong> target${inScope === 1 ? '' : 's'} ${t('inScope')}</span>
-    <span><strong>${findings}</strong> ${findingWord} ${t('inProject')}</span>
-    ${_scanSessions.length ? `
-      <span class="scan-session-picker">
-        <button class="scan-session-trigger" onclick="event.stopPropagation();toggleScanSessionMenu()">
-          ${esc(triggerLabel)} ${icon('chevron-down', { size: 12 })}
-        </button>
-        <div class="user-dropdown scan-session-dropdown" id="scan-session-dropdown">
-          <button class="dropdown-item" onclick="switchScanSession('');closeScanSessionMenu()">${icon('plus', { size: 13 })} ${esc(t('newSession'))}</button>
-          ${_scanSessions.length > 6 ? `
-            <input type="text" class="scan-session-search" id="scan-session-search" autocomplete="off"
-              placeholder="${esc(t('searchSessionsPlaceholder'))}" value="${esc(_sessionSearchQuery)}"
-              onclick="event.stopPropagation()" oninput="_scanSessionSearchInput(this.value)">
-          ` : ''}
-          ${visibleSessions.map(s => {
-            const target = _sessionTargetLabel(s);
-            const dur = _sessionDuration(s);
-            const cost = _sessionCostLabel(s);
-            const findingsLabel = _sessionFindingsLabel(s);
-            const profileLabel = _sessionProfileLabel(s);
-            const meta = [profileLabel, target, dur, cost, findingsLabel].filter(Boolean).join(' · ');
-            return _renamingSessionId === s.id ? `
-            <div class="scan-session-row active">
-              <input type="text" class="scan-session-name-input" id="scan-session-rename-input" autocomplete="off"
-                value="${esc(s.name || '')}" placeholder="${esc(t('sessionNamePlaceholder'))}"
-                onclick="event.stopPropagation()"
-                onkeydown="if(event.key==='Enter'){this.blur();}else if(event.key==='Escape'){cancelRenameSession();}"
-                onblur="saveRenameSession('${s.id}', this.value)">
-            </div>` : `
-            <div class="scan-session-row ${_scanSession && _scanSession.id === s.id ? 'active' : ''}">
-              <button class="dropdown-item" onclick="switchScanSession('${s.id}');closeScanSessionMenu()">
-                <span class="scan-session-main">
-                  <span class="scan-session-name">${esc(_sessionLabel(s))}</span>
-                  ${meta ? `<span class="scan-session-meta">${esc(meta)}</span>` : ''}
-                </span>
-                <span class="scan-session-status ${s.status}">${esc(statusLabel(s.status))}</span>
-              </button>
-              <button class="scan-session-rename" title="${esc(t('renameSessionTooltip'))}" onclick="event.stopPropagation();startRenameSession('${s.id}')">${icon('square-pen', { size: 12 })}</button>
-              <button class="scan-session-delete" title="${esc(t('deleteSessionTooltip'))}" onclick="event.stopPropagation();scanDeleteSession('${s.id}')">${icon('x', { size: 12 })}</button>
-            </div>`;
-          }).join('')}
-        </div>
-      </span>
-    ` : ''}
+    <span class="scan-session-picker">
+      <button class="scan-session-trigger" onclick="event.stopPropagation();toggleScanSessionMenu()">
+        <span class="dot" style="background:${triggerColor}"></span>
+        <span class="name">${esc(triggerLabel)}</span>
+        <span class="chev">▾</span>
+      </button>
+      <div class="scan-session-dropdown" id="scan-session-dropdown">
+        <div class="scan-session-dropdown-head">${esc(t('sessionsDropdownHeader'))}</div>
+        ${_scanSessions.length > 6 ? `
+          <input type="text" class="scan-session-search" id="scan-session-search" autocomplete="off"
+            placeholder="${esc(t('searchSessionsPlaceholder'))}" value="${esc(_sessionSearchQuery)}"
+            onclick="event.stopPropagation()" oninput="_scanSessionSearchInput(this.value)">
+        ` : ''}
+        ${visibleSessions.map(s => {
+          const target = _sessionTargetLabel(s);
+          const dur = _sessionDuration(s);
+          const cost = _sessionCostLabel(s);
+          const findingsLabel = _sessionFindingsLabel(s);
+          const profileLabel = _sessionProfileLabel(s);
+          const meta = [profileLabel, target, dur, cost, findingsLabel].filter(Boolean).join(' · ');
+          return _renamingSessionId === s.id ? `
+          <div class="scan-session-row active">
+            <input type="text" class="scan-session-name-input" id="scan-session-rename-input" autocomplete="off"
+              value="${esc(s.name || '')}" placeholder="${esc(t('sessionNamePlaceholder'))}"
+              onclick="event.stopPropagation()"
+              onkeydown="if(event.key==='Enter'){this.blur();}else if(event.key==='Escape'){cancelRenameSession();}"
+              onblur="saveRenameSession('${s.id}', this.value)">
+          </div>` : `
+          <div class="scan-session-row ${_scanSession && _scanSession.id === s.id ? 'active' : ''}">
+            <button class="scan-session-row-btn" onclick="switchScanSession('${s.id}');closeScanSessionMenu()">
+              <span class="scan-session-dot" style="background:${_sessionStatusColorVar(s.status)}"></span>
+              <span class="scan-session-main">
+                <span class="scan-session-name">${esc(_sessionLabel(s))}</span>
+                ${meta ? `<span class="scan-session-meta">${esc(meta)}</span>` : ''}
+              </span>
+              <span class="scan-session-status ${s.status}">${esc(statusLabel(s.status))}</span>
+            </button>
+            <button class="scan-session-rename" title="${esc(t('renameSessionTooltip'))}" onclick="event.stopPropagation();startRenameSession('${s.id}')">${icon('square-pen', { size: 12 })}</button>
+            <button class="scan-session-delete" title="${esc(t('deleteSessionTooltip'))}" onclick="event.stopPropagation();scanDeleteSession('${s.id}')">${icon('x', { size: 12 })}</button>
+          </div>`;
+        }).join('')}
+        <button class="scan-session-new" onclick="switchScanSession('');closeScanSessionMenu()">${icon('plus', { size: 13 })} + ${esc(t('newSessionShort'))}</button>
+      </div>
+    </span>
   `;
   if (wasOpen) document.getElementById('scan-session-dropdown')?.classList.add('open');
   if (activeId === 'scan-session-search' || activeId === 'scan-session-rename-input') {
@@ -387,15 +405,25 @@ function renderContextStrip() {
   }
 }
 
+// Mapea el status de sesión al token de color del rediseño (ver CSS
+// .scan-main): running/paused/waiting_approval/done — mismo agrupamiento
+// que .scan-session-status en las filas del dropdown.
+function _sessionStatusColorVar(status) {
+  if (status === 'running') return 'var(--scan-status-running)';
+  if (status === 'paused' || status === 'waiting_approval') return 'var(--scan-status-paused)';
+  if (status === 'error') return 'var(--scan-status-error)';
+  return 'var(--scan-status-done)'; // idle/completed
+}
+
 function toggleScanSessionMenu() { document.getElementById('scan-session-dropdown')?.classList.toggle('open'); }
 function closeScanSessionMenu()  { document.getElementById('scan-session-dropdown')?.classList.remove('open'); }
 document.addEventListener('click', e => { if (!e.target.closest('.scan-session-picker')) closeScanSessionMenu(); });
 
-function _scanSessionSearchInput(value) { _sessionSearchQuery = value; renderContextStrip(); }
+function _scanSessionSearchInput(value) { _sessionSearchQuery = value; renderSessionPicker(); }
 
 function startRenameSession(id) {
   _renamingSessionId = id;
-  renderContextStrip();
+  renderSessionPicker();
   const input = document.getElementById('scan-session-rename-input');
   input?.focus();
   input?.select();
@@ -406,7 +434,7 @@ function cancelRenameSession() {
   // del DOM (vía innerHTML) le dispara un blur solo — con esto ya en null,
   // el guard de saveRenameSession() de abajo lo detecta y no guarda nada.
   _renamingSessionId = null;
-  renderContextStrip();
+  renderSessionPicker();
 }
 
 async function saveRenameSession(id, value) {
@@ -414,13 +442,13 @@ async function saveRenameSession(id, value) {
   _renamingSessionId = null;
   const name = value.trim();
   const s = _scanSessions.find(x => x.id === id);
-  if (!name || !s || name === s.name) { renderContextStrip(); return; }
+  if (!name || !s || name === s.name) { renderSessionPicker(); return; }
   try {
     await api.aiScan.renameSession(state.currentProject.id, id, name);
     s.name = name;
     if (_scanSession && _scanSession.id === id) _scanSession.name = name;
   } catch (e) { showToast(e.message, 'error'); }
-  renderContextStrip();
+  renderSessionPicker();
 }
 
 let _scanDeleteTargetId = null; // sesión pendiente de confirmar en #scan-delete-confirm-modal
@@ -457,14 +485,12 @@ async function confirmScanDeleteSession() {
       _scanSession = null;
       _scanThreads = [];
       renderEmptyState();
-      renderControls();
       renderInputRow();
       renderThreadsStrip();
-      renderViewToggle();
-      renderLiveActivity();
-      renderScanHighlights();
+      renderTabsBar();
+      renderStatusStrip();
     }
-    renderContextStrip();
+    renderSessionPicker();
     showToast(t('sessionDeleted'), 'success');
   } catch (err) {
     showToast(err.message, 'error');
@@ -496,25 +522,37 @@ function renderThreadsStrip() {
   }).join('');
 }
 
-// ── Vista simple/avanzada ────────────────────────────────────────────
-function renderViewToggle() {
-  const el = document.getElementById('scan-view-toggle');
+// ── Pestañas: Chat / Detalle / Resumen ───────────────────────────────
+function renderTabsBar() {
+  const el = document.getElementById('scan-tabs');
   if (!el) return;
   if (!_scanSession) { el.style.display = 'none'; return; }
   el.style.display = 'flex';
-  el.innerHTML = `
-    <button class="${_scanViewMode === 'simple' ? 'btn btn-prim' : 'btn-secondary'}" onclick="setScanViewMode('simple')">${esc(t('summaryView'))}</button>
-    <button class="${_scanViewMode === 'advanced' ? 'btn btn-prim' : 'btn-secondary'}" onclick="setScanViewMode('advanced')">${esc(t('detailView'))}</button>
-  `;
+  const tabs = [['chat', 'tabChat'], ['detalle', 'tabDetalle'], ['resumen', 'tabResumen']];
+  el.innerHTML = tabs.map(([id, key]) =>
+    `<button class="scan-tab ${_scanActiveTab === id ? 'active' : ''}" onclick="scanSelectTab('${id}')">${esc(t(key))}</button>`
+  ).join('');
 }
 
-function setScanViewMode(mode) {
-  if (mode === _scanViewMode) return;
-  _scanViewMode = mode;
-  renderViewToggle();
-  renderLiveActivity();
-  renderScanHighlights();
-  renderTranscript(); // cambia qué se filtra — rebuild completo, es un cambio de modo, no un evento en vivo
+function scanSelectTab(tabId) {
+  if (tabId === _scanActiveTab) return;
+  _scanActiveTab = tabId;
+  renderTabsBar();
+  renderActiveTabPanel();
+}
+
+// El panel de Chat vive siempre en el DOM (nunca se destruye) — su
+// contenido (#scan-transcript) se actualiza en vivo de forma incremental
+// (appendLiveEvent()) sin importar qué pestaña esté visible ahora mismo,
+// así al volver a Chat ya está al día. Detalle/Resumen sí se recalculan
+// por completo cada vez que se activan — son vistas derivadas baratas de
+// recomputar, sin ningún estado de scroll/foco que preservar entre pasadas.
+function renderActiveTabPanel() {
+  ['chat', 'detalle', 'resumen'].forEach(id => {
+    document.getElementById(`scan-panel-${id}`)?.classList.toggle('active', id === _scanActiveTab);
+  });
+  if (_scanActiveTab === 'detalle') renderDetalleTab();
+  else if (_scanActiveTab === 'resumen') renderResumenTab();
 }
 
 // ── Indicador de actividad en vivo ──────────────────────────────────────
@@ -575,7 +613,7 @@ function renderLiveActivity() {
 
   if (!activity) {
     _liveActivityWasToolCall = false;
-    el.style.display = 'none';
+    el.textContent = '';
     document.getElementById('scan-typing-bubble')?.remove();
     return;
   }
@@ -591,18 +629,12 @@ function renderLiveActivity() {
   _liveActivityShownAt = Date.now();
   _liveActivityWasToolCall = activity.isToolCall;
 
-  // Reportado: mandar un mensaje en Detalle no daba NINGÚN feedback de que
-  // la IA estaba trabajando — el banner estaba oculto ahí sin excepción. En
-  // Detalle una tool call puntual ya tiene su propia fila (redundante
-  // mostrarla acá también), pero "pensando" no tiene ninguna otra señal en
-  // ese modo — se muestra en los dos casos.
+  // La burbuja de "escribiendo..." sigue siendo exclusiva del chat (Detalle
+  // ya muestra cada tool call puntual como su propia fila, sería redundante
+  // ahí) — pero el texto en la status strip (esta función) es global a la
+  // sesión, visible sea cual sea la pestaña activa, ver README del rediseño.
   renderTypingBubble(activity);
-
-  if (_scanViewMode !== 'simple' && activity.isToolCall) { el.style.display = 'none'; return; }
-
-  el.style.display = 'flex';
-  el.className = `scan-live-activity${_scanSession.status === 'waiting_approval' ? ' waiting' : ''}`;
-  el.innerHTML = `<span class="scan-live-dot"></span><span class="scan-live-text">${esc(activity.text)}</span>`;
+  el.textContent = activity.text;
 }
 
 // Burbuja de "escribiendo..." dentro del transcript — pedido explícito: "que
@@ -695,95 +727,137 @@ function _severityBadge(sev) {
   return `<span class="sev-badge sev-${esc(s)}">${esc(_SEV_LABELS[s] || s)}</span>`;
 }
 
-function renderScanHighlights() {
-  const el = document.getElementById('scan-highlights');
-  if (!el) return;
-  if (_scanViewMode !== 'simple' || !_scanSession) { el.style.display = 'none'; el.innerHTML = ''; return; }
+// La vieja UI de chips (ports/endpoints/subdominios/hallazgos/para revisar)
+// se retiró con el rediseño — sus datos ahora viven repartidos donde tiene
+// más sentido cada uno: endpoints/para-revisar como contadores en
+// renderStatusStrip(), hallazgos propuestos ya se ven en el Chat (tarjeta
+// de gate), y cada port_scan/subdomain_enum individual sigue totalmente
+// visible (con su detalle completo) como su propia fila en Detalle. La
+// vista AGREGADA de puertos/subdominios (dedupe entre varias llamadas) no
+// tiene un lugar propio en las 3 pestañas nuevas — ver README del
+// rediseño, que no la contempla como concepto de UI.
 
-  const hl = computeScanHighlights(_scanEvents);
-  const categories = [
-    { key: 'ports',      label: t('catPorts'), icon: 'terminal', count: hl.ports.length,
-      items: hl.ports.map(p => ({ label: p.host, value: String(p.port) })) },
-    { key: 'endpoints',  label: t('catEndpoints'), icon: 'link', count: hl.endpoints.length,
-      items: hl.endpoints.map(e => ({ label: e.url, value: String(e.status), body: e.body })) },
-    // Antes solo mostraba las IPs — no si el subdominio REALMENTE respondía.
-    // Con el fix de scanToolsLevel1.js, cada uno ahora trae reachable/
-    // status/error (HEAD real, no solo DNS) — se muestra acá para que un
-    // vistazo alcance para distinguir un subdominio real de un falso
-    // positivo de wildcard DNS (visto en vivo: 13 "encontrados", ninguno
-    // funcionando de verdad, mismo IP los 13).
-    { key: 'subdomains', label: t('catSubdomains'), icon: 'search', count: hl.subdomains.length,
-      items: hl.subdomains.map(s => ({
-        label: s.subdomain,
-        value: s.reachable ? `HTTP ${s.status}` : t('notResponding'),
-        detail: s.reachable ? null : s.error,
-        meta: `IP: ${(s.addresses || []).join(', ')}`,
-      })) },
-    { key: 'findings',   label: t('catFindings'), icon: 'triangle-alert', count: hl.findings.length, cls: 'findings',
-      items: hl.findings.map(f => ({
-        label: f.ev.payload.input?.name || t('unnamed'), valueHtml: _severityBadge(f.ev.payload.input?.severity),
-        body: f.ev.payload.input?.description || null,
-      })) },
-    { key: 'review',     label: t('catReview'), icon: 'triangle-alert', count: hl.review.length, cls: 'review',
-      items: hl.review.map(r => ({ label: r.label, value: '', detail: r.detail || '' })) },
-  ];
-  if (hl.wildcardWarning) {
-    categories[2].warning = hl.wildcardWarning; // el aviso de subdomain_enum, si vino
+// ── Pestaña Detalle: feed vertical de acciones de la IA ─────────────────
+// A diferencia de Chat (filtrado, solo conversación real), acá se ve CADA
+// tool.called sin importar el tier, más las líneas de sistema (inicio,
+// pausa, checkpoints...) — es el feed completo de "qué está haciendo la
+// IA", ver README del rediseño. No fabrica pasos futuros/"pendientes": solo
+// muestra lo que efectivamente ya se llamó, con su estado real (done si ya
+// tiene resultado, running si no).
+const DETALLE_SYSTEM_TYPES = new Set(['session.started', 'session.error', 'session.paused', 'session.resumed', 'session.cost_cap_reached', 'thread.started', 'turn.checkpoint']);
+
+function _detalleSystemLineText(ev) {
+  switch (ev.type) {
+    case 'session.started': return t('sessionStarted');
+    case 'session.error': return t('errorLine', { reason: ev.payload.reason });
+    case 'session.paused': return t('pausedLine');
+    case 'session.resumed': return t('resumedLine');
+    case 'session.cost_cap_reached': return t('costCapReachedLine', { cap: `$${Number(ev.payload.cap).toFixed(2)}`, spent: `$${Number(ev.payload.spent).toFixed(4)}` });
+    case 'thread.started': return t('subagentDelegated', { task: ev.payload.task });
+    case 'turn.checkpoint': return ev.payload.auto ? t('checkpointAuto', { calls: ev.payload.calls }) : t('checkpointManual', { calls: ev.payload.calls });
+    default: return ev.type;
   }
+}
 
-  el.style.display = 'flex';
+function renderDetalleTab() {
+  const el = document.getElementById('scan-panel-detalle');
+  if (!el) return;
 
-  if (!categories.some(c => c.count > 0)) {
-    el.innerHTML = `<div class="scan-highlights-empty">${esc(t('noHighlightsYet', { detail: t('detailView') }))}</div>`;
+  const resultsByCallId = {};
+  _scanEvents.forEach(ev => { if (ev.type === 'tool.result') resultsByCallId[String(ev.payload.call_id)] = ev; });
+
+  const rows = _scanEvents.filter(ev => ev.type === 'tool.called' || DETALLE_SYSTEM_TYPES.has(ev.type));
+
+  if (!rows.length) {
+    el.innerHTML = `<div class="scan-panel-heading">${esc(t('detailHeading'))}</div><div class="scan-detail-empty">${esc(t('detailEmpty'))}</div>`;
     return;
   }
 
-  // Cada chip es el ancla de su propio popover (position:relative en el
-  // wrapper, .scan-hl-detail en position:absolute) — antes el detalle vivía
-  // como bloque aparte debajo de TODA la fila de chips, empujando el
-  // transcript hacia abajo cada vez que se abría uno. Ahora abrir/cerrar no
-  // mueve nada más en la página.
-  el.innerHTML = categories.filter(c => c.count > 0).map(c => `
-    <div class="scan-hl-item-wrap">
-      <button class="scan-hl-chip ${c.cls || ''} ${_expandedHighlights.has(c.key) ? 'expanded' : ''}" onclick="event.stopPropagation();toggleHighlightCategory('${c.key}')">
-        ${icon(c.icon, { size: 13 })} ${esc(c.label)} <span class="scan-hl-count">${c.count}</span>
-      </button>
-      ${_expandedHighlights.has(c.key) ? `
-        <div class="scan-hl-detail" onclick="event.stopPropagation()">
-          ${c.warning ? `<div class="scan-hl-warning">${icon('triangle-alert', { size: 12 })} ${esc(c.warning)}</div>` : ''}
-          ${c.items.map(it => {
-            const hasMore = it.body || it.detail || it.meta;
-            const valuePart = it.valueHtml || (it.value ? `<span class="val">${esc(it.value)}</span>` : '');
-            const summary = `<span>${esc(it.label)}</span>${valuePart}`;
-            if (!hasMore) return `<div class="scan-hl-detail-item">${summary}</div>`;
-            // Click para ver la respuesta/error real — pedido explícito, antes
-            // solo se veía label+value sin poder profundizar más.
-            return `
-              <details class="scan-hl-item">
-                <summary>${summary}</summary>
-                ${it.meta ? `<div class="scan-hl-item-meta">${esc(it.meta)}</div>` : ''}
-                ${it.detail ? `<div class="scan-hl-item-error">${esc(it.detail)}</div>` : ''}
-                ${it.body ? `<pre>${esc(String(it.body).slice(0, 4000))}</pre>` : ''}
-              </details>
-            `;
-          }).join('')}
-        </div>
-      ` : ''}
+  el.innerHTML = `
+    <div class="scan-panel-heading">${esc(t('detailHeading'))}</div>
+    <div class="scan-detail-feed">
+      ${rows.map(ev => {
+        const isTool = ev.type === 'tool.called';
+        const result = isTool ? resultsByCallId[String(ev.id)] : null;
+        const status = isTool ? (result ? 'done' : 'running') : 'done';
+        const text = isTool ? ev.payload.name : _detalleSystemLineText(ev);
+        const sub = isTool ? tierTitle(ev.payload.tier ?? 0) : null;
+        const expanded = _expandedDetailIds.has(ev.id);
+        const detailObj = isTool ? { input: ev.payload.input, result: result ? result.payload.result : undefined } : ev.payload;
+        return `
+          <div class="scan-detail-row ${expanded ? 'expanded' : ''}">
+            <div class="scan-detail-row-head" onclick="toggleDetailRow('${ev.id}')">
+              <div class="scan-detail-dot ${status}"></div>
+              <div class="scan-detail-body">
+                <div class="scan-detail-text mono">${esc(text)}</div>
+                ${sub ? `<div class="scan-detail-sub">${esc(sub)}</div>` : ''}
+              </div>
+              <div class="scan-detail-time mono">${esc(timeAgo(ev.created_at))}</div>
+              <div class="scan-detail-chevron">›</div>
+            </div>
+            ${expanded ? `<div class="scan-detail-full">${esc(JSON.stringify(detailObj, null, 2))}</div>` : ''}
+          </div>
+        `;
+      }).join('')}
     </div>
-  `).join('');
+  `;
 }
 
-function toggleHighlightCategory(key) {
-  if (_expandedHighlights.has(key)) _expandedHighlights.delete(key);
-  else _expandedHighlights.add(key);
-  renderScanHighlights();
+function toggleDetailRow(eventId) {
+  if (_expandedDetailIds.has(eventId)) _expandedDetailIds.delete(eventId);
+  else _expandedDetailIds.add(eventId);
+  renderDetalleTab();
 }
-document.addEventListener('click', e => {
-  if (_expandedHighlights.size && !e.target.closest('.scan-hl-item-wrap')) {
-    _expandedHighlights.clear();
-    renderScanHighlights();
+
+// ── Pestaña Resumen: hallazgos del proyecto por severidad ───────────────
+// A diferencia de Chat/Detalle (ambos sobre _scanEvents, esta sesión
+// puntual), Resumen lee state.customVulns — los hallazgos REALES del
+// proyecto (ya confirmados/guardados), no lo que esta sesión particular
+// propuso. Ver README del rediseño: "findings... a nivel de proyecto, no
+// por sesión" — confirmado como la interpretación correcta acá.
+const SCAN_SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
+
+function renderResumenTab() {
+  const el = document.getElementById('scan-panel-resumen');
+  if (!el) return;
+
+  const vulns = state.customVulns || [];
+  const counts = {};
+  SCAN_SEV_ORDER.forEach(s => counts[s] = 0);
+  vulns.forEach(v => { const s = v.severity || 'medium'; if (counts[s] !== undefined) counts[s]++; });
+
+  const cards = SCAN_SEV_ORDER.map(sev => `
+    <div class="scan-sev-card ${sev}">
+      <div class="n">${counts[sev]}</div>
+      <div class="label">${esc(_SEV_LABELS[sev])}</div>
+    </div>
+  `).join('');
+
+  if (!vulns.length) {
+    el.innerHTML = `<div class="scan-sev-cards">${cards}</div><div class="scan-panel-heading">${esc(t('resumenHeading'))}</div><div class="scan-detail-empty">${esc(t('resumenEmpty'))}</div>`;
+    return;
   }
-});
+
+  const sorted = [...vulns].sort((a, b) => SCAN_SEV_ORDER.indexOf(a.severity || 'medium') - SCAN_SEV_ORDER.indexOf(b.severity || 'medium'));
+  const rows = sorted.map(v => {
+    const sev = v.severity || 'medium';
+    const remStatus = v.remediation_status || 'open';
+    const tag = remStatus !== 'open' ? t(`rem_${remStatus}`) : null;
+    return `
+      <div class="scan-findings-row">
+        <span class="scan-sev-badge ${sev}">${esc(_SEV_LABELS[sev])}</span>
+        <span class="text">${esc(v.name)}</span>
+        ${tag ? `<span class="scan-findings-tag">${esc(tag)}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="scan-sev-cards">${cards}</div>
+    <div class="scan-panel-heading">${esc(t('resumenHeading'))}</div>
+    <div class="scan-findings-table">${rows}</div>
+  `;
+}
 
 async function switchScanSession(id) {
   clearTimeout(_liveActivityDebounceTimer);
@@ -792,13 +866,11 @@ async function switchScanSession(id) {
     _scanSession = null;
     _scanThreads = [];
     renderEmptyState();
-    renderControls();
     renderInputRow();
-    renderContextStrip();
+    renderSessionPicker();
     renderThreadsStrip();
-    renderViewToggle();
-    renderLiveActivity();
-    renderScanHighlights();
+    renderTabsBar();
+    renderStatusStrip();
     return;
   }
   await loadSession(id);
@@ -809,21 +881,35 @@ async function loadSession(sessionId) {
   _scanSession = data.session;
   _scanEvents  = data.events;
   _scanThreads = data.threads || [];
-  _expandedHighlights = new Set(); // sesión distinta — sin nada abierto todavía
-  renderContextStrip();
+  _expandedDetailIds = new Set(); // sesión distinta — sin nada abierto todavía
+  _scanActiveTab = 'chat'; // volvemos siempre a Chat al cambiar de sesión
+  _showScanPanels(true);
+  renderSessionPicker();
   renderThreadsStrip();
-  renderViewToggle();
-  renderLiveActivity();
-  renderScanHighlights();
-  renderControls();
+  renderTabsBar();
+  renderStatusStrip();
   renderInputRow();
   renderTranscript();
+  renderActiveTabPanel();
+}
+
+// Sin sesión activa (todavía no se arrancó ninguna, o se acaba de borrar/
+// deseleccionar) las pestañas y sus paneles no tienen nada que mostrar — se
+// esconden del todo y el formulario de arranque ocupa ese espacio. Con una
+// sesión sí, es al revés. Un solo lugar para esta decisión evita tener que
+// acordarse de tocar los 3 elementos en cada punto que cambia _scanSession.
+function _showScanPanels(show) {
+  const panels = document.getElementById('scan-tab-panels');
+  const emptyWrap = document.getElementById('scan-empty-wrap');
+  if (panels) panels.style.display = show ? 'flex' : 'none';
+  if (show && emptyWrap) emptyWrap.innerHTML = '';
 }
 
 // ── Arrancar una sesión nueva ─────────────────────────────────────────
 function renderEmptyState() {
+  _showScanPanels(false);
   const inScopeTargets = (state.targets || []).filter(t => t.scope === 'in');
-  const el = document.getElementById('scan-transcript');
+  const el = document.getElementById('scan-empty-wrap');
   // "Escanear con AI Agent" en Targets manda acá con ?target=<id> — pedido
   // explícito de integrarse mejor con el ecosistema, en vez de tener que
   // volver a elegir el target a mano después de ya haberlo abierto en
@@ -930,19 +1016,85 @@ async function scanStartSession() {
   }
 }
 
-// ── Controles (pausar/reanudar/interrumpir) + estado de la sesión ──────
-function renderControls() {
-  const el = document.getElementById('scan-controls-top');
+// ── Status strip: estado global + contadores + Pausar/Interrumpir ──────
+// Reemplaza al viejo .scan-toolbar (contexto + controles + highlights en 3
+// piezas separadas) — ver README del rediseño. Se reconstruye entera en
+// cada llamada (barato: solo arreglos en memoria + un computeScanHighlights
+// sobre los eventos ya cargados), incluyendo el <span> de actividad en vivo
+// que renderLiveActivity() puebla al final — un solo punto de entrada en
+// vez de tener que acordarse de llamar a los dos por separado en cada sitio.
+function renderStatusStrip() {
+  const el = document.getElementById('scan-status-strip');
+  if (!el) return;
   if (!_scanSession) { el.innerHTML = ''; return; }
+
   const s = _scanSession.status;
+  const dotColor = _sessionStatusColorVar(s);
+  const inScope  = (state.targets || []).filter(tg => tg.scope === 'in').length;
+  const findings = (state.customVulns || []).length;
+  const hl = computeScanHighlights(_scanEvents);
+
   let actions = '';
   if (s === 'running') {
-    actions = `<button class="btn" onclick="scanPause()">${icon('pause', { size: 13 })} ${esc(t('pause'))}</button><button class="btn-secondary" onclick="scanInterruptPrompt()">${icon('zap', { size: 13 })} ${esc(t('interrupt'))}</button>`;
+    actions = `<button class="scan-btn-pause" onclick="scanPause()">${icon('pause', { size: 13 })} ${esc(t('pause'))}</button><button class="scan-btn-interrupt" onclick="scanInterruptPrompt()">${icon('zap', { size: 13 })} ${esc(t('interrupt'))}</button>`;
   } else if (s === 'paused') {
-    actions = `<button class="btn btn-prim" onclick="scanResume()">${icon('play', { size: 13 })} ${esc(t('resume'))}</button>`;
+    actions = `<button class="scan-btn-resume" onclick="scanResume()">${icon('play', { size: 13 })} ${esc(t('resume'))}</button>`;
   }
-  el.innerHTML = `<span class="scan-status-badge ${s}">${esc(statusLabel(s))}</span>${actions}`;
+
+  el.innerHTML = `
+    <div class="scan-status-dot-label">
+      <span class="dot" style="background:${dotColor}"></span>
+      <span class="label" style="color:${dotColor}">${esc(statusLabel(s))}</span>
+    </div>
+    <div class="scan-status-sep"></div>
+    <div class="scan-counter"><span class="n">${inScope}</span><span class="label">${esc(t(inScope === 1 ? 'inScopeLabel' : 'inScopeLabel_other'))}</span></div>
+    <div class="scan-counter${findings ? ' clickable' : ''}" ${findings ? `onclick="scanSelectTab('resumen')"` : ''}><span class="n">${findings}</span><span class="label">${esc(t('findingsLabel'))}</span></div>
+    ${_counterPopoverWrap('endpoints', hl.endpoints.length, t('endpointsLabel'), hl.endpoints, e => `
+      <div class="scan-counter-popover-row"><span class="mono url">${esc(e.url)}</span><span class="status">${esc(String(e.status))}</span></div>
+    `)}
+    ${hl.review.length ? _counterPopoverWrap('review', hl.review.length, t('reviewLabel'), hl.review, r => `
+      <div class="scan-counter-popover-row col"><span class="label">${esc(r.label)}</span><span class="detail mono">${esc(r.detail || '')}</span></div>
+    `, true) : ''}
+    <div class="scan-status-spacer"></div>
+    <div class="scan-live-activity mono" id="scan-live-activity"></div>
+    <div class="scan-status-actions">${actions}</div>
+  `;
+  renderLiveActivity();
 }
+
+// Contador clickeable del status strip que despliega su contenido real —
+// antes (pre-rediseño) esto vivía en la vieja UI de chips; el rediseño lo
+// redujo a un número plano sin forma de ver qué hay detrás. `accentN`
+// pinta el número en el color de acento (usado para "para revisar").
+function _counterPopoverWrap(key, count, label, items, renderItem, accentN) {
+  const clickable = count > 0;
+  const open = clickable && _scanCounterPopoverOpen === key;
+  const onclick = clickable ? `onclick="event.stopPropagation();toggleCounterPopover('${key}')"` : '';
+  return `
+    <div class="scan-counter-popover-wrap">
+      <div class="scan-counter${clickable ? ' clickable' : ''}" ${onclick}>
+        <span class="n${accentN ? ' accent' : ''}">${count}</span><span class="label">${esc(label)}</span>
+      </div>
+      ${clickable ? `
+      <div class="scan-counter-popover ${open ? 'open' : ''}">
+        <div class="scan-counter-popover-head">${esc(label)}</div>
+        <div class="scan-counter-popover-list">${items.map(renderItem).join('')}</div>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+function toggleCounterPopover(key) {
+  _scanCounterPopoverOpen = _scanCounterPopoverOpen === key ? null : key;
+  renderStatusStrip();
+}
+
+function closeCounterPopovers() {
+  if (!_scanCounterPopoverOpen) return;
+  _scanCounterPopoverOpen = null;
+  renderStatusStrip();
+}
+document.addEventListener('click', e => { if (!e.target.closest('.scan-counter-popover-wrap')) closeCounterPopovers(); });
 
 function renderInputRow() {
   const row   = document.getElementById('scan-input-row');
@@ -961,21 +1113,19 @@ function renderInputRow() {
         : t('chatPlaceholder');
 }
 
-// En modo simple, las tools de Nivel 0/1 (ruido individual — cada
-// fetch_endpoint, cada port_scan) quedan resumidas en las tarjetas de
-// highlights en vez de listarse una por una. La conversación real (chat,
-// gates de Nivel 2/3, reportes de sub-agentes, líneas de sistema) se
-// muestra en los dos modos — eso no es "ruido", es lo importante.
+// Chat es SIEMPRE la vista filtrada — las tools de Nivel 0/1 (ruido
+// individual: cada fetch_endpoint, cada port_scan) no aparecen acá, ver
+// Detalle (renderDetalleTab()) para el feed completo con cada una. La
+// conversación real (chat, gates de Nivel 2/3, reportes de sub-agentes,
+// líneas de sistema) sí se muestra siempre — eso no es "ruido".
 function shouldRenderInTranscript(ev) {
-  if (_scanViewMode === 'advanced') return true;
   if (ev.type === 'tool.called' && (ev.payload.tier ?? 0) < 2) return false;
   return true;
 }
 
 // ── Transcript ───────────────────────────────────────────────────────
-// Rebuild completo — para cargar/cambiar de sesión (loadSession()) y para
-// un cambio de modo (setScanViewMode()), donde cambia qué se filtra. Acá
-// está bien tirar todo el DOM: no hay nada que preservar en esos casos.
+// Rebuild completo — solo para cargar/cambiar de sesión (loadSession()).
+// Acá está bien tirar todo el DOM: no hay nada que preservar en ese caso.
 function renderTranscript() {
   const el = document.getElementById('scan-transcript');
   scanBindTranscriptScroll();
@@ -1445,7 +1595,7 @@ function handleScanEvent(msg) {
     // una nueva, por ejemplo) — no tocamos la vista actual, solo refrescamos
     // el picker por si hay que ofrecerla como opción.
     if (!_scanSessions.some(s => s.id === msg.session_id)) {
-      api.aiScan.listSessions(state.currentProject.id).then(list => { _scanSessions = list; renderContextStrip(); }).catch(() => {});
+      api.aiScan.listSessions(state.currentProject.id).then(list => { _scanSessions = list; renderSessionPicker(); }).catch(() => {});
     }
     return;
   }
@@ -1465,13 +1615,12 @@ function handleScanEvent(msg) {
     const t = _scanThreads.find(th => th.id === msg.event.payload.thread_id);
     if (t) t.status = 'completed';
   }
-  renderControls();
   renderInputRow();
   appendLiveEvent(msg.event);
-  renderContextStrip();
+  renderSessionPicker();
   renderThreadsStrip();
-  renderLiveActivity(); // barato — solo mira el último tool.called sin resultado
-  if (_scanViewMode === 'simple') renderScanHighlights(); // recompute barato (agrega sobre todos los eventos) — solo si se está viendo
+  renderStatusStrip(); // barato — recomputa contadores + actividad en vivo sobre los eventos ya en memoria
+  renderActiveTabPanel(); // no-op si Chat está activa; recompute barato de Detalle/Resumen si no
 }
 
 // ── Acciones del pentester ──────────────────────────────────────────────
