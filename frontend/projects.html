@@ -156,7 +156,7 @@ async function bootProjects() {
   }
 
   const oid = new URLSearchParams(window.location.search).get('oid');
-  if (oid && state.orgs.some(o => o.id === oid)) _orgFilter = oid;
+  if (oid && filterOrgs().some(o => o.id === oid)) _orgFilter = oid;
 
   renderOrgFilter();
   renderProjects();
@@ -164,15 +164,30 @@ async function bootProjects() {
 }
 
 // ── ORG FILTER ────────────────────────────────────────────────────
+// Orgs offered as filters: the ones the user belongs to, plus the orgs of
+// projects shared with them directly (a project member need not be an org
+// member). state.orgs stays membership-only: it feeds the New Project select.
+function filterOrgs() {
+  const orgs = [...state.orgs];
+  const known = new Set(orgs.map(o => o.id));
+  for (const p of state.projects) {
+    if (!p.organization_id || known.has(p.organization_id)) continue;
+    known.add(p.organization_id);
+    orgs.push({ id: p.organization_id, name: p.organization_name || 'Organization' });
+  }
+  return orgs;
+}
+
 function renderOrgFilter() {
   const el = document.getElementById('org-filter-row');
-  if (!state.orgs.length) { el.innerHTML = ''; return; }
+  const orgs = filterOrgs();
+  if (!orgs.length) { el.innerHTML = ''; return; }
   const pill = (id, label, active) =>
     `<button class="btn-secondary${active ? ' active' : ''}" style="padding:5px 12px;font-size:11px${active ? ';background:var(--a-dim);border-color:var(--a);color:var(--a)' : ''}" onclick="setOrgFilter(${id === null ? 'null' : `'${id}'`})">${esc(label)}</button>`;
   el.innerHTML = `
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:16px">
       ${pill(null, 'All', _orgFilter === null)}
-      ${state.orgs.map(o => pill(o.id, o.name, _orgFilter === o.id)).join('')}
+      ${orgs.map(o => pill(o.id, o.name, _orgFilter === o.id)).join('')}
     </div>`;
 }
 
