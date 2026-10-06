@@ -447,7 +447,8 @@ function buildTicketsSection(tickets) {
   const STATUS_LABEL = { open:'open', in_review:'in review', closed:'closed' };
 
   const rows = tickets.map(t => {
-    const author = t.opened_by_display_name || t.opened_by_username || t.client_name || 'Client';
+    // Portal sessions get a single opened_by_name; a viewer account gets the raw fields
+    const author = t.opened_by_name || t.opened_by_display_name || t.opened_by_username || t.client_name || 'Client';
     return `
     <div class="client-ticket-row" onclick="openTicketDetail('${t.id}')">
       <div style="width:5px;height:5px;border-radius:50%;background:${STATUS_COL[t.status]||'var(--t3)'};flex-shrink:0;margin-top:4px"></div>
@@ -527,15 +528,16 @@ async function openTicketDetail(ticketId) {
     const myPortalName = api.portal.session.name || null;
     const replies = (ticket.replies||[]).map(r => {
       // A reply is "mine" if it came from this portal session (matched by name) or same user id
-      const authorName = r.author_display_name || r.author_username || r.client_name || 'Client';
-      const isTeam  = !!r.author_id;
+      // Portal sessions get author_name + is_team (no user ids); a viewer account gets the raw fields
+      const authorName = r.author_name || r.author_display_name || r.author_username || r.client_name || 'Client';
+      const isTeam  = r.is_team ?? !!r.author_id;
       const isMe    = !isTeam && (myPortalName ? authorName === myPortalName : true);
       const color   = isTeam ? roleColor('editor') : roleColor('viewer');
       return `
         <div style="display:flex;gap:8px;${isMe?'flex-direction:row-reverse':''}">
           ${avatarHtml(authorName, color, 24, null)}
           <div style="max-width:80%;display:flex;flex-direction:column;gap:2px;${isMe?'align-items:flex-end':''}">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(authorName)}${isTeam ? ' <span style="color:var(--a)">· team</span>' : ''} · ${relativeDate(r.created_at)}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(authorName)}${isTeam ? ' <span style="color:var(--a)">· team</span>' : ''}${r.created_at ? ` · ${relativeDate(r.created_at)}` : ''}</div>
             <div style="background:${isTeam?'var(--a-dim)':isMe?'var(--bg3)':'var(--bg2)'};border:1px solid ${isTeam?'rgba(245,158,11,.2)':'var(--b1)'};border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.6;white-space:pre-wrap">${esc(r.body)}</div>
           </div>
         </div>`;

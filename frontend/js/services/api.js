@@ -204,7 +204,6 @@ const api = {
     setProgress: (methodId, projectId, testIdx, d) =>
                                               request('PATCH',  `/methodologies/${methodId}/progress/${projectId}/${testIdx}`, d),
     // project-active endpoints
-    getActive:   (projectId)           => request('GET',    `/methodologies/project/${projectId}`),
     activate:        (methodId, projectId, active) =>
                                               request('PATCH',  `/methodologies/${methodId}/activate/${projectId}`, { active }),
     projectProgress: (projectId)             => request('GET',   `/methodologies/project-progress/${projectId}`),

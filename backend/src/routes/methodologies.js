@@ -5,7 +5,11 @@ const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireWriter } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 
-router.use(requireAuth);
+// Methodologies are internal working material (test status, pentester notes,
+// target hosts) — never client-facing. A portal session gets nothing here,
+// not even the library list; the client portal only shows WSTG progress,
+// gated by its own visibility flags.
+router.use(requireAuth, requireUser);
 
 // ── METHODOLOGY LIBRARY (user-scoped, no project needed) ──────────
 
@@ -25,7 +29,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST create methodology
-router.post('/', requireUser, [
+router.post('/', [
   body('name').trim().isLength({ min:1, max:200 }),
 ], async (req, res, next) => {
   const errors = validationResult(req);
@@ -42,7 +46,7 @@ router.post('/', requireUser, [
 });
 
 // PATCH update methodology (owner only)
-router.patch('/:methodId', requireUser, async (req, res, next) => {
+router.patch('/:methodId', async (req, res, next) => {
   const allowed = ['name','description','is_shared','tests'];
   const updates = [], values = [];
   allowed.forEach(f => {
@@ -65,7 +69,7 @@ router.patch('/:methodId', requireUser, async (req, res, next) => {
 });
 
 // DELETE methodology (owner only)
-router.delete('/:methodId', requireUser, async (req, res, next) => {
+router.delete('/:methodId', async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM methodologies WHERE id=$1 AND owner_id=$2 RETURNING name`,
@@ -127,36 +131,6 @@ router.patch('/:methodId/progress/:projectId/:testIdx', requireProjectAccess, re
       vals
     );
     res.json({ ok:true, editor:{ id:req.user.id, username:req.user.username, display_name:req.user.display_name || null, avatar_color:req.user.avatar_color }, updated_at: new Date() });
-  } catch (err) { next(err); }
-});
-
-// ── PROJECT ACTIVE METHODOLOGIES ─────────────────────────────────
-
-// GET active methodologies for a project (with progress summary)
-router.get('/project/:projectId', requireProjectAccess, async (req, res, next) => {
-  try {
-    const { rows } = await db.query(
-      `SELECT m.*,
-              u.username AS owner_username, u.display_name AS owner_display_name,
-              COALESCE(
-                json_object_agg(mp.test_idx, json_build_object(
-                  'status', mp.status,
-                  'note', mp.note,
-                  'target_id', mp.target_id
-                )) FILTER (WHERE mp.test_idx IS NOT NULL),
-                '{}'
-              ) AS progress
-       FROM project_methodologies pm
-       JOIN methodologies m ON m.id = pm.methodology_id
-       JOIN users u ON u.id = m.owner_id
-       LEFT JOIN methodology_progress mp
-         ON mp.methodology_id = m.id AND mp.project_id = $1
-       WHERE pm.project_id = $1
-       GROUP BY m.id, u.username, u.display_name
-       ORDER BY pm.added_at`,
-      [req.params.projectId]
-    );
-    res.json(rows);
   } catch (err) { next(err); }
 });
 

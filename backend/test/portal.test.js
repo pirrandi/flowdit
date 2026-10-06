@@ -159,3 +159,236 @@ test('portal client can open a query without linking a finding', async () => {
     assert.equal(res.body.vuln_id, null);
   }
 });
+
+// Add a registered user to the project with the given role via an invite code.
+async function addMember(ownerToken, projectId, role) {
+  const user = await registerUser();
+  const invite = await request(app)
+    .post(`/api/projects/${projectId}/invites`)
+    .set(auth(ownerToken))
+    .send({ role });
+  assert.equal(invite.status, 201);
+  const join = await request(app)
+    .post('/api/projects/join')
+    .set(auth(user.accessToken))
+    .send({ token: invite.body.token });
+  assert.equal(join.status, 200);
+  return user;
+}
+
+async function createTicket(token, projectId, body) {
+  const res = await request(app)
+    .post(`/api/projects/${projectId}/tickets`)
+    .set(auth(token))
+    .send(body);
+  assert.equal(res.status, 201);
+  return res.body;
+}
+
+test('portal session is refused on every methodology route and on report-config', async () => {
+  const { owner, project, portalToken } = await setupPortal({ show_wstg_progress: true, show_wstg_notes: true, show_targets: true });
+
+  const method = await request(app)
+    .post('/api/methodologies')
+    .set(auth(owner.accessToken))
+    .send({ name: 'Internal checklist', tests: [{ name: 'Check A' }] });
+  assert.equal(method.status, 201);
+  const mid = method.body.id;
+  await request(app)
+    .patch(`/api/methodologies/${mid}/progress/${project.id}/0`)
+    .set(auth(owner.accessToken))
+    .send({ status: 'fail', note: 'internal pentester note' });
+  await request(app)
+    .patch(`/api/methodologies/${mid}/activate/${project.id}`)
+    .set(auth(owner.accessToken))
+    .send({ active: true });
+
+  const paths = [
+    '/api/methodologies',
+    `/api/methodologies/${mid}/progress/${project.id}`,
+    `/api/methodologies/project-progress/${project.id}`,
+    `/api/projects/${project.id}/report-config`,
+  ];
+  for (const path of paths) {
+    const portal = await request(app).get(path).set(auth(portalToken));
+    assert.equal(portal.status, 403, `${path} should be 403 for portal`);
+    const team = await request(app).get(path).set(auth(owner.accessToken));
+    assert.equal(team.status, 200, `${path} should stay 200 for the owner`);
+  }
+
+  // The dead (and broken) active-methodologies route is gone.
+  const dead = await request(app)
+    .get(`/api/methodologies/project/${project.id}`)
+    .set(auth(owner.accessToken));
+  assert.equal(dead.status, 404);
+});
+
+test('only the owner receives portal_token in project get and list', async () => {
+  const { owner, project } = await setupPortal();
+
+  const own = await request(app).get(`/api/projects/${project.id}`).set(auth(owner.accessToken));
+  assert.ok(own.body.portal_token, 'owner gets the portal token');
+  const ownList = await request(app).get('/api/projects').set(auth(owner.accessToken));
+  assert.ok(ownList.body.find(p => p.id === project.id).portal_token);
+
+  for (const role of ['viewer', 'pentester', 'editor']) {
+    const member = await addMember(owner.accessToken, project.id, role);
+    const one = await request(app).get(`/api/projects/${project.id}`).set(auth(member.accessToken));
+    assert.equal(one.status, 200);
+    assert.equal(one.body.member_role, role);
+    assert.equal(one.body.portal_token, undefined, `${role} must not get portal_token (get)`);
+    const list = await request(app).get('/api/projects').set(auth(member.accessToken));
+    const row = list.body.find(p => p.id === project.id);
+    assert.ok(row);
+    assert.equal(row.portal_token, undefined, `${role} must not get portal_token (list)`);
+  }
+});
+
+test('portal does not see the name of an unpublished finding linked to a ticket', async () => {
+  const { owner, project, portalToken } = await setupPortal({ tickets_enabled: true });
+  const draft = await createFinding(owner.accessToken, project.id, { name: 'Secret draft finding', severity: 'high' });
+  const ticket = await createTicket(owner.accessToken, project.id, { title: 'About the draft', vuln_id: draft.id });
+
+  const list = await request(app).get(`/api/projects/${project.id}/tickets`).set(auth(portalToken));
+  assert.equal(list.status, 200);
+  assert.equal(list.body[0].vuln_name, null);
+  assert.equal(list.body[0].vuln_id, null);
+  const one = await request(app).get(`/api/projects/${project.id}/tickets/${ticket.id}`).set(auth(portalToken));
+  assert.equal(one.status, 200);
+  assert.equal(one.body.vuln_name, null);
+
+  // Team still sees it.
+  const team = await request(app).get(`/api/projects/${project.id}/tickets/${ticket.id}`).set(auth(owner.accessToken));
+  assert.equal(team.body.vuln_name, 'Secret draft finding');
+
+  // Once published, the portal sees the name too.
+  await request(app)
+    .patch(`/api/projects/${project.id}/vulns/${draft.id}`)
+    .set(auth(owner.accessToken))
+    .send({ client_visible: true });
+  const after = await request(app).get(`/api/projects/${project.id}/tickets/${ticket.id}`).set(auth(portalToken));
+  assert.equal(after.body.vuln_name, 'Secret draft finding');
+  assert.equal(after.body.vuln_id, draft.id);
+});
+
+test('portal cannot link a ticket to an unpublished finding', async () => {
+  const { owner, project, portalToken } = await setupPortal({ tickets_enabled: true });
+  const draft = await createFinding(owner.accessToken, project.id, { name: 'Draft', severity: 'low' });
+  const res = await request(app)
+    .post(`/api/projects/${project.id}/tickets`)
+    .set(auth(portalToken))
+    .send({ title: 'Question', vuln_id: draft.id });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, 'Finding not available');
+
+  await request(app)
+    .patch(`/api/projects/${project.id}/vulns/${draft.id}`)
+    .set(auth(owner.accessToken))
+    .send({ client_visible: true });
+  const ok = await request(app)
+    .post(`/api/projects/${project.id}/tickets`)
+    .set(auth(portalToken))
+    .send({ title: 'Question', vuln_id: draft.id });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.body.vuln_id, draft.id);
+});
+
+test('portal cannot reply to a closed query; the team still can', async () => {
+  const { owner, project, portalToken } = await setupPortal({ tickets_enabled: true });
+  const ticket = await createTicket(portalToken, project.id, { title: 'Done question' });
+  const close = await request(app)
+    .patch(`/api/projects/${project.id}/tickets/${ticket.id}`)
+    .set(auth(owner.accessToken))
+    .send({ status: 'closed' });
+  assert.equal(close.status, 200);
+
+  const portal = await request(app)
+    .post(`/api/projects/${project.id}/tickets/${ticket.id}/replies`)
+    .set(auth(portalToken))
+    .send({ body: 'one more thing' });
+  assert.equal(portal.status, 409);
+
+  const team = await request(app)
+    .post(`/api/projects/${project.id}/tickets/${ticket.id}/replies`)
+    .set(auth(owner.accessToken))
+    .send({ body: 'closing note' });
+  assert.equal(team.status, 201);
+});
+
+test('ticket description and reply body are capped at 10000 characters', async () => {
+  const { owner, project, portalToken } = await setupPortal({ tickets_enabled: true });
+  const long = 'x'.repeat(10001);
+
+  for (const token of [portalToken, owner.accessToken]) {
+    const res = await request(app)
+      .post(`/api/projects/${project.id}/tickets`)
+      .set(auth(token))
+      .send({ title: 'Long', description: long });
+    assert.equal(res.status, 400);
+  }
+
+  const ticket = await createTicket(portalToken, project.id, { title: 'Short', description: 'x'.repeat(10000) });
+  for (const token of [portalToken, owner.accessToken]) {
+    const res = await request(app)
+      .post(`/api/projects/${project.id}/tickets/${ticket.id}/replies`)
+      .set(auth(token))
+      .send({ body: long });
+    assert.equal(res.status, 400);
+  }
+});
+
+test('portal ticket chat hides team identity and, when switched on, timestamps', async () => {
+  const { owner, project, portalToken } = await setupPortal({ tickets_enabled: true, portal_hide_log_times: true });
+  const ticket = await createTicket(owner.accessToken, project.id, { title: 'Team question' });
+  await request(app)
+    .post(`/api/projects/${project.id}/tickets/${ticket.id}/replies`)
+    .set(auth(owner.accessToken))
+    .send({ body: 'team answer' });
+  await request(app)
+    .post(`/api/projects/${project.id}/tickets/${ticket.id}/replies`)
+    .set(auth(portalToken))
+    .send({ body: 'client answer', client_name: 'Alice' });
+
+  const internal = ['author_id', 'author_username', 'author_display_name', 'author_color',
+    'opened_by', 'opened_by_username', 'opened_by_display_name', 'opened_by_color', 'github_url'];
+
+  const res = await request(app).get(`/api/projects/${project.id}/tickets/${ticket.id}`).set(auth(portalToken));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.created_at, null);
+  assert.equal(res.body.updated_at, null);
+  assert.equal(res.body.is_team, true);
+  assert.equal(res.body.opened_by_name, owner.user.username);
+  for (const f of internal) assert.equal(res.body[f], undefined, `ticket must not expose ${f}`);
+  assert.equal(res.body.replies.length, 2);
+  const [team, client] = res.body.replies;
+  assert.deepEqual([team.is_team, team.author_name], [true, owner.user.username]);
+  assert.deepEqual([client.is_team, client.author_name], [false, 'Alice']);
+  for (const r of res.body.replies) {
+    assert.equal(r.created_at, null, 'reply time must be hidden');
+    for (const f of internal) assert.equal(r[f], undefined, `reply must not expose ${f}`);
+  }
+
+  const list = await request(app).get(`/api/projects/${project.id}/tickets`).set(auth(portalToken));
+  for (const f of internal) assert.equal(list.body[0][f], undefined, `ticket list must not expose ${f}`);
+  assert.equal(list.body[0].updated_at, null);
+
+  // The team keeps the full view.
+  const teamRes = await request(app).get(`/api/projects/${project.id}/tickets/${ticket.id}`).set(auth(owner.accessToken));
+  assert.ok(teamRes.body.opened_by_username);
+  assert.ok(teamRes.body.replies[0].author_id);
+  assert.ok(teamRes.body.replies[0].author_username);
+  assert.ok(teamRes.body.replies[0].created_at);
+});
+
+test('portal ticket chat keeps timestamps when the switch is off', async () => {
+  const { owner, project, portalToken } = await setupPortal({ tickets_enabled: true, portal_hide_log_times: false });
+  const ticket = await createTicket(owner.accessToken, project.id, { title: 'Q' });
+  await request(app)
+    .post(`/api/projects/${project.id}/tickets/${ticket.id}/replies`)
+    .set(auth(owner.accessToken))
+    .send({ body: 'answer' });
+  const res = await request(app).get(`/api/projects/${project.id}/tickets/${ticket.id}`).set(auth(portalToken));
+  assert.ok(res.body.created_at);
+  assert.ok(res.body.replies[0].created_at);
+  assert.equal(res.body.replies[0].author_id, undefined);
+});

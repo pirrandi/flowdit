@@ -18,9 +18,13 @@ router.use(requireAuth);
 // también.
 const AI_KEY_PROVIDERS = ALL_AI_PROVIDERS.filter(p => p !== 'custom');
 
-// Strip secrets from project objects — frontend only needs boolean flags
-function sanitizeProject(p) {
+// Strip secrets from project objects — frontend only needs boolean flags.
+// `role` is the caller's effective project role: the client portal link token
+// is only handed to the owner (the only role that can generate it); anyone
+// else holding it could mint portal sessions behind the owner's back.
+function sanitizeProject(p, role) {
   const out = { ...p };
+  if (role !== 'owner') delete out.portal_token;
   out.has_portal_password = !!out.portal_password_hash;
   out.has_github_pat = !!out.github_pat_enc;
   out.ai_api_keys_set = Object.fromEntries(AI_KEY_PROVIDERS.map(k => [k, !!out.ai_api_keys_enc?.[k]]));
@@ -79,7 +83,7 @@ router.get('/', async (req, res, next) => {
        ORDER BY p.updated_at DESC`,
       [req.user.id]
     );
-    res.json(rows.map(sanitizeProject));
+    res.json(rows.map(r => sanitizeProject(r, r.member_role)));
   } catch (err) { next(err); }
 });
 
@@ -112,13 +116,13 @@ router.post('/', [
       `INSERT INTO project_members (project_id, user_id, role) VALUES ($1,$2,'owner')`,
       [project.id, req.user.id]
     );
-    res.status(201).json(sanitizeProject({ ...project, member_role:'owner' }));
+    res.status(201).json(sanitizeProject({ ...project, member_role:'owner' }, 'owner'));
   } catch (err) { next(err); }
 });
 
 // GET /projects/:projectId
 router.get('/:projectId', requireProjectAccess, (req, res) =>
-  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : sanitizeProject(req.project)));
+  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : sanitizeProject(req.project, req.memberRole)));
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
@@ -175,11 +179,11 @@ router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res,
     }
   }
 
-  if (!updates.length) return res.json(sanitizeProject(req.project));
+  if (!updates.length) return res.json(sanitizeProject(req.project, req.memberRole));
   values.push(req.params.projectId);
   try {
     const { rows } = await db.query(`UPDATE projects SET ${updates.join(',')} WHERE id=$${values.length} RETURNING *`, values);
-    res.json(sanitizeProject(rows[0]));
+    res.json(sanitizeProject(rows[0], req.memberRole));
   } catch (err) { next(err); }
 });
 

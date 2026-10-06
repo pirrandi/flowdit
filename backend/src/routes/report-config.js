@@ -1,9 +1,11 @@
 const router = require('express').Router({ mergeParams: true });
 const db     = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireLead } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess);
+// The report builder config is the team's working draft of the deliverable,
+// not something the client portal reads — portal sessions are refused.
+router.use(requireAuth, requireUser, requireProjectAccess);
 
 // Guard against a runaway payload filling the column: the report config is
 // text + layout, never binary evidence (that lives on the vuln rows).
