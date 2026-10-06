@@ -380,7 +380,9 @@ function buildClientSettings(p) {
 
 function buildPortalLinkSection(p) {
   const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login`;
-  const link = p.portal_token ? `${base}?token=${p.portal_token}` : null;
+  // Token in the fragment: browsers never send it to the server, so it stays
+  // out of nginx logs and Referer headers.
+  const link = p.portal_token ? `${base}#token=${p.portal_token}` : null;
 
   return `
     <div style="margin-top:8px;padding-top:14px;border-top:1px solid var(--b1)">

@@ -192,6 +192,14 @@ router.post('/:projectId/portal/token', requireProjectAccess, requireOwner, asyn
   const token = crypto.randomBytes(24).toString('hex');
   try {
     await db.query('UPDATE projects SET portal_token=$1 WHERE id=$2', [token, req.params.projectId]);
+    // Audit trail: who issued (or rotated, revoking the old one) the client link.
+    await activity.log({
+      projectId:  req.params.projectId,
+      user:       req.user,
+      action:     'portal_link_generated',
+      entityType: 'portal',
+      meta:       { regenerated: !!req.project.portal_token },
+    });
     res.json({ portal_token: token });
   } catch (err) { next(err); }
 });

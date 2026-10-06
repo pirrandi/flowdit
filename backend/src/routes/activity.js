@@ -9,7 +9,7 @@ router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_activity'
 // reach the client portal (even with show_activity on): task assignment and
 // progress are the team's internal coordination, not engagement progress.
 // Code-defined constants, never user input.
-const PORTAL_HIDDEN_ENTITIES = ['task', 'organization'];
+const PORTAL_HIDDEN_ENTITIES = ['task', 'organization', 'portal'];
 
 // GET /projects/:projectId/activity?limit=50&offset=0
 router.get('/', async (req, res, next) => {

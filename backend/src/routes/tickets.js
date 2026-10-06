@@ -339,7 +339,7 @@ router.post('/:ticketId/replies', [
         );
         const proj       = projRows[0];
         const portalUrl  = proj?.portal_token
-          ? `${process.env.FRONTEND_URL || ''}/client-login.html?token=${proj.portal_token}`
+          ? `${process.env.FRONTEND_URL || ''}/client-login#token=${proj.portal_token}`
           : null;
         mailer.sendTicketReplyNotification({
           toEmail:     ticket[0].client_email,

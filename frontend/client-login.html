@@ -146,8 +146,19 @@ async function boot() {
     return;
   }
 
+  // Links carry the token in the fragment (#token=), which never reaches the
+  // server or its logs; ?token= is still accepted for links issued before.
   const params = new URLSearchParams(window.location.search);
-  _portalToken = params.get('token');
+  const hash   = new URLSearchParams(window.location.hash.slice(1));
+  _portalToken = hash.get('token') || params.get('token');
+  // Drop the bearer token from the address bar right away (it stays in memory
+  // for the password flow), so it doesn't linger in history, screenshots or
+  // screen shares.
+  if (_portalToken) {
+    params.delete('token');
+    const qs = params.toString();
+    history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+  }
 
   hide('loading-overlay');
   document.getElementById('cl-card').style.display = 'block';

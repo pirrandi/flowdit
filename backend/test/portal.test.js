@@ -392,3 +392,29 @@ test('portal ticket chat keeps timestamps when the switch is off', async () => {
   assert.ok(res.body.replies[0].created_at);
   assert.equal(res.body.replies[0].author_id, undefined);
 });
+
+test('generating and rotating the portal link is audited and hidden from the portal feed', async () => {
+  const { owner, project, portalToken } = await setupPortal({ show_activity: true });
+  // setupPortal generated the first link; rotate it once.
+  const rot = await request(app)
+    .post(`/api/projects/${project.id}/portal/token`)
+    .set(auth(owner.accessToken));
+  assert.equal(rot.status, 200);
+
+  const { rows } = await db.query(
+    `SELECT meta FROM activity_log WHERE project_id=$1 AND action='portal_link_generated' ORDER BY created_at`,
+    [project.id]
+  );
+  assert.deepEqual(rows.map(r => r.meta.regenerated), [false, true]);
+
+  const team = await request(app).get(`/api/projects/${project.id}/activity`).set(auth(owner.accessToken));
+  assert.ok(team.body.some(e => e.action === 'portal_link_generated'));
+
+  // The old portal session is revoked by the rotation; mint a fresh one.
+  const sess = await request(app).post('/api/portal/auth').send({ token: rot.body.portal_token });
+  assert.equal(sess.status, 200);
+  assert.notEqual(sess.body.accessToken, portalToken);
+  const feed = await request(app).get(`/api/projects/${project.id}/activity`).set(auth(sess.body.accessToken));
+  assert.equal(feed.status, 200);
+  assert.ok(!feed.body.some(e => e.action === 'portal_link_generated'));
+});
