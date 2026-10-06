@@ -70,7 +70,11 @@ const update_finding = {
     'already reported — propose_finding always creates a brand new finding, never ' +
     'edits an existing one. Call get_existing_findings first to get the finding_id. ' +
     'Only the fields you pass are changed, everything else is left as-is. ' +
-    'http_proofs is APPENDED to whatever proofs the finding already has, never replaced.',
+    'http_proofs is APPENDED to whatever proofs the finding already has, never replaced. ' +
+    'During a retest, use remediation_status + retest_notes (+ retest_date) to record ' +
+    'the outcome: "remediated" (client claims a fix), "verified_closed" (you confirmed the ' +
+    'fix holds), "not_remediated" (retest shows it is still exploitable) or "open". ' +
+    'Like every update_finding call, the pentester approves it before it is applied.',
   input_schema: {
     type: 'object',
     properties: {
@@ -79,10 +83,21 @@ const update_finding = {
       category: { type: 'string' },
       severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] },
       description: { type: 'string' },
-      remediation: { type: 'string' },
+      remediation: {
+        type: 'string',
+        description: 'The fix RECOMMENDATION for the client (how to remediate the issue) — replaces the existing text. ' +
+          'Never put retest results or verification evidence here; those go in retest_notes.',
+      },
       cwe: { type: 'string' },
       cvss_vector: { type: 'string' },
       cvss_score: { type: 'number' },
+      remediation_status: {
+        type: 'string',
+        enum: ['open', 'remediated', 'not_remediated', 'verified_closed'],
+        description: 'Retest outcome / remediation lifecycle status of the finding',
+      },
+      retest_date: { type: 'string', description: 'Date of the retest, YYYY-MM-DD' },
+      retest_notes: { type: 'string', description: 'Retest verification: what was retested, how, and what was observed (evidence). Replaces the existing retest notes. Use this, NOT remediation, for retest results.' },
       http_proofs: {
         type: 'array',
         description: 'New proofs to ADD to this finding (appended, existing proofs are kept) — same shape as propose_finding.http_proofs.',

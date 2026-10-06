@@ -216,6 +216,7 @@
   .scan-msg .who { font-family: var(--scan-font); font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--scan-muted1); }
   .scan-msg.user .who { color: var(--scan-user-text); }
   .scan-msg .bubble { padding: 13px 16px; border-radius: 12px; font-size: 13px; line-height: 1.6; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; color: var(--scan-text4); transition: border-color .2s ease, background .2s ease; }
+  .scan-msg.user .bubble p { white-space: pre-wrap; } /* respeta los saltos de línea (Shift+Enter) del mensaje */
   .scan-msg.user .bubble { background: var(--scan-user-bg); border: 1px solid var(--scan-user-border); color: var(--scan-text1); }
   .scan-msg.assistant .bubble { background: var(--scan-card); border: 1px solid var(--scan-border); }
   .scan-msg .bubble p:first-child, .scan-msg .bubble h1:first-child, .scan-msg .bubble h2:first-child, .scan-msg .bubble h3:first-child { margin-top: 0; }
@@ -334,7 +335,7 @@
   .scan-input-row { flex-shrink: 0; display: flex; gap: 10px; padding: 16px 28px; border-top: 1px solid var(--scan-border2); align-items: flex-end; }
   .scan-input-row textarea {
     flex: 1; resize: none; font-family: var(--scan-font); font-size: 13px; padding: 11px 14px;
-    background: var(--scan-card); border: 1px solid var(--scan-border); border-radius: 9px; color: var(--scan-text1); max-height: 120px;
+    background: var(--scan-card); border: 1px solid var(--scan-border); border-radius: 9px; color: var(--scan-text1); max-height: 160px; overflow-y: auto;
     transition: border-color .15s ease, box-shadow .15s ease;
   }
   .scan-input-row textarea:focus { outline: none; border-color: var(--scan-accent); box-shadow: 0 0 0 3px oklch(0.65 0.16 45 / 0.15); }
@@ -401,7 +402,7 @@
         <span data-i18n="newMessages">Nuevos mensajes</span>
       </button>
       <div class="scan-input-row" id="scan-input-row" style="display:none">
-        <textarea id="scan-chat-input" rows="1" data-i18n-placeholder="chatPlaceholder" placeholder="Hablale al agente — preguntale algo o dale una instrucción..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();scanSendMessage();}"></textarea>
+        <textarea id="scan-chat-input" rows="1" data-i18n-placeholder="chatPlaceholder" placeholder="Hablale al agente — preguntale algo o dale una instrucción..." onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();scanSendMessage();}" oninput="scanAutosizeInput(this)"></textarea>
         <button class="scan-send-btn" onclick="scanSendMessage()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg> <span data-i18n="send">Enviar</span></button>
       </div>
     </div>

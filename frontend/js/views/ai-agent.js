@@ -76,6 +76,7 @@ const AI_I18N = {
     detailHeading: 'Qué está haciendo la IA ahora', detailEmpty: 'Sin actividad todavía en esta sesión.',
     resumenHeading: 'Hallazgos por severidad', resumenEmpty: 'Sin hallazgos todavía en este proyecto.',
     rem_open: 'Abierto', rem_remediated: 'Remediado', rem_not_remediated: 'No Remediado', rem_verified_closed: 'Verificado',
+    retestNotesLabel: 'Notas de retest',
     newSessionShort: 'Nueva sesión', sessionsDropdownHeader: 'SESIONES DE AI AGENT',
     summaryView: 'Resumen', detailView: 'Detalle',
     waitingApprovalFor: 'Esperando tu aprobación para {tool}...', executingTool: 'Ejecutando {tool}...',
@@ -99,11 +100,12 @@ const AI_I18N = {
     autonomousModeLabel: 'Modo sin restricciones para esta sesión',
     singleAgentLabel: 'Un agente a la vez para esta sesión',
     startScanBtn: 'Iniciar scan', scanStarted: 'Scan iniciado',
-    pause: 'Pausar', interrupt: 'Interrumpir', resume: 'Reanudar',
+    pause: 'Pausar', interrupt: 'Interrumpir', resume: 'Reanudar', retry: 'Reintentar',
     sessionEndedPlaceholder: 'Esta sesión terminó — iniciá una nueva para seguir',
+    sessionErrorPlaceholder: 'El agente falló al hablar con el proveedor — tocá Reintentar o mandá un mensaje...',
     resolveApprovalPlaceholder: 'Resolvé la aprobación pendiente para seguir hablando...',
     resumeToChatPlaceholder: 'Reanudá la sesión para seguir hablando...',
-    chatPlaceholder: 'Hablale al agente — preguntale algo o dale una instrucción...',
+    chatPlaceholder: 'Hablale al agente — preguntale algo o dale una instrucción... (Shift+Enter: nueva línea)',
     tier0Title: 'Nivel 0 — solo lectura de datos de Flowdit, sin gate',
     tier1Title: 'Nivel 1 — recon pasivo contra el target, sin gate',
     tier2Title: 'Nivel 2 — acción activa contra el target, gate por defecto',
@@ -150,6 +152,7 @@ const AI_I18N = {
     detailHeading: 'What the AI is doing now', detailEmpty: 'No activity yet in this session.',
     resumenHeading: 'Findings by severity', resumenEmpty: 'No findings yet in this project.',
     rem_open: 'Open', rem_remediated: 'Remediated', rem_not_remediated: 'Not Remediated', rem_verified_closed: 'Verified Closed',
+    retestNotesLabel: 'Retest notes',
     newSessionShort: 'New session', sessionsDropdownHeader: 'AI AGENT SESSIONS',
     summaryView: 'Summary', detailView: 'Detail',
     waitingApprovalFor: 'Waiting for your approval for {tool}...', executingTool: 'Running {tool}...',
@@ -173,11 +176,12 @@ const AI_I18N = {
     autonomousModeLabel: 'Unrestricted mode for this session',
     singleAgentLabel: 'Single agent at a time for this session',
     startScanBtn: 'Start scan', scanStarted: 'Scan started',
-    pause: 'Pause', interrupt: 'Interrupt', resume: 'Resume',
+    pause: 'Pause', interrupt: 'Interrupt', resume: 'Resume', retry: 'Retry',
     sessionEndedPlaceholder: 'This session ended — start a new one to continue',
+    sessionErrorPlaceholder: 'The agent failed to reach the provider — click Retry or send a message...',
     resolveApprovalPlaceholder: 'Resolve the pending approval to keep chatting...',
     resumeToChatPlaceholder: 'Resume the session to keep chatting...',
-    chatPlaceholder: 'Talk to the agent — ask something or give it an instruction...',
+    chatPlaceholder: 'Talk to the agent — ask something or give it an instruction... (Shift+Enter: new line)',
     tier0Title: 'Level 0 — read-only Flowdit data, no gate',
     tier1Title: 'Level 1 — passive recon against the target, no gate',
     tier2Title: 'Level 2 — active action against the target, gated by default',
@@ -639,24 +643,29 @@ function renderLiveActivity() {
 
 // Burbuja de "escribiendo..." dentro del transcript — pedido explícito: "que
 // en el mismo chat aparezca una animación... que indique que la IA está
-// formulando la respuesta". Solo para el caso "pensando" (sin tool call
-// puntual) — una tool call en curso ya es su propia señal visual (fila en
-// Detalle, o directamente no se muestra en Resumen por diseño). Se agrega/
-// saca del DOM directamente (no re-renderiza `_scanEvents`) para no competir
-// con appendLiveEvent(), que ya maneja el resto del transcript de forma
-// incremental.
+// formulando la respuesta". Se agrega/saca del DOM directamente (no
+// re-renderiza `_scanEvents`) para no competir con appendLiveEvent(), que ya
+// maneja el resto del transcript de forma incremental.
+// Reportado: los puntitos "se cortan a cada rato y vuelven". Antes se sacaba
+// en cada tool call puntual y en cada evento nuevo, y se recreaba con la
+// animación de entrada — pero el chat ni siquiera muestra las tools de
+// Nivel 0/1, así que desde el lado del pentester era un parpadeo sin motivo.
+// Ahora vive mientras el agente trabaja (`running`, con o sin tool call en
+// curso); solo se va cuando para o cuando espera una aprobación (ahí la
+// tarjeta del gate ya es la señal).
 function renderTypingBubble(activity) {
   const el = document.getElementById('scan-transcript');
   if (!el) return;
   const existing = document.getElementById('scan-typing-bubble');
-  if (!activity || activity.isToolCall) { existing?.remove(); return; }
-  if (existing) return; // ya está mostrada — no la reinsertamos en cada evento
+  if (!activity || _scanSession?.status === 'waiting_approval') { existing?.remove(); return; }
+  if (existing) return; // ya está mostrada — appendLiveEvent() inserta los eventos nuevos antes que ella
 
   const wasAtBottom = scanIsNearBottom(el);
   const node = document.createElement('div');
   node.className = 'scan-msg assistant scan-msg-enter';
   node.id = 'scan-typing-bubble';
   node.innerHTML = `<span class="who">${esc(t('agentLabel'))}</span><div class="bubble scan-typing-dots"><span></span><span></span><span></span></div>`;
+  node.addEventListener('animationend', () => node.classList.remove('scan-msg-enter'), { once: true });
   el.appendChild(node);
   if (wasAtBottom) scanScrollToBottom();
 }
@@ -1039,6 +1048,10 @@ function renderStatusStrip() {
     actions = `<button class="scan-btn-pause" onclick="scanPause()">${icon('pause', { size: 13 })} ${esc(t('pause'))}</button><button class="scan-btn-interrupt" onclick="scanInterruptPrompt()">${icon('zap', { size: 13 })} ${esc(t('interrupt'))}</button>`;
   } else if (s === 'paused') {
     actions = `<button class="scan-btn-resume" onclick="scanResume()">${icon('play', { size: 13 })} ${esc(t('resume'))}</button>`;
+  } else if (s === 'error') {
+    // Reintenta el turno que falló contra el proveedor (sin fondos, rate
+    // limit, red) sin tener que escribir un mensaje — ver retry() en agentLoop.js.
+    actions = `<button class="scan-btn-resume" onclick="scanRetry()">${icon('rotate-ccw', { size: 13 })} ${esc(t('retry'))}</button>`;
   }
 
   el.innerHTML = `
@@ -1101,16 +1114,21 @@ function renderInputRow() {
   const input = document.getElementById('scan-chat-input');
   if (!_scanSession) { row.style.display = 'none'; return; }
   row.style.display = 'flex';
-  const terminal = _scanSession.status === 'completed' || _scanSession.status === 'error';
+  // `error` NO es terminal: es un fallo al hablar con el proveedor (sin
+  // fondos, rate limit, red) — un mensaje nuevo revive los threads y
+  // reintenta (ver sendMessage() en agentLoop.js).
+  const terminal = _scanSession.status === 'completed';
   const blocked  = terminal || _scanSession.status === 'waiting_approval' || _scanSession.status === 'paused';
   input.disabled = blocked;
   input.placeholder = terminal
     ? t('sessionEndedPlaceholder')
-    : _scanSession.status === 'waiting_approval'
-      ? t('resolveApprovalPlaceholder')
-      : _scanSession.status === 'paused'
-        ? t('resumeToChatPlaceholder')
-        : t('chatPlaceholder');
+    : _scanSession.status === 'error'
+      ? t('sessionErrorPlaceholder')
+      : _scanSession.status === 'waiting_approval'
+        ? t('resolveApprovalPlaceholder')
+        : _scanSession.status === 'paused'
+          ? t('resumeToChatPlaceholder')
+          : t('chatPlaceholder');
 }
 
 // Chat es SIEMPRE la vista filtrada — las tools de Nivel 0/1 (ruido
@@ -1189,13 +1207,12 @@ function scanBindTranscriptScroll() {
 
 function appendLiveEvent(ev) {
   const el = document.getElementById('scan-transcript');
-  // Cualquier evento real reemplaza a la burbuja de "escribiendo..." — se
-  // saca ACÁ (antes de decidir dónde va el evento nuevo) para que quede
-  // bien al final; renderLiveActivity() (que corre después en
-  // handleScanEvent()) decide si hace falta una burbuja fresca con el
-  // estado post-evento.
-  document.getElementById('scan-typing-bubble')?.remove();
-  if (!el.children.length) { renderTranscript(); return; } // primer evento de una sesión recién arrancada — sin nada que preservar
+  // La burbuja de "escribiendo..." NO se saca acá (eso la hacía parpadear en
+  // cada evento): los eventos nuevos se insertan ANTES que ella, así queda
+  // siempre al final. renderLiveActivity() (que corre después en
+  // handleScanEvent()) decide si sigue o se va con el estado post-evento.
+  const typingBubble = document.getElementById('scan-typing-bubble');
+  if (!el.children.length || (el.children.length === 1 && typingBubble)) { renderTranscript(); return; } // primer evento de una sesión recién arrancada — sin nada que preservar
 
   const wasAtBottom = scanIsNearBottom(el);
   // Un mensaje del agente (respuesta, o reporte de sub-agente) es lo que el
@@ -1217,7 +1234,7 @@ function appendLiveEvent(ev) {
     const node = renderEvent(ev, {}); // recién llegado — nunca tiene tool.result todavía
     node.dataset.eventId = String(ev.id);
     node.classList.add('scan-msg-enter'); // entrada suave — solo en vivo
-    el.appendChild(node);
+    el.insertBefore(node, typingBubble); // null (sin burbuja) = appendChild
   }
 
   if (wasAtBottom) scanScrollToBottom();
@@ -1264,14 +1281,15 @@ function renderChatMessage(ev) {
   const isUser = ev.payload.role === 'user';
   div.className = `scan-msg ${isUser ? 'user' : 'assistant'}`;
   const bubbleHtml = isUser ? `<p>${esc(ev.payload.text || '')}</p>` : renderMarkdown(ev.payload.text);
-  div.innerHTML = `<span class="who">${isUser ? usernameFor(ev.created_by) : t('agentLabel')}</span><div class="bubble">${bubbleHtml}</div>`;
+  div.innerHTML = `<span class="who">${isUser ? esc(usernameFor(ev.created_by)) : t('agentLabel')}</span><div class="bubble">${bubbleHtml}</div>`;
   return div;
 }
 
+// Returns raw user text (display name) — callers must esc() it.
 function usernameFor(userId) {
   if (userId && state.user && userId === state.user.id) return t('you');
   const m = (state.members || []).find(x => x.id === userId || x.user_id === userId);
-  return m?.username || t('pentester');
+  return m ? displayName(m) : t('pentester');
 }
 
 // T0/T1/T2/T3 no son "tareas" — son el NIVEL DE RIESGO de la tool, lo que
@@ -1293,15 +1311,30 @@ function isFindingTool(name) { return name === 'propose_finding' || name === 'up
 function renderFindingCardBody(input) {
   const parts = [];
 
+  // Reportado: update_finding casi nunca trae `name` (solo manda los campos
+  // que cambia), así que la tarjeta decía "(sin nombre)" y no había forma de
+  // saber qué hallazgo estaba tocando. Se resuelve por `finding_id` contra
+  // los hallazgos del proyecto ya cargados; un `name` en el input (renombre)
+  // sigue teniendo prioridad.
+  const existing = input.finding_id ? (state.customVulns || []).find(v => String(v.id) === String(input.finding_id)) : null;
+  const name = input.name || existing?.name;
+  const severity = input.severity || existing?.severity;
+
   parts.push(`
     <div class="scan-finding-head">
-      ${input.severity ? _severityBadge(input.severity) : ''}
-      <strong>${esc(input.name || t('unnamed'))}</strong>
+      ${severity ? _severityBadge(severity) : ''}
+      <strong>${esc(name || t('unnamed'))}</strong>
       ${input.category ? `<span class="scan-finding-tag">${esc(input.category)}</span>` : ''}
+      ${input.remediation_status ? `<span class="scan-finding-tag">${esc(t(`rem_${input.remediation_status}`))}</span>` : ''}
     </div>
   `);
 
   if (input.description) parts.push(`<p class="scan-finding-desc">${esc(input.description)}</p>`);
+  // update_finding de un retest — el pentester tiene que ver qué estado y
+  // qué notas está aprobando, no solo el nombre del hallazgo.
+  if (input.retest_notes || input.retest_date) {
+    parts.push(`<p class="scan-finding-desc"><strong>${esc(t('retestNotesLabel'))}${input.retest_date ? ` (${esc(input.retest_date)})` : ''}:</strong> ${esc(input.retest_notes || '')}</p>`);
+  }
 
   const meta = [];
   if (input.cwe) meta.push(esc(input.cwe));
@@ -1624,12 +1657,20 @@ function handleScanEvent(msg) {
 }
 
 // ── Acciones del pentester ──────────────────────────────────────────────
+// Shift+Enter inserta un salto de línea (Enter solo manda) — el textarea
+// crece con el contenido hasta el max-height del CSS, después scrollea.
+function scanAutosizeInput(input) {
+  input.style.height = 'auto';
+  input.style.height = `${input.scrollHeight + 2}px`; // +2: borde de 1px arriba/abajo
+}
+
 function scanSendMessage() {
   const input = document.getElementById('scan-chat-input');
   const text = input.value.trim();
   if (!text || !_scanSession) return;
   wsClient.send({ type: 'ai_scan:send_message', session_id: _scanSession.id, text });
   input.value = '';
+  scanAutosizeInput(input);
   // Al mandar, siempre te llevo al fondo: re-ancla el autoscroll para que el
   // echo de tu mensaje, la burbuja de "escribiendo…" y la respuesta bajen
   // solas. Sin esto, si habías quedado unos px arriba el pin nunca se
@@ -1651,6 +1692,7 @@ function scanReject(callId) {
 
 function scanPause()  { wsClient.send({ type: 'ai_scan:pause',  session_id: _scanSession.id }); }
 function scanResume() { wsClient.send({ type: 'ai_scan:resume', session_id: _scanSession.id }); }
+function scanRetry()  { wsClient.send({ type: 'ai_scan:retry',  session_id: _scanSession.id }); }
 
 function scanInterruptPrompt() {
   const instruction = window.prompt(t('interruptPrompt'));

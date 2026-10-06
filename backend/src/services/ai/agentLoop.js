@@ -291,15 +291,93 @@ function broadcast(projectId, sessionId, status, event) {
 
 // Reconstruye el historial de UN thread (no de toda la sesión) en el
 // formato canónico que entienden los adaptadores por proveedor.
+// ── Compactación del historial ──────────────────────────────────────────
+// Encontrado en vivo (retest de EncuestaQR): advance() mandaba el historial
+// COMPLETO del thread en cada llamada — 479 eventos, ~610K caracteres
+// (~150K tokens) por mensaje, 2/3 de eso respuestas viejas de tools. Caro
+// (se quedó sin fondos) y el modelo seguía peor las instrucciones nuevas
+// ("SOLO UN PÁRRAFO") enterradas al final de semejante contexto.
+//
+// Política: los mensajes del pentester nunca se tocan. De las tool calls,
+// solo las más recientes viajan completas; las de antes viajan como un
+// resumen corto, y las muy viejas se omiten (llamada + resultado juntos,
+// para no dejar un tool_result huérfano, que la API rechaza). Las respuestas
+// viejas del propio agente se recortan.
+//
+// Los cortes avanzan en saltos de COMPACTION_STEP tool calls, no de a una:
+// así el prefijo del historial queda idéntico entre llamadas consecutivas y
+// el prompt caching del proveedor (DeepSeek/Anthropic) lo sigue
+// aprovechando, en vez de invalidarse en cada turno.
+const FULL_TOOL_CALLS = 15;            // las últimas N tool calls viajan completas
+const SUMMARIZED_TOOL_CALLS = 60;      // las N anteriores a esas, resumidas
+const COMPACTION_STEP = 10;
+const MAX_TOOL_RESULT_CHARS = 16000;   // tope incluso para una tool call reciente
+const SUMMARY_PREVIEW_CHARS = 300;
+const KEEP_FULL_ASSISTANT_MESSAGES = 6;
+const OLD_ASSISTANT_MESSAGE_CHARS = 1500;
+
+function clip(text, max) {
+  return text.length > max ? `${text.slice(0, max)}… [truncated, ${text.length - max} more chars]` : text;
+}
+
+function compactToolResult(payload, maxChars) {
+  const json = JSON.stringify(payload);
+  if (json.length <= maxChars) return payload;
+  return { call_id: payload.call_id, name: payload.name, truncated: true, preview: clip(json, maxChars) };
+}
+
+function compactToolInput(input) {
+  const json = JSON.stringify(input ?? {});
+  return json.length <= SUMMARY_PREVIEW_CHARS ? input : { truncated_input: clip(json, SUMMARY_PREVIEW_CHARS) };
+}
+
+// Índice (en orden de tool calls) desde el cual cada tramo arranca —
+// redondeado hacia abajo a COMPACTION_STEP para que sea estable.
+function compactionCutoffs(totalToolCalls) {
+  const stable = n => Math.max(0, Math.floor(n / COMPACTION_STEP) * COMPACTION_STEP);
+  const fullFrom = stable(totalToolCalls - FULL_TOOL_CALLS);
+  const summarizedFrom = stable(fullFrom - SUMMARIZED_TOOL_CALLS);
+  return { fullFrom, summarizedFrom };
+}
+
 function eventsToMessages(events) {
+  const callOrder = new Map(); // id de tool.called → posición entre todas las tool calls
+  events.forEach(ev => { if (ev.type === 'tool.called') callOrder.set(String(ev.id), callOrder.size); });
+  const { fullFrom, summarizedFrom } = compactionCutoffs(callOrder.size);
+  const tierOf = callId => {
+    const i = callOrder.get(String(callId));
+    if (i === undefined || i >= fullFrom) return 'full';
+    return i >= summarizedFrom ? 'summary' : 'omitted';
+  };
+
+  const assistantTotal = events.filter(e => e.type === 'chat.message' && e.payload.role === 'assistant').length;
+  let assistantSeen = 0;
+  let omittedNoted = false;
+
   const messages = [];
   for (const ev of events) {
     if (ev.type === 'chat.message') {
-      messages.push({ role: ev.payload.role, content: ev.payload.text });
+      let text = ev.payload.text;
+      if (ev.payload.role === 'assistant') {
+        assistantSeen++;
+        if (assistantTotal - assistantSeen >= KEEP_FULL_ASSISTANT_MESSAGES) text = clip(text || '', OLD_ASSISTANT_MESSAGE_CHARS);
+      }
+      messages.push({ role: ev.payload.role, content: text });
     } else if (ev.type === 'tool.called') {
-      messages.push({ role: 'assistant', toolCalls: [{ id: String(ev.id), name: ev.payload.name, input: ev.payload.input }] });
+      const tier = tierOf(ev.id);
+      if (tier === 'omitted') {
+        if (!omittedNoted) {
+          omittedNoted = true;
+          messages.push({ role: 'user', content: `[system note]: ${summarizedFrom} earlier tool calls were omitted from this history to save context. Their effects (findings, data) still exist — re-run a read-only tool if you need that information again.` });
+        }
+        continue;
+      }
+      messages.push({ role: 'assistant', toolCalls: [{ id: String(ev.id), name: ev.payload.name, input: tier === 'full' ? ev.payload.input : compactToolInput(ev.payload.input) }] });
     } else if (ev.type === 'tool.result') {
-      messages.push({ role: 'tool', toolCallId: String(ev.payload.call_id), name: ev.payload.name, result: ev.payload });
+      const tier = tierOf(ev.payload.call_id);
+      if (tier === 'omitted') continue;
+      const result = compactToolResult(ev.payload, tier === 'full' ? MAX_TOOL_RESULT_CHARS : SUMMARY_PREVIEW_CHARS);
+      messages.push({ role: 'tool', toolCallId: String(ev.payload.call_id), name: ev.payload.name, result });
     } else if (ev.type === 'thread.started') {
       messages.push({ role: 'user', content: `[task assigned by lead]: ${ev.payload.task}` });
     } else if (ev.type === 'subagent.reported') {
@@ -351,6 +429,13 @@ function buildSystemPrompt(project, thread, session) {
     // revisión: el modelo se detuvo a esperar al pentester ante un target
     // mal configurado, en vez de investigar/reintentar por su cuenta).
     'For anything read-only or passive-recon (checking existing data, port scanning, fetching/reading page source, DNS enumeration) you never need to stop and ask — investigate, retry with a different approach, and self-correct obvious obstacles on your own before reporting back. Only pause to report when you are genuinely blocked with no remaining path forward, not merely because something is inconvenient or your first attempt failed.',
+    // Encontrado en vivo (retest de EncuestaQR): "SOLO UN PÁRRAFO" devolvía
+    // encabezado + negritas + un párrafo gigante + notas que nadie pidió, y
+    // cada pedido de texto se respondía como una sección de informe entera.
+    'Communication with the pentester: answer their LATEST message directly and concisely. When they specify a format, length or scope ("only one paragraph", "only finding B1", "just the Markdown text", "no explanations"), follow it literally — output exactly that and nothing else: no extra headings, status lines, notes, caveats, pending items or follow-up offers they did not ask for. A later instruction overrides an earlier one about format; a standing restriction (e.g. "do not edit anything") stays in force until the pentester lifts it explicitly.',
+    // Mismo incidente: el agente pisó la remediación de 9 hallazgos con
+    // evidencia del retest — no sabía qué era cada campo ni qué decía antes.
+    'Editing findings: update_finding REPLACES each text field you pass. Before changing description, remediation or retest_notes, read the finding in full with get_existing_findings(finding_id) and only change what you were asked to. Field meaning: description = the issue; remediation = the fix recommendation for the client; retest results/verification evidence = retest_notes, plus remediation_status (open | remediated | not_remediated | verified_closed) and retest_date. Never put retest evidence in remediation or description.',
   ];
 
   // Patrones aprendidos de pentests reales anteriores (ver pentestKnowledge.js)
@@ -370,7 +455,7 @@ function buildSystemPrompt(project, thread, session) {
   if (project.ai_autonomous_requests) {
     base.push('Autonomous mode is ON for this project: active testing (send_http_request, test_payload, run_exploit_poc) and proposing findings (propose_finding) run immediately, with no human approval step — the pentester made this explicit trade-off knowingly. Work like an independent senior pentester conducting the engagement solo: keep going across many steps, try different approaches when one fails, and do not stop to ask permission for anything within the authorized scope. This does not relax the scope boundary above.');
   } else {
-    base.push('You collaborate with a human pentester who reviews and approves your work — active testing (send_http_request, test_payload, run_exploit_poc) and every finding you propose (propose_finding) require their explicit approval before taking effect. That approval requirement is the only thing that should make you stop — it never applies to read-only/recon work.');
+    base.push('You collaborate with a human pentester who reviews and approves your work — active testing (send_http_request, test_payload, run_exploit_poc) and every finding you propose or edit (propose_finding, update_finding) require their explicit approval before taking effect. That approval requirement is the only thing that should make you stop — it never applies to read-only/recon work.');
   }
 
   if (thread.parent_thread_id) {
@@ -788,14 +873,18 @@ async function createFindingFromProposal(projectId, input, approvedBy, sessionId
 // se agrega a lo que ya tenía la fila, nunca lo reemplaza — el modelo no
 // tiene forma confiable de saber qué proofs ya existen (get_existing_findings
 // no los devuelve), así que "reemplazar" perdería evidencia por las dudas.
+const REMEDIATION_STATUSES = ['open', 'remediated', 'not_remediated', 'verified_closed'];
+
 async function updateFindingFromProposal(projectId, input, approvedBy) {
   const { rows: existing } = await db.query(
-    `SELECT http_proofs FROM custom_vulns WHERE id=$1 AND project_id=$2`,
+    `SELECT http_proofs, remediation_status, name FROM custom_vulns WHERE id=$1 AND project_id=$2`,
     [input.finding_id, projectId]
   );
   if (!existing.length) throw new Error('finding not found in this project');
 
-  const fields = ['name', 'category', 'severity', 'description', 'remediation', 'cwe', 'cvss_vector', 'cvss_score'];
+  // Explicit allowlist — client_visible must never be added here (see
+  // createFindingFromProposal).
+  const fields = ['name', 'category', 'severity', 'description', 'remediation', 'cwe', 'cvss_vector', 'cvss_score', 'retest_date', 'retest_notes'];
   const sets = [], values = [];
   fields.forEach(f => {
     if (input[f] !== undefined) { values.push(input[f]); sets.push(`${f}=$${values.length}`); }
@@ -805,12 +894,51 @@ async function updateFindingFromProposal(projectId, input, approvedBy) {
     values.push(JSON.stringify(merged));
     sets.push(`http_proofs=$${values.length}`);
   }
+
+  // Pedido explícito: en un retest el agente decía "no puedo marcarlo como
+  // remediado, update_finding no expone remediation_status". Misma lógica de
+  // auditoría que PATCH /vulns/:id/remediation (routes/vulns.js) — los
+  // timestamps solo se tocan si el estado realmente cambia, y
+  // `verified_by` es quien aprobó el gate: el cierre lo sigue firmando un
+  // humano, no el agente.
+  let statusChanged = false;
+  if (input.remediation_status !== undefined) {
+    if (!REMEDIATION_STATUSES.includes(input.remediation_status)) {
+      throw new Error(`invalid remediation_status: ${input.remediation_status}`);
+    }
+    values.push(input.remediation_status);
+    sets.push(`remediation_status=$${values.length}`);
+    statusChanged = existing[0].remediation_status !== input.remediation_status;
+    if (statusChanged) {
+      if (input.remediation_status === 'remediated') {
+        sets.push(`remediated_at=NOW()`, `verified_at=NULL`, `verified_by=NULL`);
+      } else if (input.remediation_status === 'verified_closed') {
+        values.push(approvedBy || null);
+        sets.push(`verified_at=NOW()`, `verified_by=$${values.length}`);
+      } else {
+        sets.push(`remediated_at=NULL`, `verified_at=NULL`, `verified_by=NULL`);
+      }
+    }
+  }
   if (!sets.length) return input.finding_id; // nada que cambiar
 
   values.push(approvedBy || null);
   sets.push(`updated_by=$${values.length}`);
   values.push(input.finding_id);
   await db.query(`UPDATE custom_vulns SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${values.length}`, values);
+
+  // Mismo evento de Activity que el cambio manual, marcado como del agente
+  // (ver createFindingFromProposal). No await — mismo motivo que allá.
+  if (statusChanged && approvedBy) {
+    getUserRow(approvedBy).then(actor => {
+      if (!actor) return;
+      activity.log({
+        projectId, user: actor, action: 'remediation_status_changed', entityType: 'custom_vuln',
+        entityId: input.finding_id, entityName: input.name || existing[0].name,
+        meta: { remediation_status: input.remediation_status, ai_generated: true },
+      });
+    }).catch(err => console.error('activity.log (remediación del agente) failed:', err.message));
+  }
   return input.finding_id;
 }
 
@@ -929,16 +1057,60 @@ async function resume(sessionId) {
   runningThreads.forEach(t => advance(sessionId, t.id));
 }
 
+// Bug real (retest de EncuestaQR): la API se quedó sin fondos, la llamada
+// al proveedor falló, el thread pasó a `error` y la sesión quedó muerta
+// para siempre — recargar fondos no servía de nada. `error` solo nace de
+// un fallo al hablar con el proveedor (fondos, rate limit, red, key), y
+// advance() es una función pura del historial persistido: reintentar es
+// simplemente volver a llamarla. Revive TODOS los threads en `error`: el
+// primario pasa a `primaryStatus`, los sub-agentes directo a `running`.
+// Relanza advance() en todo thread que quede `running`. Devuelve cuántos
+// threads revivió.
+async function reviveErroredThreads(session, primaryId, primaryStatus) {
+  const { rows: revived } = await db.query(
+    `UPDATE ai_scan_threads SET status = CASE WHEN id=$2 THEN $3 ELSE 'running' END
+     WHERE session_id=$1 AND status='error' RETURNING id, status`,
+    [session.id, primaryId, primaryStatus]
+  );
+  if (!revived.length) return 0;
+  // Mismo truco que resume(): recomputeSessionStatus() no toca una sesión
+  // en `error`, así que hay que sacarla de ahí antes de recalcular.
+  if (session.status === 'error') await setSessionStatus(session.id, 'idle');
+  await recomputeSessionStatus(session.id);
+  revived.filter(t => t.status === 'running').forEach(t => advance(session.id, t.id));
+  return revived.length;
+}
+
+// Botón "Reintentar" — mismo revive que un mensaje de chat, pero sin
+// mensaje nuevo: el primario vuelve directo a `running` y retoma el turno
+// que falló, leyendo el historial ya persistido.
+async function retry(sessionId) {
+  const session = await getSession(sessionId);
+  if (!session || session.status === 'paused') return;
+  const primary = await getPrimaryThread(sessionId);
+  if (!primary) return;
+  if (!(await reviveErroredThreads(session, primary.id, 'running'))) return;
+  const after = await getSession(sessionId);
+  broadcast(session.project_id, sessionId, after.status, { type: 'session.resumed', payload: {}, created_at: new Date().toISOString() });
+}
+
 // Mensaje de chat del pentester — siempre al thread primario. Bloqueado si
 // la sesión está `paused`, o si el thread primario específicamente está
 // `waiting_approval` (resolver ESE gate es la prioridad) — un gate en un
 // sub-agente no bloquea seguir hablando con el coordinador.
 async function sendMessage(sessionId, userId, text) {
-  const session = await getSession(sessionId);
+  let session = await getSession(sessionId);
   if (!session || session.status === 'paused') return false;
 
-  const primary = await getPrimaryThread(sessionId);
+  let primary = await getPrimaryThread(sessionId);
   if (!primary || primary.status === 'waiting_approval') return false;
+
+  // El primario vuelve a `idle` — el camino de abajo lo pone en `running`
+  // junto con el mensaje nuevo.
+  if (await reviveErroredThreads(session, primary.id, 'idle')) {
+    session = await getSession(sessionId);
+    primary = await getPrimaryThread(sessionId);
+  }
 
   // Sesión arrancada sin instrucción inicial (name sigue NULL) — se
   // auto-nombra recién con el primer chat real. El guard hace que esto
@@ -948,13 +1120,18 @@ async function sendMessage(sessionId, userId, text) {
   }
 
   const ev = await persistEvent(sessionId, primary.id, 'chat.message', { role: 'user', text }, userId);
-  broadcast(session.project_id, sessionId, session.status, ev);
 
-  if (primary.status === 'idle') {
+  const wakesPrimary = primary.status === 'idle';
+  if (wakesPrimary) {
     await setThreadStatus(primary.id, 'running');
     await recomputeSessionStatus(sessionId);
-    advance(sessionId, primary.id); // no await — corre en background
   }
+  // Broadcast DESPUÉS de pasar a `running` — antes salía con el status viejo
+  // (`idle`), y la burbuja de "escribiendo..." del frontend recién aparecía
+  // con el primer evento del agente, no al mandar el mensaje.
+  const after = await getSession(sessionId);
+  broadcast(session.project_id, sessionId, after.status, ev);
+  if (wakesPrimary) advance(sessionId, primary.id); // no await — corre en background
   return true;
 }
 
@@ -984,7 +1161,8 @@ async function resumeOrphanedThreads() {
 }
 
 module.exports = {
-  advance, resolveGatedCall, pause, resume, sendMessage, interrupt,
+  eventsToMessages,
+  advance, resolveGatedCall, pause, resume, retry, sendMessage, interrupt,
   createSessionWithPrimaryThread, getPrimaryThread, sessionBelongsToProject,
   resumeOrphanedThreads,
   // exported for tests (client_visible can't be set through the agent)

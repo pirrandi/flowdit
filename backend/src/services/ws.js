@@ -110,6 +110,7 @@ function setup(server) {
                   case 'ai_scan:reject_action':  await agentLoop.resolveGatedCall(msg.session_id, msg.call_id, 'rejected', user.id, { reason: msg.reason }); break;
                   case 'ai_scan:pause':          await agentLoop.pause(msg.session_id); break;
                   case 'ai_scan:resume':         await agentLoop.resume(msg.session_id); break;
+                  case 'ai_scan:retry':          await agentLoop.retry(msg.session_id); break;
                   case 'ai_scan:interrupt':
                     // Orden importa: interrupt() aborta la llamada en curso y
                     // hace la transición de estado de forma atómica ANTES de

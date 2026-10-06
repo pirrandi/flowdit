@@ -42,15 +42,31 @@ const scanTools = [
     description:
       "Get findings already reported in this project, optionally filtered to " +
       "one target. Call this before proposing a new finding, so you don't " +
-      'duplicate something already reported.',
+      'duplicate something already reported. The list is compact (no long text ' +
+      'fields) — pass finding_id to get ONE finding in full (description, ' +
+      'remediation, retest notes...). Always read a finding in full before ' +
+      'update_finding changes any of its text fields.',
     input_schema: {
       type: 'object',
       properties: {
         target_id: { type: 'string', description: 'Optional — limit to findings on this target' },
+        finding_id: { type: 'string', description: 'Optional — return this one finding with all its fields' },
       },
       required: [],
     },
     async execute(input, ctx) {
+      // Encontrado en vivo: sin forma de leer el texto actual, el agente
+      // editaba a ciegas — pisó la remediación de 9 hallazgos sin saber qué
+      // decía antes.
+      if (input.finding_id) {
+        const { rows } = await db.query(
+          `SELECT id, name, category, severity, target_id, description, remediation, cwe,
+                  cvss_vector, cvss_score, remediation_status, retest_date, retest_notes
+           FROM custom_vulns WHERE id=$1 AND project_id=$2`,
+          [input.finding_id, ctx.projectId]
+        );
+        return rows[0] || { error: 'finding not found in this project' };
+      }
       const params = [ctx.projectId];
       let where = 'project_id=$1';
       if (input.target_id) { params.push(input.target_id); where += ` AND target_id=$${params.length}`; }
