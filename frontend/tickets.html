@@ -53,7 +53,10 @@
     </div>
     <div id="ticket-modal-desc" style="font-size:13px;color:var(--t2);margin-bottom:14px;white-space:pre-wrap;line-height:1.6;flex-shrink:0"></div>
     <div id="ticket-modal-thread" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:14px;padding-right:4px;min-height:0"></div>
-    <div style="display:flex;gap:8px;flex-shrink:0;border-top:1px solid var(--b1);padding-top:12px">
+    <div id="ticket-reply-readonly" style="display:none;flex-shrink:0;border-top:1px solid var(--b1);padding-top:12px;font-family:var(--mono);font-size:11px;color:var(--t3)">
+      Solo lectura — responder al cliente corresponde al Owner o a un Editor.
+    </div>
+    <div id="ticket-reply-box" style="display:flex;gap:8px;flex-shrink:0;border-top:1px solid var(--b1);padding-top:12px">
       <textarea id="ticket-reply-input" class="form-input note-textarea" placeholder="Write a reply... (Ctrl+Enter to send)" style="flex:1;min-height:60px;resize:none"
         onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitTicketReply()"></textarea>
       <button class="btn-save" onclick="submitTicketReply()" style="align-self:flex-end;padding:8px 16px">Send</button>

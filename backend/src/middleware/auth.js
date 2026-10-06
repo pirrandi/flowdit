@@ -21,7 +21,7 @@ async function requireAuth(req, res, next) {
 
     // Regular user token
     const { rows } = await db.query(
-      'SELECT id, username, email, avatar_color, avatar_url FROM users WHERE id = $1', [payload.sub]
+      'SELECT id, username, display_name, email, avatar_color, avatar_url FROM users WHERE id = $1', [payload.sub]
     );
     if (!rows.length) return res.status(401).json({ error: 'User not found' });
     req.user = rows[0];

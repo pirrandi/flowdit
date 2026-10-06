@@ -2,6 +2,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const jwt = require('jsonwebtoken');
 const url  = require('url');
 const { userBelongsToProject } = require('./ownership');
+const db = require('../db');
 
 // projectId → Set<ws>
 const rooms = new Map();
@@ -22,7 +23,7 @@ function setup(server) {
         const msg = JSON.parse(data);
         if (msg.type !== 'auth' || !msg.token) { ws.close(4001, 'Unauthorized'); return; }
         const payload = jwt.verify(msg.token, process.env.JWT_SECRET);
-        const user = { id: payload.sub, username: payload.username };
+        const user = { id: payload.sub, username: payload.username, display_name: null };
 
         // Bug real (ver ROADMAP.md § "WebSocket — validar membership de
         // proyecto al conectar"): el JWT solo prueba "sos un usuario válido
@@ -42,6 +43,16 @@ function setup(server) {
           ws.close(4001, 'Unauthorized');
           return;
         }
+
+        // The JWT only carries the username as of sign-in; read the current
+        // username/display_name so presence and whiteboard cursors reflect
+        // profile edits made since then.
+        const { rows: urows } = await db.query(
+          'SELECT username, display_name FROM users WHERE id=$1', [user.id]
+        );
+        if (!urows.length) { ws.close(4001, 'Unauthorized'); return; }
+        user.username     = urows[0].username;
+        user.display_name = urows[0].display_name || null;
 
         // Join room
         if (!rooms.has(projectId)) rooms.set(projectId, new Set());
@@ -70,7 +81,7 @@ function setup(server) {
           if (msg.type === 'wb:cursor' || msg.type === 'wb:patch') {
             const room = rooms.get(projectId);
             if (!room) return;
-            const out = JSON.stringify({ ...msg, userId: user.id, username: user.username });
+            const out = JSON.stringify({ ...msg, userId: user.id, username: user.username, display_name: user.display_name });
             room.forEach(other => {
               if (other !== ws && other.readyState === WebSocket.OPEN) other.send(out);
             });

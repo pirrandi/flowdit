@@ -416,6 +416,8 @@ body {
 .btn-icon:hover { border-color: var(--b2); color: var(--t2); }
 .btn-icon.edit:hover   { border-color: var(--c-info); color: var(--c-info); }
 .btn-icon.delete:hover { border-color: var(--c-crit); color: var(--c-crit); }
+/* Finding published to the client portal — the open-eye toggle reads as active. */
+.btn-icon.published { border-color: var(--a); color: var(--a); }
 .fd-icon { display: inline-block; vertical-align: -3px; flex-shrink: 0; }
 .fd-icon.spin { animation: fd-spin 1s linear infinite; }
 @keyframes fd-spin { to { transform: rotate(360deg); } }
@@ -1450,6 +1452,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: .9; }
 .role-owner  { background: rgba(239,68,68,.12); color: var(--c-crit); }
 .role-editor { background: var(--c-low-bg); color: var(--c-low); }
 .role-viewer { background: var(--c-info-bg); color: var(--c-info); }
+.role-pentester { background: var(--c-med-bg); color: var(--c-med); }
 
 /* ── INVITE UI ───────────────────────────────────────────────────── */
 .invite-code-box { background: var(--bg3); border: 1px solid var(--b2); border-radius: var(--r); padding: 14px; margin-bottom: 8px; }

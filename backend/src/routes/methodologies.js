@@ -2,7 +2,7 @@ const router = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const { requireAuth, requireUser } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireWriter } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 
 router.use(requireAuth);
@@ -13,7 +13,7 @@ router.use(requireAuth);
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT m.*, u.username AS owner_username
+      `SELECT m.*, u.username AS owner_username, u.display_name AS owner_display_name
        FROM methodologies m
        JOIN users u ON u.id = m.owner_id
        WHERE m.owner_id = $1 OR m.is_shared = true
@@ -103,7 +103,7 @@ router.get('/:methodId/progress/:projectId', requireProjectAccess, async (req, r
 });
 
 // PATCH set test status in project
-router.patch('/:methodId/progress/:projectId/:testIdx', requireProjectAccess, requireEditor, async (req, res, next) => {
+router.patch('/:methodId/progress/:projectId/:testIdx', requireProjectAccess, requireWriter, async (req, res, next) => {
   const testIdx = parseInt(req.params.testIdx);
   if (isNaN(testIdx)) return res.status(400).json({ error:'Invalid test index' });
   const { status, note, target_id } = req.body;
@@ -126,7 +126,7 @@ router.patch('/:methodId/progress/:projectId/:testIdx', requireProjectAccess, re
          SET ${updates.join(',')}`,
       vals
     );
-    res.json({ ok:true, editor:{ id:req.user.id, username:req.user.username, avatar_color:req.user.avatar_color }, updated_at: new Date() });
+    res.json({ ok:true, editor:{ id:req.user.id, username:req.user.username, display_name:req.user.display_name || null, avatar_color:req.user.avatar_color }, updated_at: new Date() });
   } catch (err) { next(err); }
 });
 
@@ -137,7 +137,7 @@ router.get('/project/:projectId', requireProjectAccess, async (req, res, next) =
   try {
     const { rows } = await db.query(
       `SELECT m.*,
-              u.username AS owner_username,
+              u.username AS owner_username, u.display_name AS owner_display_name,
               COALESCE(
                 json_object_agg(mp.test_idx, json_build_object(
                   'status', mp.status,
@@ -152,7 +152,7 @@ router.get('/project/:projectId', requireProjectAccess, async (req, res, next) =
        LEFT JOIN methodology_progress mp
          ON mp.methodology_id = m.id AND mp.project_id = $1
        WHERE pm.project_id = $1
-       GROUP BY m.id, u.username
+       GROUP BY m.id, u.username, u.display_name
        ORDER BY pm.added_at`,
       [req.params.projectId]
     );
@@ -207,7 +207,7 @@ router.get('/project-progress/:projectId', requireProjectAccess, async (req, res
 });
 
 // PATCH toggle methodology active for project
-router.patch('/:methodId/activate/:projectId', requireProjectAccess, requireEditor, async (req, res, next) => {
+router.patch('/:methodId/activate/:projectId', requireProjectAccess, requireWriter, async (req, res, next) => {
   const { active } = req.body; // true or false
   try {
     if (active) {

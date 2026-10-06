@@ -55,8 +55,8 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS project_members (
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
-    role       VARCHAR(20) NOT NULL DEFAULT 'member'
-                 CHECK (role IN ('owner','editor','viewer')),
+    -- allowed values: project_members_role_check (DROP + ADD further down)
+    role       VARCHAR(20) NOT NULL DEFAULT 'member',
     invited_by UUID REFERENCES users(id),
     joined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (project_id, user_id)
@@ -226,6 +226,12 @@ const migrations = [
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_wstg_notes    BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_targets       BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS show_activity      BOOLEAN NOT NULL DEFAULT false`,
+  // Client-portal privacy switches (project settings). Default true = hide, so a
+  // project is private-by-default: the internal team's uploaded avatars and the
+  // exact timestamps of the activity log are NOT shown to the client unless the
+  // owner explicitly opts into showing them.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS portal_hide_team_avatars BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS portal_hide_log_times    BOOLEAN NOT NULL DEFAULT true`,
 
   // Puertos/servicios por target
   `CREATE TABLE IF NOT EXISTS target_ports (
@@ -407,6 +413,32 @@ const migrations = [
   `ALTER TABLE custom_vulns DROP CONSTRAINT IF EXISTS custom_vulns_remediation_status_check`,
   `ALTER TABLE custom_vulns ADD CONSTRAINT custom_vulns_remediation_status_check
      CHECK (remediation_status IN ('open','remediated','not_remediated','verified_closed'))`,
+
+  // ── PROJECT ROLES: + pentester ──────────────────────────────────────
+  // pentester = technical work only, no client-facing actions (see
+  // middleware/project.js). The CREATE TABLE above used to carry this CHECK
+  // inline; it's now owned solely by this explicitly-named DROP + ADD pair so
+  // the value list can change without leaving a stale copy behind (fresh DBs
+  // used to get the inline one auto-named project_members_role_check — same
+  // name, so this replaces it there too).
+  `ALTER TABLE project_members DROP CONSTRAINT IF EXISTS project_members_role_check`,
+  `ALTER TABLE project_members ADD CONSTRAINT project_members_role_check
+     CHECK (role IN ('owner','editor','pentester','viewer'))`,
+
+  // ── CLIENT-PORTAL PUBLISH FLAG ──────────────────────────────────────
+  // Findings are HIDDEN from the client portal until the pentester explicitly
+  // publishes them (opt-in): a draft or half-triaged finding must never leak to
+  // the client just because the portal link exists. New rows default to false.
+  //
+  // Idempotent backfill without re-publishing on every migrate run: add the
+  // column NULLable, set every still-NULL row (i.e. rows that predate the
+  // column) to true so existing client-visible findings stay visible, THEN set
+  // the default/NOT NULL. After the first run nothing is NULL, so the UPDATE is
+  // a no-op and never overrides a pentester's later un-publish.
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS client_visible BOOLEAN`,
+  `UPDATE custom_vulns SET client_visible = true WHERE client_visible IS NULL`,
+  `ALTER TABLE custom_vulns ALTER COLUMN client_visible SET DEFAULT false`,
+  `ALTER TABLE custom_vulns ALTER COLUMN client_visible SET NOT NULL`,
 
   // ── ORGANIZATIONS (foundational layer for company/enterprise use) ────
   // An organization groups multiple projects under one company account,
@@ -759,6 +791,12 @@ const migrations = [
   `UPDATE projects SET ai_model='deepseek-v4-pro' WHERE ai_provider='deepseek' AND ai_model='deepseek-reasoner'`,
   `UPDATE ai_scan_sessions SET ai_model='deepseek-flash' WHERE ai_provider='deepseek' AND ai_model='deepseek-chat'`,
   `UPDATE ai_scan_sessions SET ai_model='deepseek-v4-pro' WHERE ai_provider='deepseek' AND ai_model='deepseek-reasoner'`,
+
+  // ── USER DISPLAY NAME ──────────────────────────────────────────────────
+  // Cosmetic, free-text name shown wherever a person is rendered. Separate
+  // from `username`, which stays the unique login identifier with its strict
+  // charset. Nullable and not unique: the UI falls back to username.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(50)`,
 
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`

@@ -366,6 +366,8 @@ function buildClientSettings(p) {
       ${toggle('show_wstg_notes',     'Mostrar notas WSTG',      'Notas escritas por los pentesters en cada test')}
       ${toggle('show_targets',        'Mostrar targets',         'Hosts en scope y su estado de auditoría')}
       ${toggle('show_activity',       'Mostrar actividad',       'Feed en tiempo real de acciones del pentester')}
+      ${toggle('portal_hide_team_avatars', 'Ocultar avatares del equipo', 'En el portal, las fotos de perfil del equipo se reemplazan por iniciales')}
+      ${toggle('portal_hide_log_times',    'Ocultar hora de los logs',    'El feed de actividad del portal no muestra la hora de cada acción')}
       ${toggle('tickets_enabled',     'Habilitar queries',       'El cliente puede abrir preguntas vinculadas a un hallazgo')}
       ${buildPortalLinkSection(p)}
     </div>`;

@@ -39,8 +39,16 @@ function relativeDate(dateStr) {
 }
 
 // ── Role-based avatar colors ──────────────────────────────────────
-const ROLE_COLOR = { owner:'#dc2626', editor:'#059669', viewer:'#2563eb' };
+const ROLE_COLOR = { owner:'#dc2626', editor:'#059669', pentester:'#d97706', viewer:'#2563eb' };
 function roleColor(role) { return ROLE_COLOR[role] || '#7c3aed'; }
+
+// Client-facing actions (publish findings, answer tickets, export the report)
+// are owner/editor only — a pentester does the technical work but not these.
+// The server enforces it (requireLead); this only hides the controls.
+function isLeadRole(role) { return role === 'owner' || role === 'editor'; }
+function canActForClient() {
+  return isLeadRole(typeof state !== 'undefined' ? state.currentProject?.member_role : null);
+}
 
 // Role color for a user by ID (looks up state.members)
 function memberRoleColor(userId, fallback) {
@@ -48,13 +56,31 @@ function memberRoleColor(userId, fallback) {
   return m ? roleColor(m.role) : (fallback || '#7c3aed');
 }
 
-function avatarHtml(username, color, size = 24, avatarUrl = null) {
+// Name to show for a person. `display_name` is free cosmetic text; `username`
+// is the login identifier and the fallback (also when talking to a backend
+// that predates display names). `prefix` reads joined columns such as
+// assignee_display_name / assignee_username: displayName(task, 'assignee_').
+// Returns RAW user text — always pass the result through esc() before
+// interpolating it into HTML.
+function displayName(u, prefix = '', fallback = '?') {
+  if (!u) return fallback;
+  return u[prefix + 'display_name'] || u[prefix + 'username'] || fallback;
+}
+
+// First character of a name, uppercased and escaped, for letter avatars.
+// Spread so a leading emoji / astral char is not split in half.
+function nameInitial(name) {
+  const first = [...String(name || '?').trim()][0] || '?';
+  return esc(first.toUpperCase());
+}
+
+function avatarHtml(name, color, size = 24, avatarUrl = null) {
   const s = `width:${size}px;height:${size}px;font-size:${Math.round(size*0.42)}px`;
   const c = esc(color || '#7c3aed');
   if (avatarUrl) {
     return `<div class="avatar-sm" style="${s};background:${c};overflow:hidden;padding:0;box-shadow:0 0 0 2px ${c}"><img src="${esc(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>`;
   }
-  return `<div class="avatar-sm" style="${s};background:${c}">${(username||'?')[0].toUpperCase()}</div>`;
+  return `<div class="avatar-sm" style="${s};background:${c}">${nameInitial(name)}</div>`;
 }
 
 function actionLabel(action, entityType, entityName, meta) {
@@ -166,6 +192,8 @@ function renderMd(raw) {
 }
 
 window.esc             = esc;
+window.displayName     = displayName;
+window.nameInitial     = nameInitial;
 window.hide            = hide;
 window.show            = show;
 window.showToast       = showToast;
@@ -174,6 +202,8 @@ window.timeAgo         = timeAgo;
 window.relativeDate    = relativeDate;
 window.ROLE_COLOR      = ROLE_COLOR;
 window.roleColor       = roleColor;
+window.isLeadRole      = isLeadRole;
+window.canActForClient = canActForClient;
 window.avatarHtml      = avatarHtml;
 window.actionLabel     = actionLabel;
 window.renderMd        = renderMd;

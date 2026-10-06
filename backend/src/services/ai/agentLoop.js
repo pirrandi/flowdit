@@ -162,7 +162,7 @@ async function getPrimaryThread(sessionId) {
 // atención) a quien arrancó la sesión, igual que ya se hace con
 // created_by/approvedBy en otros lados de este archivo.
 async function getUserRow(userId) {
-  const { rows } = await db.query(`SELECT id, username, avatar_color, email FROM users WHERE id=$1`, [userId]);
+  const { rows } = await db.query(`SELECT id, username, display_name, avatar_color, email FROM users WHERE id=$1`, [userId]);
   return rows[0];
 }
 
@@ -189,7 +189,7 @@ async function notifyNeedsAttention(session, project, message) {
   // Fire-and-forget: nunca debe romper el loop del agente si el mail falla.
   mailer.sendAiScanNeedsAttentionNotification({
     toEmail: starter.email,
-    toName: starter.username,
+    toName: starter.display_name || starter.username,
     projectName: project.name,
     message,
     appUrl: process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL.replace(/\/$/, '')}/ai-agent?pid=${session.project_id}` : null,
@@ -740,6 +740,10 @@ const DELEGATE_TOOL = {
 // Crea el hallazgo real a partir de los campos que la IA propuso vía
 // propose_finding. Duplica a propósito el shape del INSERT que usa
 // POST /vulns (evita acoplar agentLoop.js a la capa HTTP).
+// client_visible is deliberately never written here (nor in
+// updateFindingFromProposal): publishing to the client portal is a lead-only
+// action (owner/editor) done by a human, so an agent run by a pentester — or by
+// anyone — can never publish a finding. New rows get the column default (false).
 async function createFindingFromProposal(projectId, input, approvedBy, sessionId = null) {
   const validTargetId = await targetBelongsToProject(input.target_id || null, projectId);
   const { rows } = await db.query(
@@ -983,4 +987,6 @@ module.exports = {
   advance, resolveGatedCall, pause, resume, sendMessage, interrupt,
   createSessionWithPrimaryThread, getPrimaryThread, sessionBelongsToProject,
   resumeOrphanedThreads,
+  // exported for tests (client_visible can't be set through the agent)
+  createFindingFromProposal, updateFindingFromProposal,
 };

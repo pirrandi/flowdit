@@ -3,12 +3,14 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const mailer   = require('../services/mailer');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireLead, isLeadRole, portalRequiresFlag } = require('../middleware/project');
 const { vulnBelongsToProject } = require('../services/ownership');
 const { decrypt } = require('../utils/crypto');
 const github    = require('../services/github');
 
-router.use(requireAuth, requireProjectAccess);
+// Portal clients may read and open tickets, but only when the owner enabled the
+// tickets channel for this project. Internal users are unaffected.
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('tickets_enabled'));
 
 // ── TICKETS ───────────────────────────────────────────────────────
 
@@ -17,7 +19,7 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `SELECT t.*,
-              u.username AS opened_by_username, u.avatar_color AS opened_by_color,
+              u.username AS opened_by_username, u.display_name AS opened_by_display_name, u.avatar_color AS opened_by_color,
               v.name AS vuln_name,
               gi.external_url AS github_url,
               (SELECT COUNT(*) FROM ticket_replies r WHERE r.ticket_id = t.id)::int AS reply_count
@@ -38,7 +40,7 @@ router.get('/:ticketId', async (req, res, next) => {
   try {
     const { rows: tickets } = await db.query(
       `SELECT t.*,
-              u.username AS opened_by_username, u.avatar_color AS opened_by_color,
+              u.username AS opened_by_username, u.display_name AS opened_by_display_name, u.avatar_color AS opened_by_color,
               v.name AS vuln_name,
               gi.external_url AS github_url
        FROM tickets t
@@ -51,7 +53,7 @@ router.get('/:ticketId', async (req, res, next) => {
     if (!tickets.length) return res.status(404).json({ error: 'Ticket not found' });
 
     const { rows: replies } = await db.query(
-      `SELECT r.*, u.username AS author_username, u.avatar_color AS author_color
+      `SELECT r.*, u.username AS author_username, u.display_name AS author_display_name, u.avatar_color AS author_color
        FROM ticket_replies r
        LEFT JOIN users u ON u.id = r.author_id
        WHERE r.ticket_id = $1
@@ -66,7 +68,9 @@ router.get('/:ticketId', async (req, res, next) => {
 router.post('/', [
   body('title').trim().isLength({ min: 1, max: 300 }),
   body('description').optional().trim(),
-  body('vuln_id').optional().isUUID(),
+  // Linking a finding is optional. The client form sends null for "not linked",
+  // and optional() alone only skips undefined, so accept null and '' explicitly.
+  body('vuln_id').optional({ values: 'falsy' }).isUUID(),
   body('client_name').optional().trim().isLength({ max: 200 }),
   body('client_email').optional().trim().isEmail().normalizeEmail(),
 ], async (req, res, next) => {
@@ -109,8 +113,11 @@ router.post('/', [
   } catch (err) { next(err); }
 });
 
+// Answering/triaging a client query is client-facing: owner/editor (the lead)
+// only. Pentesters can still read tickets.
+
 // PATCH update ticket status (editors/owner only)
-router.patch('/:ticketId', requireEditor, [
+router.patch('/:ticketId', requireLead, [
   body('status').optional().isIn(['open', 'in_review', 'closed']),
   body('title').optional().trim().isLength({ min: 1, max: 300 }),
   body('description').optional().trim(),
@@ -138,7 +145,7 @@ router.patch('/:ticketId', requireEditor, [
 });
 
 // DELETE ticket (editors/owner only)
-router.delete('/:ticketId', requireEditor, async (req, res, next) => {
+router.delete('/:ticketId', requireLead, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM tickets WHERE id=$1 AND project_id=$2 RETURNING title`,
@@ -151,8 +158,8 @@ router.delete('/:ticketId', requireEditor, async (req, res, next) => {
 
 // ── GITHUB INTEGRATION (v1 — one-way push) ──────────────────────────
 // See GITHUB_INTEGRATION.md for the design and the path to bidirectional
-// sync. requireEditor matches the bar for every other ticket mutation.
-router.post('/:ticketId/github', requireEditor, async (req, res, next) => {
+// sync. requireLead matches the bar for every other ticket mutation.
+router.post('/:ticketId/github', requireLead, async (req, res, next) => {
   try {
     const { rows: proj } = await db.query(
       `SELECT github_repo, github_pat_enc FROM projects WHERE id=$1`, [req.params.projectId]
@@ -219,6 +226,11 @@ router.post('/:ticketId/replies', [
   // Portal: require a session (already enforced by requireProjectAccess)
   // Team: require a real user
   if (!req.isPortal && !req.user) return res.status(403).json({ error: 'Authentication required' });
+  // A team reply goes to the client (and emails them), so a pentester can't
+  // send one — that's the lead's job. Viewers stay allowed: a viewer account
+  // IS the client (they land on the client view), replying on their own query.
+  if (!req.isPortal && req.memberRole === 'pentester')
+    return res.status(403).json({ error: 'Only the project owner or an editor can reply to client queries' });
 
   try {
     const { rows: ticket } = await db.query(
@@ -245,7 +257,7 @@ router.post('/:ticketId/replies', [
       await db.query(`UPDATE tickets SET updated_at=NOW() WHERE id=$1`, [req.params.ticketId]);
 
       const { rows: full } = await db.query(
-        `SELECT r.*, u.username AS author_username, u.avatar_color AS author_color
+        `SELECT r.*, u.username AS author_username, u.display_name AS author_display_name, u.avatar_color AS author_color
          FROM ticket_replies r JOIN users u ON u.id = r.author_id
          WHERE r.id=$1`,
         [rows[0].id]
@@ -267,7 +279,7 @@ router.post('/:ticketId/replies', [
           projectName: proj?.name || 'Your project',
           ticketTitle: ticket[0].title,
           replyBody:   req.body.body,
-          replyAuthor: req.user.username,
+          replyAuthor: req.user.display_name || req.user.username,
           portalUrl,
         }).catch(err => console.error('Email notification failed:', err.message));
       }
@@ -287,7 +299,7 @@ router.delete('/:ticketId/replies/:replyId', async (req, res, next) => {
     );
     if (!ticket.length) return res.status(404).json({ error: 'Ticket not found' });
 
-    const isEditor = ['owner', 'editor'].includes(req.memberRole);
+    const isEditor = isLeadRole(req.memberRole);
     const { rows } = await db.query(
       `DELETE FROM ticket_replies
        WHERE id=$1 AND ticket_id=$2 ${isEditor ? '' : 'AND author_id=$3'}

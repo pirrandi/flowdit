@@ -6,7 +6,7 @@ const ws  = require('./ws');
  *
  * @param {object} opts
  * @param {string} opts.projectId
- * @param {object} opts.user        - { id, username, avatar_color }
+ * @param {object} opts.user        - { id, username, display_name, avatar_color }
  * @param {string} opts.action      - e.g. 'set_status', 'add_note', 'invite_created'
  * @param {string} opts.entityType  - 'wstg_test' | 'ps_lab' | 'custom_vuln' | 'member' | 'project'
  * @param {string} [opts.entityId]
@@ -37,6 +37,7 @@ async function log(opts) {
       user: {
         id:           user.id,
         username:     user.username,
+        display_name: user.display_name || null,
         avatar_color: user.avatar_color || '#7c3aed',
       },
     };

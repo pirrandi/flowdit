@@ -288,7 +288,7 @@ router.post('/chat', async (req, res) => {
       '',
       'Targets in-scope: ' + ((ctx.targets || []).filter(t => t.scope === 'in').slice(0, 20).map(t => t.host + '(' + (t.type || '?') + ')').join(', ') || 'ninguno'),
       ctx.tickets?.length ? 'Tickets: ' + ctx.tickets.filter(t => t.status === 'open').length + ' abiertos, ' + ctx.tickets.filter(t => t.status === 'in_review').length + ' en revisión, ' + ctx.tickets.filter(t => t.status === 'closed').length + ' cerrados' : '',
-      ctx.team?.length ? 'Equipo: ' + ctx.team.map(m => m.username + ' (' + m.role + ')').join(', ') : '',
+      ctx.team?.length ? 'Equipo: ' + ctx.team.map(m => (m.display_name || m.username) + ' (' + m.role + ')').join(', ') : '',
       ctx.methodologies?.length ? 'Metodologías: ' + ctx.methodologies.map(m => m.name + ' ' + m.pct + '%').join(', ') : '',
       activityLines.length ? '\nActividad reciente (' + activityLines.length + ' entradas):\n' + activityLines.join('\n') : '',
     ];

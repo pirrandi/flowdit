@@ -7,6 +7,22 @@ const path = require('path');
 const { requireAuth: auth, requireUser } = require('../middleware/auth');
 const db   = require('../db');
 const { generateDocx } = require('../services/docxExport');
+const { findProjectForUser, isLeadRole } = require('../middleware/project');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Exporting the report hands the client deliverable out, so it is a lead-only
+// (owner/editor) action — a pentester can work on the findings but not ship
+// them. Answers { project } when the caller may export, else { status, error }.
+async function checkExportAccess(projectId, userId) {
+  if (!projectId) return { status: 400, error: 'projectId required' };
+  if (!UUID_RE.test(String(projectId))) return { status: 404, error: 'Project not found' };
+  const project = await findProjectForUser(projectId, userId);
+  if (!project) return { status: 404, error: 'Project not found' };
+  if (!isLeadRole(project.member_role))
+    return { status: 403, error: 'Only the project owner or an editor can export the report' };
+  return { project };
+}
 
 const router = express.Router();
 
@@ -125,9 +141,9 @@ function encryptWithGs(pdfBytes, password, gsBin) {
 }
 
 // POST /api/export/pdf
-// Body: { pageUrl, token, password? }
+// Body: { pageUrl, projectId, token, password? }
 router.post('/pdf', auth, requireUser, async (req, res) => {
-  const { pageUrl, token, password, rptKey, rptData, scope, reportType, filename } = req.body;
+  const { pageUrl, projectId, token, password, rptKey, rptData, scope, reportType, filename } = req.body;
   if (!pageUrl) return res.status(400).json({ error: 'pageUrl required' });
 
   // Resolved before the browser launches so a rejected URL costs nothing and
@@ -135,6 +151,14 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
   let internalPageUrl;
   try { internalPageUrl = resolveInternalPageUrl(pageUrl); }
   catch (err) { return res.status(400).json({ error: err.message }); }
+
+  try {
+    const access = await checkExportAccess(projectId, req.user.id);
+    if (!access.project) return res.status(access.status).json({ error: access.error });
+  } catch (err) {
+    console.error('PDF export access check failed:', err);
+    return res.status(500).json({ error: 'PDF generation failed' });
+  }
 
   const executablePath = findChrome();
   if (!executablePath) return res.status(500).json({
@@ -308,18 +332,12 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
 // Body: { projectId, type, rptData, filename? }
 router.post('/docx', auth, requireUser, async (req, res) => {
   const { projectId, type = 'technical', rptData, filename: rawFilename } = req.body;
-  if (!projectId) return res.status(400).json({ error: 'projectId required' });
 
   try {
-    // Verify project access
-    const { rows: projRows } = await db.query(
-      `SELECT p.* FROM projects p
-       JOIN project_members pm ON pm.project_id = p.id
-       WHERE p.id = $1 AND pm.user_id = $2`,
-      [projectId, req.user.id]
-    );
-    if (!projRows.length) return res.status(404).json({ error: 'Project not found' });
-    const project = projRows[0];
+    // Verify project access + lead role (same resolution as requireProjectAccess)
+    const access = await checkExportAccess(projectId, req.user.id);
+    if (!access.project) return res.status(access.status).json({ error: access.error });
+    const { project } = access;
 
     // Parse report metadata + sections from localStorage snapshot
     let meta = {}, sections = [];

@@ -1,7 +1,7 @@
 const router = require('express').Router({ mergeParams: true });
 const db     = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireLead } = require('../middleware/project');
 
 router.use(requireAuth, requireProjectAccess);
 
@@ -21,7 +21,8 @@ router.get('/', async (req, res, next) => {
 });
 
 // PUT /api/projects/:projectId/report-config
-router.put('/', requireEditor, async (req, res, next) => {
+// The report builder shapes the client deliverable — lead only (no pentester).
+router.put('/', requireLead, async (req, res, next) => {
   const data = req.body.data;
   if (data === null || typeof data !== 'object' || Array.isArray(data)) {
     return res.status(400).json({ error: 'data must be an object' });

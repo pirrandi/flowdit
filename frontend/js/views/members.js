@@ -30,18 +30,23 @@ async function renderMembers() {
         </div>
         ${state.members.map(m => `
           <div class="member-row">
-            <div class="member-avatar-lg" style="background:${roleColor(m.role)};overflow:hidden;padding:0${m.avatar_url ? `;box-shadow:0 0 0 2px ${roleColor(m.role)}` : ''}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${m.username[0].toUpperCase()}</span>`}</div>
+            <div class="member-avatar-lg" style="background:${roleColor(m.role)};overflow:hidden;padding:0${m.avatar_url ? `;box-shadow:0 0 0 2px ${roleColor(m.role)}` : ''}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${nameInitial(displayName(m))}</span>`}</div>
             <div class="member-info">
               <div class="member-username">
-                ${esc(m.username)}
+                ${esc(displayName(m))}
+                ${m.display_name ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3);font-weight:400;margin-left:6px">@${esc(m.username)}</span>` : ''}
                 ${m.label ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3);font-weight:400;margin-left:6px">${esc(m.label)}</span>` : ''}
               </div>
               <div class="member-meta">
-                ${m.invited_by_username ? `Invited by ${esc(m.invited_by_username)} · ` : ''}
+                ${m.invited_by_username ? `Invited by ${esc(displayName(m, 'invited_by_'))} · ` : ''}
                 Joined ${relativeDate(m.joined_at)}
               </div>
             </div>
-            <span class="role-badge role-${m.role}">${m.role}</span>
+            ${isOwner && m.role !== 'owner' && m.id !== state.user?.id ? `
+              <select class="form-input" style="width:auto;padding:3px 8px;font-size:11px" title="Cambiar rol"
+                onchange="changeMemberRole('${m.id}', this.value)">
+                ${ASSIGNABLE_ROLES.map(r => `<option value="${r}" ${r === m.role ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`).join('')}
+              </select>` : `<span class="role-badge role-${m.role}">${m.role}</span>`}
             ${isOwner && m.role !== 'owner' ? `<button class="btn-icon delete" onclick="removeMember('${m.id}')">${icon('x',{size:12})}</button>` : ''}
           </div>`).join('')}
       </div>
@@ -65,7 +70,7 @@ async function renderMembers() {
                 <div class="invite-token-display">${esc(inv.token)}</div>
                 <span class="invite-role-tag role-badge role-${inv.role}">${inv.role}</span>
                 <span class="invite-expires">
-                  ${used ? `Used by ${esc(inv.accepted_by_username||'?')}` : expired ? 'Expired' : `Expires ${relativeDate(inv.expires_at)}`}
+                  ${used ? `Used by ${esc(displayName(inv, 'accepted_by_'))}` : expired ? 'Expired' : `Expires ${relativeDate(inv.expires_at)}`}
                 </span>
                 ${!used && !expired ? `
                   <button class="btn-icon" onclick="copyInviteCode('${esc(inv.token)}')" title="Copy code">copy</button>
@@ -95,9 +100,24 @@ async function renderMembers() {
 // ── invite actions ────────────────────────────────────────────────────
 
 const INVITE_ROLE_HINTS = {
-  editor: 'Can create findings, update methodology and manage the project.',
-  viewer: 'Read-only access via the client portal.',
+  editor:    'Can create findings, update methodology and manage the project.',
+  pentester: 'Trabajo técnico, sin acciones de cara al cliente (publicar, tickets, exportar).',
+  viewer:    'Read-only access via the client portal.',
 };
+
+// Roles the owner can hand out; matches ASSIGNABLE_ROLES in routes/projects.js.
+const ASSIGNABLE_ROLES = ['editor', 'pentester', 'viewer'];
+const ROLE_LABELS = { editor: 'Editor', pentester: 'Pentester', viewer: 'Viewer' };
+
+async function changeMemberRole(userId, role) {
+  try {
+    await api.members.changeRole(state.currentProject.id, userId, role);
+    const m = state.members.find(x => x.id === userId);
+    if (m) m.role = role;
+    showToast('Rol actualizado', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+  renderMembers();
+}
 
 function createInvite() {
   document.getElementById('invite-label').value = '';
@@ -192,4 +212,5 @@ window.copyInviteCode     = copyInviteCode;
 window.copyInviteLink     = copyInviteLink;
 window.revokeInvite       = revokeInvite;
 window.removeMember       = removeMember;
+window.changeMemberRole   = changeMemberRole;
 window.joinWithCode       = joinWithCode;

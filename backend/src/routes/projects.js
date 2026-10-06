@@ -4,7 +4,7 @@ const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
-const { requireAuth, blockDemoDestructive } = require('../middleware/auth');
+const { requireAuth, requireUser, blockDemoDestructive } = require('../middleware/auth');
 const { requireProjectAccess, requireOwner } = require('../middleware/project');
 const { encrypt } = require('../utils/crypto');
 const { PROVIDERS: ALL_AI_PROVIDERS } = require('../services/ai');
@@ -30,6 +30,25 @@ function sanitizeProject(p) {
   return out;
 }
 
+// A client portal session gets an ALLOWLIST projection of the project — only
+// the presentation + visibility flags the client view needs. Internal config
+// (ai_provider/ai_model/ai_tool_mode, github_repo, portal_token, member_count,
+// organization_id, created_by, …) never reaches the client, even though the
+// generic sanitizeProject would pass it through. Allowlist, not blocklist, so a
+// field added later does not leak by default.
+const PORTAL_PROJECT_FIELDS = [
+  'id', 'name', 'status', 'created_at',
+  'client_view_enabled', 'tickets_enabled',
+  'show_findings', 'show_wstg_progress', 'show_wstg_notes', 'show_targets', 'show_activity',
+  'portal_hide_team_avatars', 'portal_hide_log_times',
+  'logo_url', 'logo_bg', 'date_start', 'date_end', 'date_report',
+];
+function sanitizeProjectForPortal(p) {
+  const out = {};
+  for (const f of PORTAL_PROJECT_FIELDS) out[f] = p[f];
+  return out;
+}
+
 // GET /projects — direct membership OR implicit access via being an
 // owner/admin of the project's organization (same fallback shape as
 // requireProjectAccess). Without the org-fallback join here, an org
@@ -41,7 +60,7 @@ router.get('/', async (req, res, next) => {
     const { rows } = await db.query(
       `SELECT p.*,
               COALESCE(pm.role, CASE om.role WHEN 'owner' THEN 'owner' WHEN 'admin' THEN 'editor' END) AS member_role,
-              u.username AS owner_username, o.name AS organization_name,
+              u.username AS owner_username, u.display_name AS owner_display_name, o.name AS organization_name,
               (pm.user_id IS NULL) AS via_org,
               (SELECT COUNT(*) FROM project_members pm2 WHERE pm2.project_id = p.id) AS member_count,
               COALESCE(v.crit,0)::int AS crit_count, COALESCE(v.high,0)::int AS high_count
@@ -98,11 +117,12 @@ router.post('/', [
 });
 
 // GET /projects/:projectId
-router.get('/:projectId', requireProjectAccess, (req, res) => res.json(sanitizeProject(req.project)));
+router.get('/:projectId', requireProjectAccess, (req, res) =>
+  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : sanitizeProject(req.project)));
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model','ai_tool_mode','ai_autonomous_requests','ai_single_agent','github_repo'];
+  const fields = ['name','target','description','status','client_view_enabled','tickets_enabled','show_findings','show_wstg_progress','show_wstg_notes','show_targets','show_activity','portal_hide_team_avatars','portal_hide_log_times','logo_url','logo_bg','date_start','date_end','date_report','portal_require_password','ai_provider','ai_model','ai_tool_mode','ai_autonomous_requests','ai_single_agent','github_repo'];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
 
@@ -182,11 +202,14 @@ router.delete('/:projectId', requireProjectAccess, requireOwner, blockDemoDestru
 
 // ── MEMBERS ─────────────────────────────────────────────────────────
 
-router.get('/:projectId/members', requireProjectAccess, async (req, res, next) => {
+// Roles an owner can hand out (owner itself is never assigned, only held).
+const ASSIGNABLE_ROLES = ['editor', 'pentester', 'viewer'];
+
+router.get('/:projectId/members', requireProjectAccess, requireUser, async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT u.id, u.username, u.email, u.avatar_color, u.avatar_url, pm.role, pm.joined_at,
-              pm.label, inv.username AS invited_by_username
+      `SELECT u.id, u.username, u.display_name, u.email, u.avatar_color, u.avatar_url, pm.role, pm.joined_at,
+              pm.label, inv.username AS invited_by_username, inv.display_name AS invited_by_display_name
        FROM project_members pm
        JOIN users u ON u.id=pm.user_id
        LEFT JOIN users inv ON inv.id=pm.invited_by
@@ -199,7 +222,7 @@ router.get('/:projectId/members', requireProjectAccess, async (req, res, next) =
 
 router.patch('/:projectId/members/:userId', requireProjectAccess, requireOwner, async (req, res, next) => {
   const { role } = req.body;
-  if (!['editor','viewer'].includes(role)) return res.status(400).json({ error:'Role must be editor or viewer' });
+  if (!ASSIGNABLE_ROLES.includes(role)) return res.status(400).json({ error:'Role must be editor, pentester or viewer' });
   if (req.params.userId === req.user.id)   return res.status(400).json({ error:'Cannot change your own role' });
   try {
     await db.query(`UPDATE project_members SET role=$1 WHERE project_id=$2 AND user_id=$3`, [role, req.params.projectId, req.params.userId]);
@@ -219,7 +242,7 @@ router.delete('/:projectId/members/:userId', requireProjectAccess, requireOwner,
 
 // POST /projects/:projectId/invites  — create a link/token
 router.post('/:projectId/invites', requireProjectAccess, requireOwner, [
-  body('role').optional().isIn(['editor','viewer']),
+  body('role').optional().isIn(ASSIGNABLE_ROLES),
   body('label').optional().trim().isLength({ max:100 }),
 ], async (req, res, next) => {
   const errors = validationResult(req);
@@ -256,8 +279,8 @@ router.get('/:projectId/invites', requireProjectAccess, requireOwner, async (req
   try {
     const { rows } = await db.query(
       `SELECT pi.id, pi.token, pi.role, pi.label, pi.expires_at, pi.created_at,
-              pi.accepted_at, u.username AS invited_by_username,
-              au.username AS accepted_by_username
+              pi.accepted_at, u.username AS invited_by_username, u.display_name AS invited_by_display_name,
+              au.username AS accepted_by_username, au.display_name AS accepted_by_display_name
        FROM project_invites pi
        JOIN users u ON u.id=pi.invited_by
        LEFT JOIN users au ON au.id=pi.accepted_by
@@ -311,7 +334,7 @@ router.post('/join', async (req, res, next) => {
       user:       req.user,
       action:     'member_joined',
       entityType: 'member',
-      entityName: req.user.username,
+      entityName: req.user.display_name || req.user.username,
       meta:       { role: invite.role },
     });
 

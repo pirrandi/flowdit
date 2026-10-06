@@ -147,8 +147,8 @@ function renderUserPill() {
   const color = u.avatar_color || '#7c3aed';
   document.getElementById('proj-topbar-user').innerHTML = `
     <div class="user-pill" onclick="toggleUserMenu()">
-      ${avatarHtml(u.username, color, 24, u.avatar_url)}
-      <span>${esc(u.username)}</span>
+      ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
+      <span title="@${esc(u.username)}">${esc(displayName(u))}</span>
       <div class="user-dropdown" id="user-dropdown">
         <button class="dropdown-item" onclick="window.location.href='projects'">${icon('layout-grid',{size:13})} Projects</button>
         <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out',{size:13})} Logout</button>

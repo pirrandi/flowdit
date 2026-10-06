@@ -2,13 +2,13 @@ const express   = require('express');
 const multer    = require('multer');
 const { XMLParser } = require('fast-xml-parser');
 const db        = require('../db');
-const { requireAuth }                        = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireAuth, requireUser }            = require('../middleware/auth');
+const { requireProjectAccess, requireWriter } = require('../middleware/project');
 
 const router = express.Router({ mergeParams: true });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireUser, requireProjectAccess); // internal-only: never exposed to client portal sessions
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 function stripHtml(val) {
@@ -296,7 +296,7 @@ function detectFormat(xml) {
   return null;
 }
 
-router.post('/scan', requireEditor, upload.single('file'), async (req, res, next) => {
+router.post('/scan', requireWriter, upload.single('file'), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
     const xml    = req.file.buffer.toString('utf8');
@@ -320,7 +320,7 @@ router.post('/scan', requireEditor, upload.single('file'), async (req, res, next
 });
 
 // Keep /burp for backward compatibility
-router.post('/burp', requireEditor, upload.single('file'), async (req, res, next) => {
+router.post('/burp', requireWriter, upload.single('file'), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
     const xml = req.file.buffer.toString('utf8');

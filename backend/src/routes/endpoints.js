@@ -3,9 +3,9 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor, requireTargetAccess } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, requireTargetAccess, portalRequiresFlag } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess, requireTargetAccess);
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_targets'), requireTargetAccess);
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'];
 
@@ -13,7 +13,7 @@ const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OT
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT e.*, u.username AS added_by_username
+      `SELECT e.*, u.username AS added_by_username, u.display_name AS added_by_display_name
        FROM target_endpoints e
        LEFT JOIN users u ON u.id = e.added_by
        WHERE e.target_id = $1
@@ -25,7 +25,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST create endpoint
-router.post('/', requireEditor, [
+router.post('/', requireWriter, [
   body('path').trim().isLength({ min: 1, max: 1000 }),
   body('method').optional().isIn(METHODS),
   body('status_code').optional().isInt({ min: 100, max: 599 }),
@@ -56,7 +56,7 @@ router.post('/', requireEditor, [
 });
 
 // PATCH update endpoint
-router.patch('/:endpointId', requireEditor, async (req, res, next) => {
+router.patch('/:endpointId', requireWriter, async (req, res, next) => {
   const allowed = ['path', 'method', 'status_code', 'interesting', 'notes'];
   const updates = [], values = [];
   allowed.forEach(f => {
@@ -79,7 +79,7 @@ router.patch('/:endpointId', requireEditor, async (req, res, next) => {
 });
 
 // DELETE endpoint
-router.delete('/:endpointId', requireEditor, async (req, res, next) => {
+router.delete('/:endpointId', requireWriter, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM target_endpoints WHERE id=$1 AND target_id=$2 RETURNING path, method`,

@@ -190,8 +190,8 @@ function renderUserPill() {
   const color = u.avatar_color || '#7c3aed';
   document.getElementById('proj-topbar-user').innerHTML = `
     <div class="user-pill" onclick="toggleUserMenu()">
-      ${avatarHtml(u.username, color, 24, u.avatar_url)}
-      <span>${esc(u.username)}</span>
+      ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
+      <span title="@${esc(u.username)}">${esc(displayName(u))}</span>
       <div class="user-dropdown" id="user-dropdown">
         <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> Edit Profile</button>
         <button class="dropdown-item" onclick="window.location.href='orgs'">${icon('building-2',{size:13})} Organizations</button>
@@ -228,9 +228,14 @@ function _injectProfileModal() {
         <button id="profile-avatar-remove" style="display:none;font-family:var(--mono);font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg> Remove photo</button>
       </div>
       <div class="form-group">
-        <label class="form-label">Display name</label>
-        <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="off">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Letters, numbers, _ and - only.</div>
+        <label class="form-label" for="profile-display-name">Display name</label>
+        <input type="text" class="form-input" id="profile-display-name" maxlength="50" autocomplete="name" placeholder="e.g. Juan Pérez">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Optional. Shown to your team instead of your username.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="profile-username">Username</label>
+        <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="username" spellcheck="false">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Used to sign in. Letters, numbers, _ and - only.</div>
       </div>
       <div class="form-error" id="profile-error"></div>
       <div class="modal-footer">
@@ -252,6 +257,7 @@ function openProfileModal() {
   closeUserMenu();
   _pendingAvatarUrl = undefined;
   const u = state.user;
+  document.getElementById('profile-display-name').value = u.display_name || '';
   document.getElementById('profile-username').value = u.username;
   document.getElementById('profile-error').textContent = '';
   _refreshAvatarPreview(u.avatar_url || null);
@@ -272,7 +278,7 @@ function _refreshAvatarPreview(url) {
     preview.style.boxShadow   = `0 0 0 3px ${color}`;
     removeBtn.style.display   = 'block';
   } else {
-    preview.innerHTML  = (state.user?.username || '?')[0].toUpperCase();
+    preview.innerHTML  = nameInitial(displayName(state.user));
     preview.style.background  = color;
     preview.style.boxShadow   = 'none';
     removeBtn.style.display   = 'none';
@@ -295,25 +301,33 @@ function _removeAvatar() {
 }
 
 async function saveProfile() {
-  const username = document.getElementById('profile-username').value.trim();
+  const username  = document.getElementById('profile-username').value.trim();
+  const displayNm = document.getElementById('profile-display-name').value.replace(/\s+/g, ' ').trim();
   const errEl    = document.getElementById('profile-error');
   const btn      = document.getElementById('profile-save-btn');
   errEl.textContent = '';
-  if (!username) { errEl.textContent = 'Display name is required.'; return; }
+  if (!username) { errEl.textContent = 'Username is required.'; return; }
   if (!/^[a-zA-Z0-9_-]{2,50}$/.test(username)) {
-    errEl.textContent = 'Only letters, numbers, _ and - (2–50 chars).'; return;
+    errEl.textContent = 'Username: only letters, numbers, _ and - (2–50 chars).'; return;
   }
+  if ([...displayNm].length > 50) { errEl.textContent = 'Display name: 50 characters max.'; return; }
   const payload = {};
   if (username !== state.user.username) payload.username = username;
+  if (displayNm !== (state.user.display_name || '')) payload.display_name = displayNm;
   if (_pendingAvatarUrl !== undefined) payload.avatar_url = _pendingAvatarUrl;
   if (!Object.keys(payload).length) { closeProfileModal(); return; }
   btn.disabled = true;
   try {
     const updated = await api.auth.updateProfile(payload);
     state.user = { ...state.user, ...updated };
+    localStorage.setItem('fd_user', JSON.stringify(state.user));
     closeProfileModal();
     renderUserPill();
-    showToast('Profile updated', 'success');
+    if ('display_name' in payload && !('display_name' in updated)) {
+      showToast('Display name is not supported by the server yet', 'error');
+    } else {
+      showToast('Profile updated', 'success');
+    }
   } catch(e) { errEl.textContent = e.message; }
   finally { btn.disabled = false; }
 }

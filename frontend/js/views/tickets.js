@@ -57,7 +57,7 @@ function ticketRowHtml(t) {
   const color      = STATUS_COLOR[t.status] || 'var(--t3)';
   const label      = STATUS_LABEL[t.status] || t.status;
   const hasReplies = t.reply_count > 0;
-  const author     = t.opened_by_username || t.client_name || 'Client';
+  const author     = t.opened_by_display_name || t.opened_by_username || t.client_name || 'Client';
   const isPortal   = !t.opened_by_username && t.client_name;
 
   return `
@@ -98,20 +98,23 @@ async function openTicketModal(ticketId) {
 
   document.getElementById('ticket-modal-title').textContent = t.title;
   document.getElementById('ticket-modal-desc').textContent  = t.description || '';
-  const openedBy = t.opened_by_username || t.client_name || 'Client';
+  const openedBy = t.opened_by_display_name || t.opened_by_username || t.client_name || 'Client';
   const isPortalTicket = !t.opened_by_username && t.client_name;
   document.getElementById('ticket-modal-meta').innerHTML    =
     `Opened by <strong>${esc(openedBy)}</strong>${isPortalTicket ? ' <span style="font-family:var(--mono);font-size:9px;color:var(--a);border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:1px 5px">portal</span>' : ''} · ${relativeDate(t.created_at)}` +
     (t.vuln_name ? ` · re: <span style="color:var(--a)">${esc(t.vuln_name)}</span>` : '');
 
+  // Triage/reply/GitHub are client-facing — hidden for pentesters (read-only here).
+  const lead  = canActForClient();
   const color = STATUS_COLOR[t.status] || 'var(--t3)';
-  const btns  = ['open','in_review','closed'].filter(s => s !== t.status).map(s =>
+  const btns  = !lead ? '' : ['open','in_review','closed'].filter(s => s !== t.status).map(s =>
     `<button class="btn-secondary" style="font-size:10px;padding:3px 9px;color:${STATUS_COLOR[s]};border-color:${STATUS_COLOR[s]}44"
       onclick="changeTicketStatus('${s}',event)">${STATUS_LABEL[s]}</button>`
   ).join('');
 
   const githubBtn = t.github_url
     ? `<a href="${esc(t.github_url)}" target="_blank" rel="noopener" class="btn-secondary" style="font-size:10px;padding:3px 9px;text-decoration:none">${icon('link',{size:11})} View on GitHub</a>`
+    : !lead ? ''
     : `<button class="btn-secondary" style="font-size:10px;padding:3px 9px" id="ticket-github-btn" onclick="sendTicketToGithub(event)">Send to GitHub</button>`;
 
   document.getElementById('ticket-modal-status-btns').innerHTML =
@@ -119,6 +122,8 @@ async function openTicketModal(ticketId) {
 
   renderTicketThread(t.replies || []);
   document.getElementById('ticket-reply-input').value = '';
+  document.getElementById('ticket-reply-box').style.display = lead ? '' : 'none';
+  document.getElementById('ticket-reply-readonly').style.display = lead ? 'none' : '';
   document.getElementById('ticket-modal').classList.add('open');
   setTimeout(() => {
     const thread = document.getElementById('ticket-modal-thread');
@@ -139,17 +144,17 @@ function renderTicketThread(replies) {
   }
   thread.innerHTML = replies.map(r => {
     const isPortal    = !r.author_id;
-    const displayName = r.author_username || r.client_name || 'Client';
+    const authorName  = r.author_display_name || r.author_username || r.client_name || 'Client';
     const isMe        = !isPortal && r.author_id === state.user?.id;
     const color       = isPortal ? 'var(--a)' : roleColor(isMe ? state.currentProject?.member_role : 'viewer');
     const bgColor     = isPortal ? 'rgba(245,158,11,.08)' : isMe ? color + '18' : 'var(--bg3)';
     const borderColor = isPortal ? 'rgba(245,158,11,.2)'  : isMe ? color + '33' : 'var(--b1)';
     return `
       <div style="display:flex;gap:8px;${isMe ? 'flex-direction:row-reverse' : ''}">
-        ${avatarHtml(displayName, color, 26, r.author_avatar_url || null)}
+        ${avatarHtml(authorName, color, 26, r.author_avatar_url || null)}
         <div style="max-width:78%;display:flex;flex-direction:column;gap:3px;${isMe ? 'align-items:flex-end' : ''}">
           <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">
-            ${esc(displayName)}${isPortal ? ' <span style="color:var(--a)">· client</span>' : ''} · ${relativeDate(r.created_at)}
+            ${esc(authorName)}${isPortal ? ' <span style="color:var(--a)">· client</span>' : ''} · ${relativeDate(r.created_at)}
           </div>
           <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:9px 13px;font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--t1)">${esc(r.body)}</div>
         </div>

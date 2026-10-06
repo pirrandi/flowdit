@@ -40,7 +40,7 @@ async function mintSession(user) {
   await db.query(REFRESH_INSERT, [user.id, refreshToken, refreshExpiryDays()]);
   return {
     accessToken, refreshToken,
-    user: { id: user.id, username: user.username, email: user.email, avatar_color: user.avatar_color },
+    user: { id: user.id, username: user.username, display_name: user.display_name || null, email: user.email, avatar_color: user.avatar_color },
   };
 }
 

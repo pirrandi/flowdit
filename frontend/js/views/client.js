@@ -429,12 +429,13 @@ function renderClientActivity() {
     const member = (state.members || []).find(m => m.username === e.username);
     const color  = member ? roleColor(member.role) : roleColor('editor');
     const label  = actionLabel(e.action, e.entity_type, e.entity_name, e.meta);
+    const name   = displayName(e);
     return `
       <div class="activity-item">
-        ${avatarHtml(e.username, color, 24, member?.avatar_url || null)}
+        ${avatarHtml(name, color, 24, member?.avatar_url || null)}
         <div class="activity-content">
-          <div class="activity-text"><strong>${esc(e.username || '?')}</strong> ${label}</div>
-          <div class="activity-time">${timeAgo(e.created_at)}</div>
+          <div class="activity-text"><strong>${esc(name)}</strong> ${label}</div>
+          ${e.created_at ? `<div class="activity-time">${timeAgo(e.created_at)}</div>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -446,7 +447,7 @@ function buildTicketsSection(tickets) {
   const STATUS_LABEL = { open:'open', in_review:'in review', closed:'closed' };
 
   const rows = tickets.map(t => {
-    const author = t.opened_by_username || t.client_name || 'Client';
+    const author = t.opened_by_display_name || t.opened_by_username || t.client_name || 'Client';
     return `
     <div class="client-ticket-row" onclick="openTicketDetail('${t.id}')">
       <div style="width:5px;height:5px;border-radius:50%;background:${STATUS_COL[t.status]||'var(--t3)'};flex-shrink:0;margin-top:4px"></div>
@@ -527,15 +528,15 @@ async function openTicketDetail(ticketId) {
     const myPortalName = api.portal.session.name || null;
     const replies = (ticket.replies||[]).map(r => {
       // A reply is "mine" if it came from this portal session (matched by name) or same user id
-      const displayName = r.author_username || r.client_name || 'Client';
+      const authorName = r.author_display_name || r.author_username || r.client_name || 'Client';
       const isTeam  = !!r.author_id;
-      const isMe    = !isTeam && (myPortalName ? displayName === myPortalName : true);
+      const isMe    = !isTeam && (myPortalName ? authorName === myPortalName : true);
       const color   = isTeam ? roleColor('editor') : roleColor('viewer');
       return `
         <div style="display:flex;gap:8px;${isMe?'flex-direction:row-reverse':''}">
-          ${avatarHtml(displayName, color, 24, null)}
+          ${avatarHtml(authorName, color, 24, null)}
           <div style="max-width:80%;display:flex;flex-direction:column;gap:2px;${isMe?'align-items:flex-end':''}">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(displayName)}${isTeam ? ' <span style="color:var(--a)">· team</span>' : ''} · ${relativeDate(r.created_at)}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${esc(authorName)}${isTeam ? ' <span style="color:var(--a)">· team</span>' : ''} · ${relativeDate(r.created_at)}</div>
             <div style="background:${isTeam?'var(--a-dim)':isMe?'var(--bg3)':'var(--bg2)'};border:1px solid ${isTeam?'rgba(245,158,11,.2)':'var(--b1)'};border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.6;white-space:pre-wrap">${esc(r.body)}</div>
           </div>
         </div>`;

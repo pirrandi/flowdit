@@ -396,7 +396,7 @@ function buildVulnCard(v) {
 
   const remTrailH = [
     v.remediated_at ? `Remediado: ${new Date(v.remediated_at).toLocaleDateString()}` : '',
-    v.verified_at   ? `Verificado: ${new Date(v.verified_at).toLocaleDateString()}${v.verifier_username ? ' por ' + esc(v.verifier_username) : ''}` : '',
+    v.verified_at   ? `Verificado: ${new Date(v.verified_at).toLocaleDateString()}${v.verifier_username ? ' por ' + esc(displayName(v, 'verifier_')) : ''}` : '',
   ].filter(Boolean).join(' · ');
 
   const evidAll      = (v.evidence||[]).map((img,i) => ({ img, i }));
@@ -490,8 +490,8 @@ function buildVulnCard(v) {
 
   const editorBadge = v.editor_username ? `
     <div class="last-editor" style="margin-left:auto">
-      ${avatarHtml(v.editor_username, memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 20, v.editor_avatar_url||null)}
-      <span class="last-editor-name">${esc(v.editor_username)}</span>
+      ${avatarHtml(displayName(v, 'editor_'), memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 20, v.editor_avatar_url||null)}
+      <span class="last-editor-name">${esc(displayName(v, 'editor_'))}</span>
       <span class="last-editor-time">${timeAgo(v.updated_at)}</span>
     </div>` : '';
 
@@ -508,9 +508,12 @@ function buildVulnCard(v) {
       ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
       ${v.ai_generated ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;flex-shrink:0;display:inline-flex;align-items:center;gap:3px" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>` : ''}
       ${(v.remediation_status && v.remediation_status !== 'open') ? remediationBadge(v.remediation_status) : ''}
+      ${!v.client_visible ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0;display:inline-flex;align-items:center;gap:3px" title="No visible en el portal del cliente">${icon('eye-off',{size:10})}Oculto</span>` : ''}
       <span class="vuln-name">${esc(v.name)}</span>
       ${editorBadge}
       <div class="vuln-actions">
+        ${canActForClient() ? `<button class="btn-icon ${v.client_visible ? 'published' : ''}" onclick="toggleVulnPublish('${v.id}',event)"
+          title="${v.client_visible ? 'Visible para el cliente — clic para ocultar' : 'Oculto del cliente — clic para publicar en el portal'}">${icon(v.client_visible ? 'eye' : 'eye-off',{size:12})}</button>` : ''}
         <button class="btn-icon edit" onclick="openEditVuln('${v.id}',event)">${icon('square-pen',{size:12})}</button>
         <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">${icon('x',{size:12})}</button>
       </div>
@@ -555,12 +558,29 @@ async function cycleVulnStatus(id, e) {
   } catch(err) { showToast(err.message, 'error'); }
 }
 
+// Publish / unpublish a finding to the client portal. Findings are hidden by
+// default (opt-in): the client only ever sees what the pentester has explicitly
+// published here. Mirrors cycleVulnStatus — optimistic re-render off the row
+// the PATCH returns.
+async function toggleVulnPublish(id, e) {
+  e.stopPropagation();
+  const v = state.customVulns.find(x => x.id === id);
+  if (!v) return;
+  try {
+    const updated = await api.vulns.update(state.currentProject.id, id, { client_visible: !v.client_visible });
+    Object.assign(v, updated);
+    renderCustomVulns();
+    showToast(updated.client_visible ? 'Hallazgo publicado en el portal del cliente' : 'Hallazgo ocultado del portal del cliente', 'success');
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
 async function setRemediationStatus(vulnId, status) {
   const v = state.customVulns.find(x => x.id === vulnId);
   if (!v) return;
   try {
     const updated = await api.vulns.setRemediation(state.currentProject.id, vulnId, { remediation_status: status });
-    updated.verifier_username = status === 'verified_closed' ? state.user.username : null;
+    updated.verifier_username     = status === 'verified_closed' ? state.user.username : null;
+    updated.verifier_display_name = status === 'verified_closed' ? (state.user.display_name || null) : null;
     Object.assign(v, updated);
     renderCustomVulns();
     if (typeof updateDashboard === 'function') updateDashboard();

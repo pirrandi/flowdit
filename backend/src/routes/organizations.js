@@ -138,8 +138,8 @@ router.delete('/:orgId/sso', requireOrgAccess, requireOrgOwner, async (req, res,
 router.get('/:orgId/members', requireOrgAccess, async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT u.id, u.username, u.email, u.avatar_color, u.avatar_url, om.role, om.joined_at,
-              inv.username AS invited_by_username
+      `SELECT u.id, u.username, u.display_name, u.email, u.avatar_color, u.avatar_url, om.role, om.joined_at,
+              inv.username AS invited_by_username, inv.display_name AS invited_by_display_name
        FROM organization_members om
        JOIN users u ON u.id=om.user_id
        LEFT JOIN users inv ON inv.id=om.invited_by
@@ -198,8 +198,8 @@ router.get('/:orgId/invites', requireOrgAccess, requireOrgAdmin, async (req, res
   try {
     const { rows } = await db.query(
       `SELECT oi.id, oi.token, oi.role, oi.label, oi.expires_at, oi.created_at,
-              oi.accepted_at, u.username AS invited_by_username,
-              au.username AS accepted_by_username
+              oi.accepted_at, u.username AS invited_by_username, u.display_name AS invited_by_display_name,
+              au.username AS accepted_by_username, au.display_name AS accepted_by_display_name
        FROM organization_invites oi
        JOIN users u ON u.id=oi.invited_by
        LEFT JOIN users au ON au.id=oi.accepted_by

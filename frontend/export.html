@@ -611,8 +611,8 @@
         </div>
       </div>
 
-      <!-- Actions -->
-      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <!-- Actions (lead only — hidden for pentesters in pageInit) -->
+      <div id="export-actions" style="margin-left:auto;display:flex;gap:6px;align-items:center">
         <button class="btn-secondary" onclick="copyMarkdown()" style="padding:6px 12px;font-size:12px">Copy MD</button>
         <button class="btn-secondary" onclick="exportDocx()"  style="padding:6px 12px;font-size:12px" data-icon="download" data-icon-size="13">DOCX</button>
         <button class="btn-accent"    onclick="exportPdf()"   style="padding:6px 14px;font-size:12px;font-weight:700">Export PDF</button>
@@ -972,7 +972,7 @@ const PROB_LABELS  = ['Muy Baja','Baja','Moderada','Alta','Muy Alta'];
 // Chromium — but the server is the source of truth on load.
 let _rptSyncTimer   = null;
 let _rptSyncReady   = false;  // the server copy has been pulled; pushes allowed
-let _rptSyncBlocked = false;  // viewer role or unreachable API: work locally
+let _rptSyncBlocked = false;  // viewer/pentester role or unreachable API: work locally
 
 function pushReportConfig() {
   if (window.FLOWDIT_SNAPSHOT) return;   // headless PDF render — never writes back
@@ -985,7 +985,7 @@ function pushReportConfig() {
     try {
       await api.reportConfig.save(pid, getReportData());
     } catch (e) {
-      // 403 = viewer, it will never succeed; anything else may be transient.
+      // 403 = viewer/pentester, it will never succeed; anything else may be transient.
       if (e?.status === 403) _rptSyncBlocked = true;
       else console.warn('[export] report config sync failed:', e?.message || e);
     }
@@ -4431,7 +4431,7 @@ async function exportPdf() {
     const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ pageUrl, token, rptKey, rptData, password, filename, scope, reportType }),
+      body: JSON.stringify({ pageUrl, projectId: pid, token, rptKey, rptData, password, filename, scope, reportType }),
     });
 
     if (!res.ok) {
@@ -4502,6 +4502,14 @@ function copyMarkdown() {
 }
 
 async function pageInit() {
+  // Exporting and the report builder are client-facing (owner/editor only;
+  // the server answers 403 to a pentester). Hide the export actions and keep
+  // builder edits local instead of letting every save bounce off the API.
+  if (!window.FLOWDIT_SNAPSHOT && !canActForClient()) {
+    _rptSyncBlocked = true;
+    const actions = document.getElementById('export-actions');
+    if (actions) actions.innerHTML = `<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">Exportar el informe corresponde al Owner o a un Editor</span>`;
+  }
   // Pull the server copies BEFORE anything reads localStorage: getReportData()
   // and the finding hydration in buildEditor() both take localStorage as their
   // input, so the server state has to land there first.

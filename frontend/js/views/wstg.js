@@ -109,9 +109,9 @@ function buildTestItem(test) {
 
   // Last editor badge
   const editorBadge = editor ? `
-    <div class="last-editor" title="${esc(editor.username)} · ${relativeDate(td.updated_at)}">
-      ${avatarHtml(editor.username, memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
-      <span class="last-editor-name">${esc(editor.username)}</span>
+    <div class="last-editor" title="${esc(displayName(editor))} · ${relativeDate(td.updated_at)}">
+      ${avatarHtml(displayName(editor), memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
+      <span class="last-editor-name">${esc(displayName(editor))}</span>
       <span class="last-editor-time">${timeAgo(td.updated_at)}</span>
     </div>` : '';
 
@@ -254,9 +254,9 @@ async function _applyWSTGStatus(id, status, testName) {
       // Update editor badge
       const editor = res.editor;
       if (editor) {
-        const html = `<div class="last-editor" title="${esc(editor.username)} · just now">
-          ${avatarHtml(editor.username, memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
-          <span class="last-editor-name">${esc(editor.username)}</span>
+        const html = `<div class="last-editor" title="${esc(displayName(editor))} · just now">
+          ${avatarHtml(displayName(editor), memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
+          <span class="last-editor-name">${esc(displayName(editor))}</span>
           <span class="last-editor-time">just now</span>
         </div>`;
         const badge = el.querySelector('.last-editor');
@@ -379,9 +379,9 @@ function patchWSTGTestDOM(testId, progress) {
   }
 
   if (editor) {
-    const badgeHTML = `<div class="last-editor" title="${esc(editor.username)} · just now">
-      ${avatarHtml(editor.username, memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
-      <span class="last-editor-name">${esc(editor.username)}</span>
+    const badgeHTML = `<div class="last-editor" title="${esc(displayName(editor))} · just now">
+      ${avatarHtml(displayName(editor), memberRoleColor(editor.id, editor.avatar_color), 20, editor.avatar_url || null)}
+      <span class="last-editor-name">${esc(displayName(editor))}</span>
       <span class="last-editor-time">just now</span>
     </div>`;
     const existing = el.querySelector('.last-editor');

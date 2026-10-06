@@ -3,15 +3,15 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, portalRequiresFlag } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_targets'));
 
 // GET all targets for a project
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT t.*, u.username AS added_by_username
+      `SELECT t.*, u.username AS added_by_username, u.display_name AS added_by_display_name
        FROM targets t
        LEFT JOIN users u ON u.id = t.added_by
        WHERE t.project_id = $1
@@ -23,7 +23,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST create target
-router.post('/', requireEditor, [
+router.post('/', requireWriter, [
   body('host').trim().isLength({ min:1, max:500 }),
   body('type').isIn(['domain','ip','cidr','url','other']),
 ], async (req, res, next) => {
@@ -51,7 +51,7 @@ router.post('/', requireEditor, [
 
 // PATCH update target
 // PATCH update target
-router.patch('/:targetId', requireEditor, async (req, res, next) => {
+router.patch('/:targetId', requireWriter, async (req, res, next) => {
   const allowed = ['host','type','scope','notes','status'];
   const updates = [], values = [];
   
@@ -96,7 +96,7 @@ router.patch('/:targetId', requireEditor, async (req, res, next) => {
 });
 
 // DELETE target
-router.delete('/:targetId', requireEditor, async (req, res, next) => {
+router.delete('/:targetId', requireWriter, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM targets WHERE id=$1 AND project_id=$2 RETURNING host`,

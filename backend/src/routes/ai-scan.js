@@ -2,18 +2,18 @@ const router   = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db        = require('../db');
 const activity  = require('../services/activity');
-const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireAuth, requireUser } = require('../middleware/auth');
+const { requireProjectAccess, requireWriter } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 const agentLoop = require('../services/ai/agentLoop');
 const ai = require('../services/ai');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireUser, requireProjectAccess); // internal-only: never exposed to client portal sessions
 
 // Crea una sesión de scan y arranca el loop del agente. Responde apenas se
 // crea el registro — NO espera a que el agente haga nada (ver
 // AI_PENTEST_AGENT.md § Rutas backend). El progreso real llega por WebSocket.
-router.post('/sessions', requireEditor, [
+router.post('/sessions', requireWriter, [
   body('instruction').optional({ nullable: true }).trim().isLength({ max: 4000 }),
   body('lang').optional({ nullable: true }).isIn(['es', 'en']),
   // Config de IA por sesión — opcional, pisa la del proyecto si viene (ver
@@ -133,7 +133,7 @@ router.get('/sessions', async (req, res, next) => {
 // persistEvent() viole la FK contra una fila que ya no existe. `idle`,
 // `waiting_approval`, `paused`, `completed` y `error` no tienen nada en
 // vuelo, se pueden borrar sin ese riesgo.
-router.delete('/sessions/:sessionId', requireEditor, async (req, res, next) => {
+router.delete('/sessions/:sessionId', requireWriter, async (req, res, next) => {
   try {
     const { rows: existing } = await db.query(
       `SELECT status FROM ai_scan_sessions WHERE id=$1 AND project_id=$2`,
@@ -163,7 +163,7 @@ router.delete('/sessions/:sessionId', requireEditor, async (req, res, next) => {
 // también dispararía un turno del agente sin que nadie lo haya pedido en
 // sesiones `idle` por cualquier OTRA razón (ej. esperando instrucción) — el
 // costo de ese error es exactamente lo que este feature existe para evitar.
-router.patch('/sessions/:sessionId', requireEditor, [
+router.patch('/sessions/:sessionId', requireWriter, [
   body('name').optional().trim().isLength({ min: 1, max: 200 }),
   body('ai_max_cost_usd').optional({ nullable: true }).isFloat({ min: 0.01 }),
 ], async (req, res, next) => {

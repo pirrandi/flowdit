@@ -1279,7 +1279,7 @@ function _wireWs() {
   });
 }
 
-function _handleRemoteCursor({ userId, username, wx, wy }) {
+function _handleRemoteCursor({ userId, username, display_name, wx, wy }) {
   if (!userId || userId === state.user?.id) return;
   _cursorData.set(userId, { wx, wy });
 
@@ -1292,7 +1292,7 @@ function _handleRemoteCursor({ userId, username, wx, wy }) {
       <svg width="14" height="18" viewBox="0 0 14 18" fill="none">
         <path d="M1 1L1 13L4.5 10L7 16L9 15L6.5 9L11 9L1 1Z" fill="${color}" stroke="#fff" stroke-width="1"/>
       </svg>
-      <span class="wb-cursor-label" style="background:${color}">${esc(username || '?')}</span>`;
+      <span class="wb-cursor-label" style="background:${color}">${esc(display_name || username || '?')}</span>`;
     _cursorLayer.appendChild(el);
     _cursorEls.set(userId, el);
   }

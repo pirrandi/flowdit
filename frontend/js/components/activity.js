@@ -21,17 +21,23 @@ function renderActivityFeed() {
     return;
   }
 
-  list.innerHTML = state.activityFeed.map(item => `
+  list.innerHTML = state.activityFeed.map(item => {
+    // REST rows are flat (username/display_name); WS-pushed rows nest them
+    // under `user`. Both shapes end up in state.activityFeed.
+    const who  = item.user || item;
+    const name = displayName(who);
+    return `
     <div class="activity-item" id="act-${item.id}">
-      ${avatarHtml(item.username, _actorColor(item.username, item.avatar_color), 24, _actorAvatarUrl(item.username))}
+      ${avatarHtml(name, _actorColor(who.username, who.avatar_color), 24, _actorAvatarUrl(who.username))}
       <div class="activity-content">
         <div class="activity-text">
-          <strong>${esc(item.username)}</strong>
+          <strong>${esc(name)}</strong>
           ${actionLabel(item.action, item.entity_type, item.entity_name, item.meta)}
         </div>
         <div class="activity-time">${timeAgo(item.created_at)}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function prependActivity(item) {
@@ -44,15 +50,17 @@ function prependActivity(item) {
   const empty = list.querySelector('.activity-empty');
   if (empty) empty.remove();
 
-  const username = item.user?.username || item.username;
+  const who      = item.user || item;
+  const username = who.username;
+  const name     = displayName(who);
   const div = document.createElement('div');
   div.className = 'activity-item';
   div.id = `act-${item.id}`;
   div.innerHTML = `
-    ${avatarHtml(username, _actorColor(username, item.user?.avatar_color || item.avatar_color), 24, _actorAvatarUrl(username))}
+    ${avatarHtml(name, _actorColor(username, who.avatar_color || item.avatar_color), 24, _actorAvatarUrl(username))}
     <div class="activity-content">
       <div class="activity-text">
-        <strong>${esc(username)}</strong>
+        <strong>${esc(name)}</strong>
         ${actionLabel(item.action, item.entity_type, item.entity_name, item.meta)}
       </div>
       <div class="activity-time">${timeAgo(item.created_at)}</div>
@@ -74,17 +82,21 @@ function renderOnlinePresence(onlineUsers) {
   const extra = onlineUsers.length - shown.length;
   el.innerHTML = shown.map(u => {
     const member    = (state.members || []).find(m => m.id === u.id || m.username === u.username);
+    const isMe      = u.id === state.user?.id || u.username === state.user?.username;
+    // Prefer the freshest source: own profile, then the members list, then
+    // what the socket carried at connect time.
+    const name      = displayName(isMe ? state.user : (member || u));
     const role      = member?.role || (u.id === state.user?.id ? state.currentProject?.member_role : null);
     const color     = role ? roleColor(role) : '#7c3aed';
-    const avatarUrl = u.username === state.user?.username
+    const avatarUrl = isMe
       ? (state.user?.avatar_url || null)
       : (member?.avatar_url || null);
     const size = 26;
     const base = `width:${size}px;height:${size}px;font-size:11px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;line-height:1;box-shadow:0 0 0 2px ${color},0 0 0 4px var(--bg2)`;
     const inner = avatarUrl
       ? `<div style="${base};background:${color};overflow:hidden;padding:0"><img src="${esc(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div>`
-      : `<div style="${base};background:${color}">${(u.username||'?')[0].toUpperCase()}</div>`;
-    return `<div class="online-dot" title="${esc(u.username)}">${inner}</div>`;
+      : `<div style="${base};background:${color}">${nameInitial(name)}</div>`;
+    return `<div class="online-dot" title="${esc(name)}">${inner}</div>`;
   }).join('') + (extra > 0 ? `<span class="online-count">+${extra}</span>` : '');
 }
 

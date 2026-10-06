@@ -30,7 +30,7 @@ function renderMethodologyList() {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <span class="method-list-name">${esc(m.name)}</span>
         ${m.is_shared ? '<span class="method-badge-shared">shared</span>' : ''}
-        ${!isOwner ? `<span class="method-badge-owner">${esc(m.owner_username)}</span>` : ''}
+        ${!isOwner ? `<span class="method-badge-owner">${esc(displayName(m, 'owner_'))}</span>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="progress-bar" style="flex:1;height:3px">

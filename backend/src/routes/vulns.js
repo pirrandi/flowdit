@@ -3,23 +3,44 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, isLeadRole, portalRequiresFlag } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 const agentLoop = require('../services/ai/agentLoop');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_findings'));
+
+// What a client portal session is allowed to see of a finding — an explicit
+// ALLOWLIST, not a blocklist, so a field added later (internal notes, raw
+// payloads, the editing pentester's identity/avatar, AI provenance, evidence
+// proofs) can never leak to the client by default. Everything else the full
+// row carries (notes, payloads, items, checked_items, evidence, editor_*,
+// verifier_*, created_by, updated_by, ai_generated) is dropped for the portal.
+const PORTAL_FINDING_FIELDS = [
+  'id', 'name', 'category', 'severity', 'description', 'remediation',
+  'cvss_vector', 'cvss_score', 'cwe', 'compliance_tags', 'target_id',
+  'target_host', 'target_type', 'remediation_status', 'retest_date',
+  'retest_notes', 'created_at',
+];
+function toPortalFinding(row) {
+  const out = {};
+  for (const f of PORTAL_FINDING_FIELDS) out[f] = row[f];
+  return out;
+}
 
 router.get('/', async (req, res, next) => {
   try {
+    // Portal sessions see ONLY findings the pentester has published
+    // (client_visible), never drafts or half-triaged ones.
+    const portalFilter = req.isPortal ? 'AND cv.client_visible = true' : '';
     const { rows } = await db.query(
-      `SELECT cv.*, u.username AS editor_username, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url,
-              vu.username AS verifier_username,
+      `SELECT cv.*, u.username AS editor_username, u.display_name AS editor_display_name, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url,
+              vu.username AS verifier_username, vu.display_name AS verifier_display_name,
               t.host AS target_host, t.type AS target_type
        FROM custom_vulns cv
        LEFT JOIN users u  ON u.id=cv.updated_by
        LEFT JOIN users vu ON vu.id=cv.verified_by
        LEFT JOIN targets t ON t.id=cv.target_id
-       WHERE cv.project_id=$1
+       WHERE cv.project_id=$1 ${portalFilter}
        ORDER BY
          CASE cv.severity
            WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3
@@ -27,11 +48,11 @@ router.get('/', async (req, res, next) => {
          cv.created_at`,
       [req.params.projectId]
     );
-    res.json(rows);
+    res.json(req.isPortal ? rows.map(toPortalFinding) : rows);
   } catch (err) { next(err); }
 });
 
-router.post('/', requireEditor, [
+router.post('/', requireWriter, [
   body('name').trim().isLength({ min:1, max:300 }),
 ], async (req, res, next) => {
   const errors = validationResult(req);
@@ -45,6 +66,9 @@ router.post('/', requireEditor, [
     resolve_ai_session_id = null, resolve_ai_call_id = null,
   } = req.body;
   try {
+    // client_visible is intentionally NOT read from the body: a new finding is
+    // always a draft (column default false). Publishing is a separate, lead-only
+    // step through PATCH — see below.
     const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
     // "Editar y agregar" de una propuesta del agente sigue siendo un
     // hallazgo de origen IA (el humano ajustó campos, no lo inventó de
@@ -84,8 +108,23 @@ router.post('/', requireEditor, [
   } catch (err) { next(err); }
 });
 
-router.patch('/:vulnId', requireEditor, async (req, res, next) => {
-  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','cvss_vector','cvss_score','cwe','compliance_tags'];
+router.patch('/:vulnId', requireWriter, async (req, res, next) => {
+  // Publishing to / hiding from the client portal is a client-facing action:
+  // owner/editor only. A pentester may send the field back unchanged (a form
+  // that round-trips the whole row), but any actual change is refused.
+  if (req.body.client_visible !== undefined && !isLeadRole(req.memberRole)) {
+    try {
+      const { rows: cur } = await db.query(
+        `SELECT client_visible FROM custom_vulns WHERE id=$1 AND project_id=$2`,
+        [req.params.vulnId, req.params.projectId]
+      );
+      if (!cur.length) return res.status(404).json({ error:'Vulnerability not found' });
+      const wanted = req.body.client_visible === true || req.body.client_visible === 'true';
+      if (cur[0].client_visible !== wanted)
+        return res.status(403).json({ error:'Only the project owner or an editor can publish findings to the client' });
+    } catch (err) { return next(err); }
+  }
+  const allowed = ['name','category','severity','items','payloads','notes','description','remediation','evidence','http_proofs','status','checked_items','cvss_vector','cvss_score','cwe','compliance_tags','client_visible'];
   const updates = [], values = [];
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
@@ -124,7 +163,7 @@ router.patch('/:vulnId', requireEditor, async (req, res, next) => {
 });
 
 // PATCH /:vulnId/remediation — remediation/retest lifecycle (open -> remediated -> verified_closed | not_remediated)
-router.patch('/:vulnId/remediation', requireEditor, [
+router.patch('/:vulnId/remediation', requireWriter, [
   body('remediation_status').isIn(['open', 'remediated', 'not_remediated', 'verified_closed']),
 ], async (req, res, next) => {
   const errors = validationResult(req);
@@ -178,7 +217,7 @@ router.patch('/:vulnId/remediation', requireEditor, [
   } catch (err) { next(err); }
 });
 
-router.delete('/:vulnId', requireEditor, async (req, res, next) => {
+router.delete('/:vulnId', requireWriter, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM custom_vulns WHERE id=$1 AND project_id=$2 RETURNING name`,

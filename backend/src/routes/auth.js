@@ -51,7 +51,7 @@ router.post('/register', [
     await db.query(REFRESH_INSERT, [user.id, refreshToken, refreshExpiryDays()]);
 
     res.status(201).json({ accessToken, refreshToken,
-      user: { id:user.id, username:user.username, email:user.email, avatar_color:user.avatar_color } });
+      user: { id:user.id, username:user.username, display_name:user.display_name || null, email:user.email, avatar_color:user.avatar_color } });
   } catch (err) {
     if (err instanceof UserExistsError)
       return res.status(409).json({ error: err.message });
@@ -107,7 +107,7 @@ router.post('/login', [
     );
 
     res.json({ accessToken, refreshToken,
-      user: { id:user.id, username:user.username, email:user.email, avatar_color:user.avatar_color } });
+      user: { id:user.id, username:user.username, display_name:user.display_name || null, email:user.email, avatar_color:user.avatar_color } });
   } catch (err) { next(err); }
 });
 
@@ -147,16 +147,38 @@ router.post('/logout', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+function publicMe(u) {
+  return {
+    id: u.id, username: u.username, display_name: u.display_name || null,
+    email: u.email, avatar_color: u.avatar_color,
+    avatar_url: u.avatar_url || null,
+  };
+}
+
+// Display names are free text (spaces, accents, any script) but still get
+// normalised: control characters become spaces, bidi overrides and invisible
+// zero-width marks are dropped (name spoofing), whitespace is collapsed and
+// trimmed. ZWJ/ZWNJ are kept: emoji sequences and some scripts need them.
+// Empty after normalisation means "no display name" (NULL), so the UI falls
+// back to the username. Returns undefined for non-string input.
+const DISPLAY_NAME_MAX = 50;
+function normalizeDisplayName(raw) {
+  if (raw === null) return null;
+  if (typeof raw !== 'string') return undefined;
+  const clean = raw
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/[\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean || null;
+}
+
 // GET /auth/me
 router.get('/me', requireAuth, async (req, res) => {
-  res.json({
-    id: req.user.id, username: req.user.username,
-    email: req.user.email, avatar_color: req.user.avatar_color,
-    avatar_url: req.user.avatar_url || null,
-  });
+  res.json(publicMe(req.user));
 });
 
-// PATCH /auth/me — update display name and/or avatar
+// PATCH /auth/me — update username (login identifier), display name and/or avatar
 router.patch('/me', requireAuth, [
   body('username').optional().trim().isLength({ min:2, max:50 }).matches(/^[a-zA-Z0-9_-]+$/),
   body('avatar_url').optional({ nullable: true }).isString(),
@@ -168,6 +190,15 @@ router.patch('/me', requireAuth, [
   const sets = [], vals = [];
   let idx = 1;
 
+  let displayName;
+  if (req.body.display_name !== undefined) {
+    displayName = normalizeDisplayName(req.body.display_name);
+    if (displayName === undefined)
+      return res.status(400).json({ error: 'display_name must be a string' });
+    if (displayName && [...displayName].length > DISPLAY_NAME_MAX)
+      return res.status(400).json({ error: `Display name must be at most ${DISPLAY_NAME_MAX} characters` });
+  }
+
   try {
     if (username && username !== req.user.username) {
       const { rows } = await db.query(
@@ -177,6 +208,10 @@ router.patch('/me', requireAuth, [
       sets.push(`username=$${idx++}`); vals.push(username);
     }
 
+    if (displayName !== undefined && displayName !== (req.user.display_name || null)) {
+      sets.push(`display_name=$${idx++}`); vals.push(displayName);
+    }
+
     if (avatar_url !== undefined) {
       // avatar_url is a base64 data URL or null; basic size guard (~2MB)
       if (avatar_url && avatar_url.length > 2_100_000)
@@ -184,21 +219,15 @@ router.patch('/me', requireAuth, [
       sets.push(`avatar_url=$${idx++}`); vals.push(avatar_url || null);
     }
 
-    if (!sets.length) {
-      return res.json({
-        id: req.user.id, username: req.user.username,
-        email: req.user.email, avatar_color: req.user.avatar_color,
-        avatar_url: req.user.avatar_url || null,
-      });
-    }
+    if (!sets.length) return res.json(publicMe(req.user));
 
     vals.push(req.user.id);
     const { rows } = await db.query(
       `UPDATE users SET ${sets.join(',')} WHERE id=$${idx}
-       RETURNING id, username, email, avatar_color, avatar_url`,
+       RETURNING id, username, display_name, email, avatar_color, avatar_url`,
       vals
     );
-    res.json(rows[0]);
+    res.json(publicMe(rows[0]));
   } catch (err) { next(err); }
 });
 

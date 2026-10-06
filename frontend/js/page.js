@@ -266,9 +266,9 @@ function renderSidenav() {
     const color = roleColor(role);
     html += `
     <div class="nav-foot">
-      ${avatarHtml(u.username, color, 24, u.avatar_url)}
+      ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
       <div>
-        <div class="nav-foot-name">${esc(u.username)}</div>
+        <div class="nav-foot-name" title="@${esc(u.username)}">${esc(displayName(u))}</div>
         ${role ? `<div class="nav-foot-role">${role}</div>` : ''}
       </div>
     </div>`;
@@ -296,8 +296,8 @@ function renderTopbar() {
       <div class="online-avatars" id="online-presence"></div>
       <div id="live-dot" class="live-badge" title="Connecting..."></div>
       <div class="user-pill" onclick="toggleUserMenu()">
-        ${avatarHtml(u.username, color, 24, u.avatar_url)}
-        <span>${esc(u.username)}</span>
+        ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
+        <span title="@${esc(u.username)}">${esc(displayName(u))}</span>
         ${role ? `<span style="font-family:var(--mono);font-size:9px;color:${color};opacity:.8">${role}</span>` : ''}
         <div class="user-dropdown" id="user-dropdown">
           <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">${icon('user', { size: 13 })} Edit Profile</button>
@@ -327,9 +327,15 @@ function _injectProfileModal() {
       </div>
 
       <div class="form-group">
-        <label class="form-label">Display name</label>
-        <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="off">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Letters, numbers, _ and - only.</div>
+        <label class="form-label" for="profile-display-name">Display name</label>
+        <input type="text" class="form-input" id="profile-display-name" maxlength="50" autocomplete="name" placeholder="e.g. Juan Pérez">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Optional. Shown to your team instead of your username.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="profile-username">Username</label>
+        <input type="text" class="form-input" id="profile-username" maxlength="50" autocomplete="username" spellcheck="false">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:4px">Used to sign in. Letters, numbers, _ and - only.</div>
       </div>
 
       <div class="form-error" id="profile-error"></div>
@@ -361,6 +367,7 @@ function openProfileModal() {
   closeUserMenu();
   _pendingAvatarUrl = undefined;
   const u = state.user;
+  document.getElementById('profile-display-name').value = u.display_name || '';
   document.getElementById('profile-username').value = u.username;
   document.getElementById('profile-error').textContent = '';
   _refreshAvatarPreview(u.avatar_url || null);
@@ -383,7 +390,7 @@ function _refreshAvatarPreview(url) {
     preview.style.boxShadow = `0 0 0 3px ${color}`;
     removeBtn.style.display = 'block';
   } else {
-    preview.innerHTML = (state.user?.username || '?')[0].toUpperCase();
+    preview.innerHTML = nameInitial(displayName(state.user));
     preview.style.background = color;
     preview.style.boxShadow = 'none';
     removeBtn.style.display = 'none';
@@ -409,19 +416,27 @@ function _removeAvatar() {
 }
 
 async function saveProfile() {
-  const username = document.getElementById('profile-username').value.trim();
+  const username    = document.getElementById('profile-username').value.trim();
+  // Same normalisation the server applies (whitespace collapsed, trimmed), so
+  // an unchanged name with stray spaces is not sent as a change.
+  const displayNm   = document.getElementById('profile-display-name').value.replace(/\s+/g, ' ').trim();
   const errEl = document.getElementById('profile-error');
   const btn   = document.getElementById('profile-save-btn');
   errEl.textContent = '';
 
-  if (!username) { errEl.textContent = 'Display name is required.'; return; }
+  if (!username) { errEl.textContent = 'Username is required.'; return; }
   if (!/^[a-zA-Z0-9_-]{2,50}$/.test(username)) {
-    errEl.textContent = 'Only letters, numbers, _ and - (2–50 chars).';
+    errEl.textContent = 'Username: only letters, numbers, _ and - (2–50 chars).';
+    return;
+  }
+  if ([...displayNm].length > 50) {
+    errEl.textContent = 'Display name: 50 characters max.';
     return;
   }
 
   const payload = {};
   if (username !== state.user.username) payload.username = username;
+  if (displayNm !== (state.user.display_name || '')) payload.display_name = displayNm;
   if (_pendingAvatarUrl !== undefined) payload.avatar_url = _pendingAvatarUrl;
 
   if (!Object.keys(payload).length) { closeProfileModal(); return; }
@@ -433,7 +448,13 @@ async function saveProfile() {
     localStorage.setItem('fd_user', JSON.stringify(state.user));
     closeProfileModal();
     renderTopbar();
-    showToast('Profile updated', 'success');
+    // A server that predates display names ignores the field and omits it
+    // from the response: say so instead of silently dropping the edit.
+    if ('display_name' in payload && !('display_name' in updated)) {
+      showToast('Display name is not supported by the server yet', 'error');
+    } else {
+      showToast('Profile updated', 'success');
+    }
   } catch(e) {
     errEl.textContent = e.message;
   } finally {
@@ -618,7 +639,7 @@ wsClient.on('activity', (event) => {
   if (event.user?.id !== state.user?.id) {
     const label = actionLabel(event.action, event.entity_type, event.entity_name, event.meta)
       .replace(/<[^>]+>/g, '');
-    showToast(`${event.user?.username}: ${label}`, 'info');
+    showToast(`${displayName(event.user)}: ${label}`, 'info');
     if (event.entity_type === 'wstg_test' && state.currentView === 'wstg') {
       // Update only the affected test — preserve open/closed state of all categories
       const testId = event.entity_id;
@@ -701,7 +722,7 @@ function _buildProjectContext() {
   const todayStr    = new Date().toDateString();
   const todayCount  = feed.filter(e => new Date(e.created_at).toDateString() === todayStr).length;
   const activity    = feed.slice(0, Math.max(todayCount, 20)).map(e => ({
-    who: e.username, action: e.action,
+    who: displayName(e), action: e.action,
     entity: e.entity_name || e.entity_type || '', when: e.created_at,
   }));
 
@@ -710,7 +731,7 @@ function _buildProjectContext() {
     vulns:   vulns.map(v => ({ name: v.name, severity: v.severity, status: v.status, target_host: v.target_host || null })),
     wstg:    { done: wDone, fail: wFail, pending: wTotal-wDone-wFail, pct: wTotal ? Math.round((wDone+wFail)/wTotal*100) : 0 },
     targets: targets.map(t => ({ host: t.host, type: t.type, scope: t.scope })),
-    team:    (state.members || []).map(m => ({ username: m.username, role: m.role })),
+    team:    (state.members || []).map(m => ({ username: m.username, display_name: m.display_name || null, role: m.role })),
     methodologies, activity,
   };
 }

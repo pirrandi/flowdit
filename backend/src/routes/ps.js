@@ -2,9 +2,9 @@ const router   = require('express').Router({ mergeParams: true });
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, portalRequiresFlag } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_wstg_progress'));
 
 // GET all progress + notes
 router.get('/', async (req, res, next) => {
@@ -22,7 +22,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // PATCH toggle done
-router.patch('/:catId/:labIdx', requireEditor, async (req, res, next) => {
+router.patch('/:catId/:labIdx', requireWriter, async (req, res, next) => {
   const labIdx = parseInt(req.params.labIdx);
   if (isNaN(labIdx)) return res.status(400).json({ error:'Invalid lab index' });
   const { done, labName } = req.body;
@@ -50,7 +50,7 @@ router.patch('/:catId/:labIdx', requireEditor, async (req, res, next) => {
 });
 
 // PATCH note
-router.patch('/:catId/:labIdx/note', requireEditor, async (req, res, next) => {
+router.patch('/:catId/:labIdx/note', requireWriter, async (req, res, next) => {
   const labIdx = parseInt(req.params.labIdx);
   if (isNaN(labIdx)) return res.status(400).json({ error:'Invalid lab index' });
   const { note } = req.body;

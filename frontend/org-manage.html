@@ -117,8 +117,8 @@ function renderUserPill() {
   const color = u.avatar_color || '#7c3aed';
   document.getElementById('proj-topbar-user').innerHTML = `
     <div class="user-pill" onclick="toggleUserMenu()">
-      ${avatarHtml(u.username, color, 24, u.avatar_url)}
-      <span>${esc(u.username)}</span>
+      ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
+      <span title="@${esc(u.username)}">${esc(displayName(u))}</span>
       <div class="user-dropdown" id="user-dropdown">
         <button class="dropdown-item" onclick="window.location.href='projects'">${icon('layout-grid',{size:13})} Projects</button>
         <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out',{size:13})} Logout</button>
@@ -171,11 +171,11 @@ function render() {
         </div>
         ${_members.map(m => `
           <div class="member-row">
-            <div class="member-avatar-lg" style="background:${roleColor(badgeClass(m.role))};overflow:hidden;padding:0${m.avatar_url ? `;box-shadow:0 0 0 2px ${roleColor(badgeClass(m.role))}` : ''}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${m.username[0].toUpperCase()}</span>`}</div>
+            <div class="member-avatar-lg" style="background:${roleColor(badgeClass(m.role))};overflow:hidden;padding:0${m.avatar_url ? `;box-shadow:0 0 0 2px ${roleColor(badgeClass(m.role))}` : ''}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${nameInitial(displayName(m))}</span>`}</div>
             <div class="member-info">
-              <div class="member-username">${esc(m.username)}</div>
+              <div class="member-username">${esc(displayName(m))}${m.display_name ? ` <span style="font-family:var(--mono);font-size:10px;color:var(--t3);font-weight:400;margin-left:6px">@${esc(m.username)}</span>` : ''}</div>
               <div class="member-meta">
-                ${m.invited_by_username ? `Invited by ${esc(m.invited_by_username)} · ` : ''}
+                ${m.invited_by_username ? `Invited by ${esc(displayName(m, 'invited_by_'))} · ` : ''}
                 Joined ${relativeDate(m.joined_at)}
               </div>
             </div>
@@ -206,7 +206,7 @@ function render() {
                 <div class="invite-token-display">${esc(inv.token)}</div>
                 <span class="invite-role-tag role-badge role-${badgeClass(inv.role)}">${inv.role}</span>
                 <span class="invite-expires">
-                  ${used ? `Used by ${esc(inv.accepted_by_username||'?')}` : expired ? 'Expired' : `Expires ${relativeDate(inv.expires_at)}`}
+                  ${used ? `Used by ${esc(displayName(inv, 'accepted_by_'))}` : expired ? 'Expired' : `Expires ${relativeDate(inv.expires_at)}`}
                 </span>
                 ${!used && !expired ? `
                   <button class="btn-icon" onclick="copyOrgInviteCode('${esc(inv.token)}')" title="Copy code">copy</button>

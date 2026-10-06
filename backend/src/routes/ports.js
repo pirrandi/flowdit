@@ -3,15 +3,15 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor, requireTargetAccess } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, requireTargetAccess, portalRequiresFlag } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess, requireTargetAccess);
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_targets'), requireTargetAccess);
 
 // GET all ports for a target
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT p.*, u.username AS added_by_username
+      `SELECT p.*, u.username AS added_by_username, u.display_name AS added_by_display_name
        FROM target_ports p
        LEFT JOIN users u ON u.id = p.added_by
        WHERE p.target_id = $1
@@ -23,7 +23,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST create port
-router.post('/', requireEditor, [
+router.post('/', requireWriter, [
   body('port').isInt({ min: 1, max: 65535 }),
   body('protocol').optional().isIn(['tcp', 'udp']),
   body('state').optional().isIn(['open', 'filtered', 'closed']),
@@ -56,7 +56,7 @@ router.post('/', requireEditor, [
 });
 
 // PATCH update port
-router.patch('/:portId', requireEditor, async (req, res, next) => {
+router.patch('/:portId', requireWriter, async (req, res, next) => {
   const allowed = ['port', 'protocol', 'state', 'service', 'version', 'notes'];
   const updates = [], values = [];
   allowed.forEach(f => {
@@ -79,7 +79,7 @@ router.patch('/:portId', requireEditor, async (req, res, next) => {
 });
 
 // DELETE port
-router.delete('/:portId', requireEditor, async (req, res, next) => {
+router.delete('/:portId', requireWriter, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM target_ports WHERE id=$1 AND target_id=$2 RETURNING port, protocol`,

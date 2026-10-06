@@ -1,9 +1,9 @@
 const router  = require('express').Router({ mergeParams: true });
 const db      = require('../db');
-const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireAuth, requireUser } = require('../middleware/auth');
+const { requireProjectAccess, requireWriter } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireUser, requireProjectAccess); // internal-only: never exposed to client portal sessions
 
 router.get('/', async (req, res, next) => {
   try {
@@ -15,7 +15,7 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/', requireEditor, async (req, res, next) => {
+router.put('/', requireWriter, async (req, res, next) => {
   const data = req.body.data ?? {};
   try {
     const { rows } = await db.query(

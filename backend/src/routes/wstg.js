@@ -2,10 +2,10 @@ const router   = require('express').Router({ mergeParams: true });
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireEditor } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, portalRequiresFlag } = require('../middleware/project');
 const { targetBelongsToProject, vulnBelongsToProject } = require('../services/ownership');
 
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_wstg_progress'));
 
 // GET all progress + last-editor info
 router.get('/', async (req, res, next) => {
@@ -13,7 +13,7 @@ router.get('/', async (req, res, next) => {
     const [progressRes, checksRes] = await Promise.all([
       db.query(
         `SELECT wp.test_id, wp.status, wp.note, wp.description, wp.remediation, wp.target_id, wp.linked_vuln_id, wp.updated_at,
-                u.id AS editor_id, u.username AS editor_username, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url
+                u.id AS editor_id, u.username AS editor_username, u.display_name AS editor_display_name, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url
          FROM wstg_progress wp
          LEFT JOIN users u ON u.id = wp.updated_by
          WHERE wp.project_id = $1`,
@@ -36,7 +36,7 @@ router.get('/', async (req, res, next) => {
         linked_vuln_id: r.linked_vuln_id,
         updated_at:     r.updated_at,
         last_editor: r.editor_id ? {
-          id: r.editor_id, username: r.editor_username, avatar_color: r.editor_color, avatar_url: r.editor_avatar_url || null,
+          id: r.editor_id, username: r.editor_username, display_name: r.editor_display_name || null, avatar_color: r.editor_color, avatar_url: r.editor_avatar_url || null,
         } : null,
         items: {},
       };
@@ -51,7 +51,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // PATCH /:testId/status
-router.patch('/:testId/status', requireEditor, async (req, res, next) => {
+router.patch('/:testId/status', requireWriter, async (req, res, next) => {
   const { status, testName } = req.body;
   if (status !== null && !['done','fail','na'].includes(status))
     return res.status(400).json({ error:'status must be done, fail, na, or null' });
@@ -74,12 +74,12 @@ router.patch('/:testId/status', requireEditor, async (req, res, next) => {
       meta:       { status },
     });
 
-    res.json({ ok:true, editor: { id:req.user.id, username:req.user.username, avatar_color:req.user.avatar_color, avatar_url: req.user.avatar_url||null }, updated_at: new Date() });
+    res.json({ ok:true, editor: { id:req.user.id, username:req.user.username, display_name:req.user.display_name || null, avatar_color:req.user.avatar_color, avatar_url: req.user.avatar_url||null }, updated_at: new Date() });
   } catch (err) { next(err); }
 });
 
 // PATCH /:testId/note
-router.patch('/:testId/note', requireEditor, async (req, res, next) => {
+router.patch('/:testId/note', requireWriter, async (req, res, next) => {
   const { note, testName } = req.body;
   try {
     await db.query(
@@ -102,7 +102,7 @@ router.patch('/:testId/note', requireEditor, async (req, res, next) => {
 });
 
 // PATCH /:testId/items/:itemIdx
-router.patch('/:testId/items/:itemIdx', requireEditor, async (req, res, next) => {
+router.patch('/:testId/items/:itemIdx', requireWriter, async (req, res, next) => {
   const itemIdx = parseInt(req.params.itemIdx);
   if (isNaN(itemIdx)) return res.status(400).json({ error:'Invalid item index' });
   const { checked } = req.body;
@@ -119,7 +119,7 @@ router.patch('/:testId/items/:itemIdx', requireEditor, async (req, res, next) =>
 });
 
 // PATCH /:testId/target  — assign target to a vuln-found test
-router.patch('/:testId/target', requireEditor, async (req, res, next) => {
+router.patch('/:testId/target', requireWriter, async (req, res, next) => {
   const { target_id } = req.body;
   try {
     const validTargetId = await targetBelongsToProject(target_id, req.params.projectId);
@@ -135,7 +135,7 @@ router.patch('/:testId/target', requireEditor, async (req, res, next) => {
 });
 
 // PATCH /:testId/link  — link/unlink a custom vuln
-router.patch('/:testId/link', requireEditor, async (req, res, next) => {
+router.patch('/:testId/link', requireWriter, async (req, res, next) => {
   const { linked_vuln_id } = req.body;
   try {
     const validVulnId = await vulnBelongsToProject(linked_vuln_id, req.params.projectId);
@@ -151,7 +151,7 @@ router.patch('/:testId/link', requireEditor, async (req, res, next) => {
 });
 
 // PATCH /:testId/report  — save description + remediation for export
-router.patch('/:testId/report', requireEditor, async (req, res, next) => {
+router.patch('/:testId/report', requireWriter, async (req, res, next) => {
   const { description, remediation } = req.body;
   try {
     await db.query(
