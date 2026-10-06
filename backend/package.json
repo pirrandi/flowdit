@@ -7,6 +7,7 @@
     "dev": "nodemon src/index.js",
     "migrate": "node src/db/migrate.js",
     "seed:demo": "node src/db/seed-demo.js",
+    "user:create": "node src/db/create-user.js",
     "lint": "eslint src",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },

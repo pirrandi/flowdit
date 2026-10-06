@@ -102,7 +102,6 @@ async function refreshTokens() {
 
 const api = {
   auth: {
-    register: (u, e, p)   => request('POST', '/auth/register', { username:u, email:e, password:p }),
     login:    (l, p)       => request('POST', '/auth/login',    { login:l, password:p }),
     logout:   ()           => request('POST', '/auth/logout', { refreshToken: tokens.refresh }).finally(() => tokens.clear()),
     me:            ()      => request('GET',   '/auth/me'),

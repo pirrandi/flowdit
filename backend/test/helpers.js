@@ -8,6 +8,10 @@ if (!process.env.DB_NAME || !process.env.DB_NAME.includes('test')) {
   );
 }
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_only_jwt_secret_do_not_use_in_prod';
+// Public registration is disabled by default in prod (pentest platform: accounts
+// are provisioned by an operator). Tests still exercise the register/SSO paths
+// and provision their fixtures through the endpoint, so enable it here.
+process.env.ALLOW_PUBLIC_REGISTRATION = 'true';
 
 const app = require('../src/app');
 const db  = require('../src/db');

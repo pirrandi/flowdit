@@ -25,13 +25,6 @@ async function resolveHome() {
   return 'projects';
 }
 
-function switchAuthTab(tab, btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('login-form').style.display    = tab === 'login'    ? '' : 'none';
-  document.getElementById('register-form').style.display = tab === 'register' ? '' : 'none';
-}
-
 let _ssoStartUrl = null;
 
 function onLoginIdentifierChange() {
@@ -122,32 +115,7 @@ async function doVerifyMfa() {
   }
 }
 
-async function doRegister() {
-  const user  = document.getElementById('reg-user').value.trim();
-  const email = document.getElementById('reg-email').value.trim();
-  const pass  = document.getElementById('reg-pass').value;
-  const pass2 = document.getElementById('reg-pass2').value;
-  const err   = document.getElementById('reg-error');
-  const btn   = document.getElementById('reg-btn');
-  err.style.display = 'none';
-  if (pass !== pass2) { err.textContent = 'Passwords do not match'; err.style.display = 'block'; return; }
-  btn.disabled = true; btn.textContent = 'Creating...';
-  try {
-    const data = await api.auth.register(user, email, pass);
-    api.auth.setTokens(data.accessToken, data.refreshToken);
-    localStorage.setItem('fd_user', JSON.stringify(data.user));
-    window.location.href = await resolveHome();
-  } catch(e) {
-    err.textContent = e.message;
-    err.style.display = 'block';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Create Account';
-  }
-}
-
-window.switchAuthTab           = switchAuthTab;
 window.doLogin                 = doLogin;
-window.doRegister              = doRegister;
 window.onLoginIdentifierChange = onLoginIdentifierChange;
 window.checkSsoForIdentifier   = checkSsoForIdentifier;
 window.continueWithSso         = continueWithSso;

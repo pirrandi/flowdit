@@ -7,10 +7,15 @@ const { requireAuth } = require('../middleware/auth');
 const wsService = require('../services/ws');
 const { signAccess, refreshExpiryDays, REFRESH_INSERT } = require('../utils/tokens');
 const { createChallenge } = require('../services/mfa');
+const { createUser, UserExistsError } = require('../services/userProvisioning');
 
-// Palette for auto-assigned avatar colors
-const COLORS = ['#7c3aed','#2563eb','#059669','#dc2626','#d97706','#0891b2','#7c3aed','#be185d'];
-
+// Public self-registration is OFF by default. Flowdit is a pentest platform:
+// accounts are provisioned by an operator (CLI: `npm run user:create`), never
+// by anonymous visitors. Hiding the signup button in the frontend is not a
+// control — the endpoint itself must refuse, or anyone can POST /auth/register
+// directly. The test suite flips this on (see test/helpers.js) so it can still
+// exercise the registration/SSO-enforcement paths.
+const PUBLIC_REGISTRATION_ENABLED = process.env.ALLOW_PUBLIC_REGISTRATION === 'true';
 
 // POST /auth/register
 router.post('/register', [
@@ -18,6 +23,9 @@ router.post('/register', [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min:8, max:128 }),
 ], async (req, res, next) => {
+  if (!PUBLIC_REGISTRATION_ENABLED)
+    return res.status(403).json({ error: 'Public registration is disabled. Contact an administrator for an account.' });
+
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -35,56 +43,19 @@ router.post('/register', [
   if (enforced.rows.length)
     return res.status(403).json({ error: `This organization requires signing in via SSO (${enforced.rows[0].name})`, ssoRequired: true });
 
-  // Registration now creates a user AND their personal organization together —
-  // every user must have an org for the permission model to hold, so a crash
-  // partway through (e.g. after the user insert but before the org insert)
-  // can't be allowed to leave a user with no org. Transactional.
-  const client = await db.pool.connect();
   try {
-    await client.query('BEGIN');
-
-    const exists = await client.query(
-      'SELECT id FROM users WHERE username=$1 OR email=$2', [username, email]
-    );
-    if (exists.rows.length) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'Username or email already taken' });
-    }
-
-    const hash  = await bcrypt.hash(password, 12);
-    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-    const { rows } = await client.query(
-      `INSERT INTO users (username, email, password, avatar_color)
-       VALUES ($1,$2,$3,$4) RETURNING id, username, email, avatar_color, created_at`,
-      [username, email, hash, color]
-    );
-    const user = rows[0];
-
-    const { rows: orgRows } = await client.query(
-      `INSERT INTO organizations (name, owner_id, is_personal) VALUES ($1,$2,true) RETURNING id`,
-      [`${user.username}'s Organization`, user.id]
-    );
-    await client.query(
-      `INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1,$2,'owner')`,
-      [orgRows[0].id, user.id]
-    );
+    const user = await createUser({ username, email, password });
 
     const accessToken  = signAccess(user);
     const refreshToken = uuidv4() + uuidv4().replace(/-/g,'');
-    await client.query(
-      REFRESH_INSERT,
-      [user.id, refreshToken, refreshExpiryDays()]
-    );
-
-    await client.query('COMMIT');
+    await db.query(REFRESH_INSERT, [user.id, refreshToken, refreshExpiryDays()]);
 
     res.status(201).json({ accessToken, refreshToken,
       user: { id:user.id, username:user.username, email:user.email, avatar_color:user.avatar_color } });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (err instanceof UserExistsError)
+      return res.status(409).json({ error: err.message });
     next(err);
-  } finally {
-    client.release();
   }
 });
 

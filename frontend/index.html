@@ -26,10 +26,6 @@
       <span class="logo-text">Flowdit</span>
     </div>
     <div class="login-tagline">// collaborative pentest tracker</div>
-    <div class="tab-row">
-      <button class="tab-btn active" onclick="switchAuthTab('login',this)">Login</button>
-      <button class="tab-btn"        onclick="switchAuthTab('register',this)">Register</button>
-    </div>
     <div id="login-form">
       <div class="form-group">
         <label class="form-label">Username or Email</label>
@@ -57,27 +53,6 @@
       <div class="form-error" id="login-mfa-error"></div>
       <button class="btn-primary" id="login-mfa-btn" onclick="doVerifyMfa()">Verify</button>
       <button class="btn-secondary" style="width:100%;margin-top:8px" onclick="cancelMfaChallenge()">Back</button>
-    </div>
-    <div id="register-form" style="display:none">
-      <div class="form-group">
-        <label class="form-label">Username</label>
-        <input type="text" class="form-input" id="reg-user" placeholder="your_handle">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" class="form-input" id="reg-email" placeholder="you@example.com">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input type="password" class="form-input" id="reg-pass" placeholder="min. 8 chars">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Confirm Password</label>
-        <input type="password" class="form-input" id="reg-pass2" placeholder="••••••••"
-          onkeydown="if(event.key==='Enter')doRegister()">
-      </div>
-      <div class="form-error" id="reg-error"></div>
-      <button class="btn-primary" id="reg-btn" onclick="doRegister()">Create Account</button>
     </div>
   </div>
 </div>
