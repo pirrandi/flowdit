@@ -74,7 +74,7 @@ async function renderMembers() {
                 </span>
                 ${!used && !expired ? `
                   <button class="btn-icon" onclick="copyInviteCode('${esc(inv.token)}')" title="Copy code">copy</button>
-                  ${inv.role === 'viewer' ? `<button class="btn-icon" onclick="copyInviteLink('${esc(inv.token)}')" title="Copy client portal link">copy link</button>` : ''}
+                  <button class="btn-icon" onclick="copyInviteLink('${esc(inv.token)}')" title="Copy invite link">copy link</button>
                   <button class="btn-icon delete" onclick="revokeInvite('${inv.id}')" title="Revoke">${icon('x',{size:12})}</button>` : ''}
               </div>`;
             }).join('')}
@@ -153,11 +153,14 @@ async function copyInviteCode(token) {
   showToast(`Copied: ${token}`, 'info');
 }
 
+// An invite is joined with a user account (not the token-based client portal),
+// so the link opens the Join modal on the projects page, going through login
+// first if needed. Code in the fragment keeps it out of server logs.
 async function copyInviteLink(token) {
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login`;
-  const link = `${base}?invite=${encodeURIComponent(token)}`;
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/projects`;
+  const link = `${base}#join=${encodeURIComponent(token)}`;
   await navigator.clipboard.writeText(link);
-  showToast('Client portal link copied', 'info');
+  showToast('Invite link copied', 'info');
 }
 
 async function revokeInvite(id) {

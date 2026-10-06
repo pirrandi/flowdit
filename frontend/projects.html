@@ -137,7 +137,26 @@
 let _orgFilter = null; // null = "All"
 
 // ── AUTH GUARD + BOOT ──────────────────────────────────────────────
+// Invite links look like projects#join=CODE. The code is parked in
+// sessionStorage so it survives the trip through the login page (login always
+// lands back on projects, see resolveHome), then pre-fills the Join modal.
+const PENDING_JOIN_KEY = 'fd_pending_join';
+function stashJoinCodeFromUrl() {
+  const code = new URLSearchParams(window.location.hash.slice(1)).get('join');
+  if (!code) return;
+  try { sessionStorage.setItem(PENDING_JOIN_KEY, code); } catch {}
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+function takePendingJoinCode() {
+  try {
+    const code = sessionStorage.getItem(PENDING_JOIN_KEY);
+    sessionStorage.removeItem(PENDING_JOIN_KEY);
+    return code;
+  } catch { return null; }
+}
+
 async function bootProjects() {
+  stashJoinCodeFromUrl();
   if (!api.auth.hasSession()) { window.location.href = '/'; return; }
   try { state.user = await api.auth.me(); }
   catch { window.location.href = '/'; return; }
@@ -161,6 +180,9 @@ async function bootProjects() {
   renderOrgFilter();
   renderProjects();
   hide('loading-overlay');
+
+  const pendingJoin = takePendingJoinCode();
+  if (pendingJoin) openJoinModal(pendingJoin);
 }
 
 // ── ORG FILTER ────────────────────────────────────────────────────
@@ -458,9 +480,9 @@ async function saveNewProject() {
 }
 
 // ── JOIN PROJECT ──────────────────────────────────────────────────
-function openJoinModal() {
+function openJoinModal(code = '') {
   const el = document.getElementById('join-code-input');
-  if (el) el.value = '';
+  if (el) el.value = code;
   document.getElementById('join-error').style.display = 'none';
   document.getElementById('join-modal').classList.add('open');
   setTimeout(() => el?.focus(), 50);
