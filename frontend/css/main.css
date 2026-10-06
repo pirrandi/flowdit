@@ -1561,16 +1561,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: .9; }
 .topbar-logo-img { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
 .login-logo-img  { width: 48px; height: 48px; object-fit: contain; }
 
-/* ── SPECIAL MODES ───────────────────────────────────────────────── */
-.neon-mode .sev-badge         { text-shadow: 0 0 8px currentColor, 0 0 16px currentColor; }
-.neon-mode .progress-bar-fill { box-shadow: 0 0 8px var(--c-low); }
-.hacker-mode::after {
-  content: ''; position: fixed; inset: 0; z-index: 9998; pointer-events: none;
-  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,255,0,0.015) 3px, rgba(0,255,0,0.015) 4px);
-  animation: scanlines 8s linear infinite;
-}
-@keyframes scanlines { from{background-position:0 0} to{background-position:0 100vh} }
-
 /* ── RESPONSIVE ──────────────────────────────────────────────────── */
 @media(max-width:1200px) { .activity-col { display: none; } .workarea { grid-template-columns: 1fr; } }
 @media(max-width:900px)  { .stat-row { grid-template-columns: repeat(2,1fr); } }

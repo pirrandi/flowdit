@@ -169,7 +169,7 @@ async function renderSettings() {
 
       </div>
 
-      <!-- Right column: Client Portal + Extras -->
+      <!-- Right column: Client Portal -->
       <div style="display:flex;flex-direction:column;gap:12px">
 
         <div class="members-card">
@@ -178,16 +178,6 @@ async function renderSettings() {
             Controla qué ve el cliente en su portal de solo lectura.
           </p>
           ${buildClientSettings(p)}
-        </div>
-
-        <div class="members-card" style="border-color:var(--b1)">
-          <div class="members-card-title" style="color:var(--t3);font-size:12px">
-            // extras
-            <span style="font-family:var(--mono);font-size:9px;color:var(--t3);opacity:.5;font-weight:400;margin-left:6px">completely optional nonsense</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:2px">
-            ${buildFunSettings()}
-          </div>
         </div>
 
       </div>
@@ -432,28 +422,6 @@ function buildPortalLinkSection(p) {
     </div>`;
 }
 
-function buildFunSettings() {
-  if (!state.currentProject) return '';
-  const s  = getFunSettings(state.currentProject.id);
-  const ft = (key, emoji, label, desc) => {
-    const on = !!s[key];
-    return `<div class="client-setting-row">
-      <div>
-        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${emoji} ${label}</div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">${desc}</div>
-      </div>
-      <button class="setting-toggle ${on?'on':''}" onclick="toggleFunSetting('${key}',${!on})">
-        <span class="setting-toggle-knob"></span>
-      </button>
-    </div>`;
-  };
-  return `
-    ${ft('confetti', icon('sparkles',{size:13}), 'Confetti at 100%', 'Confeti cuando la cobertura WSTG llega al 100%')}
-    ${ft('neon',     icon('zap',{size:13}), 'Neon mode',        'Glow en badges de severidad y barras de progreso')}
-    ${ft('hacker',   icon('terminal',{size:13}), 'Hacker vibes',     'Overlay de scanlines — máxima credibilidad en calls con el cliente')}
-  `;
-}
-
 // ── actions ───────────────────────────────────────────────────────────
 
 async function saveGeneral() {
@@ -611,12 +579,6 @@ async function setLogoBg(bg) {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
-function toggleFunSetting(key, val) {
-  if (!state.currentProject) return;
-  setFunSetting(state.currentProject.id, key, val);
-  renderSettings();
-}
-
 async function regeneratePortalLink() {
   if (!state.currentProject) return;
   const pid = state.currentProject.id;
@@ -676,8 +638,6 @@ window.saveGithubPat        = saveGithubPat;
 window.onLogoFileChange     = onLogoFileChange;
 window.removeLogo           = removeLogo;
 window.setLogoBg            = setLogoBg;
-window.buildFunSettings     = buildFunSettings;
-window.toggleFunSetting     = toggleFunSetting;
 window.deleteProject        = deleteProject;
 window.regeneratePortalLink = regeneratePortalLink;
 window.copyPortalLink       = copyPortalLink;

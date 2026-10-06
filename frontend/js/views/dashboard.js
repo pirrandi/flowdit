@@ -1,6 +1,5 @@
 // ── views/dashboard.js ───────────────────────────────────────────────
 
-let _confettiFired = false;
 let _vulnIdMap = {};
 let _drwPayloads = []; // current drawer's payloads, indexed by onclick
 
@@ -375,18 +374,6 @@ function updateDashboard() {
   const wPct = wTotal ? Math.round((wDone+wFail)/wTotal*100) : 0;
   const members = state.members || [];
   const tickets = state.tickets || [];
-
-  // ── Fun settings ───────────────────────────────────────────────
-  if (state.currentProject) {
-    applyFunSettings(state.currentProject.id);
-    if (wPct === 100 && !_confettiFired) {
-      if (getFunSettings(state.currentProject.id).confetti) {
-        _confettiFired = true;
-        setTimeout(launchConfetti, 500);
-      }
-    }
-    if (wPct < 100) _confettiFired = false;
-  }
 
   // ── Update subtitle ───────────────────────────────────────────
   const sub = document.getElementById('dash-subtitle');

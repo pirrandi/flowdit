@@ -387,7 +387,13 @@ const migrations = [
   // Separate from the legacy `status` column (done/fail — a confirmed/vulnerable
   // toggle inherited from the checklist model). This tracks the finding's
   // real-world lifecycle through the client's fix.
-  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediation_status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (remediation_status IN ('open','remediated','verified_closed'))`,
+  // No inline CHECK here on purpose: ADD COLUMN IF NOT EXISTS still tries to
+  // (re)create the inline constraint on every re-run, and once the base name is
+  // taken by the 4-value constraint below it gets auto-named _check1 with the
+  // old 3-value set — which then fails against any existing 'not_remediated'
+  // row (hit live on prod). The constraint is owned solely by the DROP + ADD
+  // pair below, so the column add stays constraint-free and idempotent.
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediation_status VARCHAR(20) NOT NULL DEFAULT 'open'`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS remediated_at  TIMESTAMPTZ`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS retest_date    DATE`,
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS retest_notes   TEXT`,

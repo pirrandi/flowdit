@@ -165,83 +165,6 @@ function renderMd(raw) {
   return out.join('');
 }
 
-// ── Fun settings (localStorage, owner-only) ──────────────────────
-function getFunSettings(projectId) {
-  try { return JSON.parse(localStorage.getItem(`fd_fun_${projectId}`) || '{}'); }
-  catch { return {}; }
-}
-
-function setFunSetting(projectId, key, value) {
-  const s = getFunSettings(projectId);
-  s[key] = value;
-  localStorage.setItem(`fd_fun_${projectId}`, JSON.stringify(s));
-  applyFunSettings(projectId);
-}
-
-function applyFunSettings(projectId) {
-  const s = getFunSettings(projectId);
-  document.body.classList.toggle('neon-mode',   !!s.neon);
-  document.body.classList.toggle('hacker-mode', !!s.hacker);
-}
-
-// ── Confetti cannon ───────────────────────────────────────────────
-function launchConfetti() {
-  const canvas = document.createElement('canvas');
-  canvas.style.cssText = 'position:fixed;inset:0;z-index:99999;pointer-events:none';
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
-  document.body.appendChild(canvas);
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-
-  const COLORS = ['#7c3aed','#059669','#dc2626','#f59e0b','#2563eb','#ec4899','#10b981','#f97316','#06b6d4','#8b5cf6'];
-  const pieces = [];
-
-  for (let i = 0; i < 200; i++) {
-    const left = i % 2 === 0;
-    pieces.push({
-      x:    left ? -10 : W + 10,
-      y:    H * 0.15 + Math.random() * H * 0.45,
-      vx:   left ? (7 + Math.random() * 7) : -(7 + Math.random() * 7),
-      vy:   -(4 + Math.random() * 6),
-      w:    6 + Math.random() * 9,
-      h:    3 + Math.random() * 5,
-      color:COLORS[Math.floor(Math.random() * COLORS.length)],
-      rot:  Math.random() * Math.PI * 2,
-      rotV: (Math.random() - 0.5) * 0.14,
-      grav: 0.1 + Math.random() * 0.08,
-      life: 1,
-    });
-  }
-
-  let frame = 0;
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    let alive = false;
-    for (const p of pieces) {
-      p.x  += p.vx;
-      p.vy += p.grav;
-      p.y  += p.vy;
-      p.rot += p.rotV;
-      p.vx *= 0.99;
-      if (frame > 80) p.life -= 0.013;
-      if (p.life <= 0 || p.y > H + 30) continue;
-      alive = true;
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, p.life);
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
-    }
-    frame++;
-    if (alive && frame < 320) requestAnimationFrame(draw);
-    else canvas.remove();
-  }
-  draw();
-}
-
 window.esc             = esc;
 window.hide            = hide;
 window.show            = show;
@@ -255,7 +178,3 @@ window.avatarHtml      = avatarHtml;
 window.actionLabel     = actionLabel;
 window.renderMd        = renderMd;
 window.memberRoleColor = memberRoleColor;
-window.getFunSettings  = getFunSettings;
-window.setFunSetting   = setFunSetting;
-window.applyFunSettings= applyFunSettings;
-window.launchConfetti  = launchConfetti;
