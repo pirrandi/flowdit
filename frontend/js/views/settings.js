@@ -10,7 +10,10 @@ async function renderSettings() {
   const p       = state.currentProject;
   const pid     = p.id;
   const isOwner = p.member_role === 'owner';
-  const aiUsage = isOwner ? await request('GET', `/projects/${pid}/ai/usage`).catch(() => null) : null;
+  const [aiUsage, orgs] = isOwner ? await Promise.all([
+    request('GET', `/projects/${pid}/ai/usage`).catch(() => null),
+    api.organizations.list().catch(() => []),
+  ]) : [null, []];
 
   container.innerHTML = `
     <div class="page-header">
@@ -158,6 +161,8 @@ async function renderSettings() {
           </p>
           ${buildAiUsageCard(aiUsage)}
         </div>
+
+        ${buildOrgMoveCard(p, orgs)}
 
         <div class="members-card" style="border-color:rgba(239,68,68,.25)">
           <div class="members-card-title" style="color:var(--c-crit)">Danger Zone</div>
@@ -617,6 +622,48 @@ async function savePortalPassword() {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
+// Moving needs owner/admin on the destination org (the server enforces it),
+// so only those orgs are offered.
+function buildOrgMoveCard(p, orgs) {
+  const current = orgs.find(o => o.id === p.organization_id)?.name
+    || state.projects.find(x => x.id === p.id)?.organization_name
+    || 'otra organización';
+  const targets = orgs.filter(o => o.id !== p.organization_id && ['owner', 'admin'].includes(o.member_role));
+  return `
+    <div class="members-card">
+      <div class="members-card-title">Organization</div>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 12px">
+        Pertenece a <strong style="color:var(--t1)">${esc(current)}</strong>. Al moverlo, los miembros del proyecto conservan su acceso; el acceso implícito de los owners/admins pasa de la organización actual a la nueva.
+      </p>
+      ${targets.length ? `
+      <div style="display:flex;gap:6px;align-items:center">
+        <select class="form-input" id="cfg-move-org" style="flex:1">
+          ${targets.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="moveProjectToOrg()">Mover</button>
+      </div>` : `
+      <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:0">
+        No hay otra organización donde seas owner o admin.
+      </p>`}
+    </div>`;
+}
+
+async function moveProjectToOrg() {
+  const sel = document.getElementById('cfg-move-org');
+  const oid = sel?.value;
+  if (!oid) return;
+  const name = sel.options[sel.selectedIndex].text;
+  if (!confirm(`¿Mover "${state.currentProject.name}" a ${name}?`)) return;
+  try {
+    const res = await api.projects.move(state.currentProject.id, oid);
+    state.currentProject = { ...state.currentProject, organization_id: res.organization_id, organization_name: res.organization_name };
+    const idx = state.projects.findIndex(p => p.id === state.currentProject.id);
+    if (idx > -1) state.projects[idx] = { ...state.projects[idx], organization_id: res.organization_id, organization_name: res.organization_name };
+    showToast(`Movido a ${res.organization_name}`, 'success');
+    renderSettings();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 async function deleteProject() {
   if (!confirm(`¿Eliminar "${state.currentProject.name}"? Esta acción no se puede deshacer.`)) return;
   try {
@@ -641,6 +688,7 @@ window.onLogoFileChange     = onLogoFileChange;
 window.removeLogo           = removeLogo;
 window.setLogoBg            = setLogoBg;
 window.deleteProject        = deleteProject;
+window.moveProjectToOrg     = moveProjectToOrg;
 window.regeneratePortalLink = regeneratePortalLink;
 window.copyPortalLink       = copyPortalLink;
 window.savePortalPassword   = savePortalPassword;

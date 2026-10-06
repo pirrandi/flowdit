@@ -118,6 +118,7 @@ function actionLabel(action, entityType, entityName, meta) {
       return `reopened task ${name}`;
     case 'invite_created': return `created an invite link`;
     case 'member_joined':  return `joined the project`;
+    case 'project_moved':  return `moved the project to organization ${name}`;
     case 'ai_scan_started':  return `started an AI Agent scan`;
     case 'ai_scan_deleted':  return `deleted an AI Agent scan session`;
     // El único aviso real que dispara el modo autónomo del agente (ver

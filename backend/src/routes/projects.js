@@ -192,6 +192,45 @@ router.post('/:projectId/portal/token', requireProjectAccess, requireOwner, asyn
   } catch (err) { next(err); }
 });
 
+// POST /projects/:projectId/move — move the project to another organization.
+// Requires project owner (direct, or via owning the current org) AND owner/admin
+// of the destination org: nobody can push a project into an org they don't
+// manage, nor take it away from its owner. Direct project members keep their
+// access; implicit org-level access switches from the old org to the new one.
+router.post('/:projectId/move', requireProjectAccess, requireOwner, blockDemoDestructive, [
+  body('organization_id').isUUID(),
+], async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { organization_id } = req.body;
+  if (organization_id === req.project.organization_id)
+    return res.status(400).json({ error: 'The project already belongs to that organization' });
+  try {
+    const { rows: dest } = await db.query(
+      `SELECT o.name FROM organizations o
+       JOIN organization_members om ON om.organization_id=o.id AND om.user_id=$2 AND om.role IN ('owner','admin')
+       WHERE o.id=$1`,
+      [organization_id, req.user.id]
+    );
+    if (!dest.length)
+      return res.status(403).json({ error: 'You must be an owner or admin of the destination organization' });
+
+    const { rows: src } = await db.query('SELECT name FROM organizations WHERE id=$1', [req.project.organization_id]);
+    await db.query('UPDATE projects SET organization_id=$1 WHERE id=$2', [organization_id, req.params.projectId]);
+    await activity.log({
+      projectId:  req.params.projectId,
+      user:       req.user,
+      action:     'project_moved',
+      entityType: 'organization',
+      entityId:   organization_id,
+      entityName: dest[0].name,
+      meta:       { from: src[0]?.name || null, to: dest[0].name },
+    });
+    res.json({ ok: true, organization_id, organization_name: dest[0].name });
+  } catch (err) { next(err); }
+});
+
 // DELETE /projects/:projectId
 router.delete('/:projectId', requireProjectAccess, requireOwner, blockDemoDestructive, async (req, res, next) => {
   try {

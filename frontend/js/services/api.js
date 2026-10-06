@@ -132,6 +132,7 @@ const api = {
     update:  (id,d)   => request('PATCH',  `/projects/${id}`, d),
     delete:  (id)     => request('DELETE', `/projects/${id}`),
     join:    (token)  => request('POST',   '/projects/join', { token }),
+    move:    (id,oid) => request('POST',   `/projects/${id}/move`, { organization_id: oid }),
   },
   organizations: {
     list:    ()       => request('GET',    '/organizations'),

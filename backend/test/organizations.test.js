@@ -5,7 +5,7 @@
 const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const { app, db, resetDb, registerUser } = require('./helpers');
+const { app, db, resetDb, registerUser, createProject } = require('./helpers');
 
 before(async () => { await resetDb(); });
 beforeEach(async () => { await resetDb(); });
@@ -377,4 +377,86 @@ test('owner can delete their org; a non-owner member cannot', async () => {
 
   const check = await db.query('SELECT * FROM organizations WHERE id=$1', [org.id]);
   assert.equal(check.rows.length, 0);
+});
+
+// ── moving a project between orgs ────────────────────────────────────
+
+async function addOrgMember(ownerToken, orgId, role) {
+  const user = await registerUser();
+  const invite = await createInvite(ownerToken, orgId, { role });
+  const joined = await joinOrg(user.accessToken, invite.token);
+  assert.equal(joined.status, 200);
+  return user;
+}
+
+const moveProject = (token, projectId, organization_id) => request(app)
+  .post(`/api/projects/${projectId}/move`)
+  .set('Authorization', `Bearer ${token}`)
+  .send({ organization_id });
+
+test('project owner who is admin of the destination org can move the project there', async () => {
+  const destOwner = await registerUser();
+  const dest = await createOrg(destOwner.accessToken, 'Dest Co');
+  const mover = await addOrgMember(destOwner.accessToken, dest.id, 'admin');
+  const project = await createProject(mover.accessToken);
+
+  // Before the move the destination org owner has no access at all.
+  const before = await request(app).get(`/api/projects/${project.id}`)
+    .set('Authorization', `Bearer ${destOwner.accessToken}`);
+  assert.equal(before.status, 404);
+
+  const res = await moveProject(mover.accessToken, project.id, dest.id);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.organization_name, 'Dest Co');
+
+  // The mover keeps their direct ownership; the dest org owner gains implicit access.
+  const mine = await request(app).get(`/api/projects/${project.id}`)
+    .set('Authorization', `Bearer ${mover.accessToken}`);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.member_role, 'owner');
+  assert.equal(mine.body.organization_id, dest.id);
+  const after = await request(app).get(`/api/projects/${project.id}`)
+    .set('Authorization', `Bearer ${destOwner.accessToken}`);
+  assert.equal(after.status, 200);
+
+  const { rows } = await db.query(
+    `SELECT meta FROM activity_log WHERE project_id=$1 AND action='project_moved'`, [project.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].meta.to, 'Dest Co');
+});
+
+test('cannot move a project into an org where the caller is only a member, or not a member', async () => {
+  const destOwner = await registerUser();
+  const dest = await createOrg(destOwner.accessToken, 'Dest Co');
+  const mover = await addOrgMember(destOwner.accessToken, dest.id, 'member');
+  const stranger = await registerUser();
+  const foreign = await createOrg(stranger.accessToken, 'Foreign Co');
+  const project = await createProject(mover.accessToken);
+
+  assert.equal((await moveProject(mover.accessToken, project.id, dest.id)).status, 403);
+  assert.equal((await moveProject(mover.accessToken, project.id, foreign.id)).status, 403);
+  const { rows } = await db.query('SELECT organization_id FROM projects WHERE id=$1', [project.id]);
+  assert.equal(rows[0].organization_id, project.organization_id);
+});
+
+test('a project editor cannot move the project even when they own the destination org', async () => {
+  const owner = await registerUser();
+  const project = await createProject(owner.accessToken);
+  const editor = await registerUser();
+  const inv = await request(app).post(`/api/projects/${project.id}/invites`)
+    .set('Authorization', `Bearer ${owner.accessToken}`).send({ role: 'editor' });
+  assert.equal(inv.status, 201);
+  const join = await request(app).post('/api/projects/join')
+    .set('Authorization', `Bearer ${editor.accessToken}`).send({ token: inv.body.token });
+  assert.equal(join.status, 200);
+  const editorsOrg = await createOrg(editor.accessToken, 'Editor Co');
+
+  assert.equal((await moveProject(editor.accessToken, project.id, editorsOrg.id)).status, 403);
+});
+
+test('moving a project to the org it already belongs to is rejected', async () => {
+  const owner = await registerUser();
+  const project = await createProject(owner.accessToken);
+  const res = await moveProject(owner.accessToken, project.id, project.organization_id);
+  assert.equal(res.status, 400);
 });
