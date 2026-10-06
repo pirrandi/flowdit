@@ -66,6 +66,17 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="ticket-delete-confirm-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Delete query</div>
+    <p style="font-family:var(--mono);font-size:12px;color:var(--t2);line-height:1.6;margin:0 0 16px" id="ticket-delete-confirm-text"></p>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeTicketDeleteConfirm()">Cancel</button>
+      <button class="btn-danger" onclick="confirmDeleteTicket()">Delete query</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container" id="toast-container"></div>
 
 <script src="js/data.js"></script>

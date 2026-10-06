@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const mailer   = require('../services/mailer');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireLead, isLeadRole, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireLead, requireOwner, isLeadRole, portalRequiresFlag } = require('../middleware/project');
 const { vulnBelongsToProject } = require('../services/ownership');
 const { decrypt } = require('../utils/crypto');
 const github    = require('../services/github');
@@ -144,8 +144,8 @@ router.patch('/:ticketId', requireLead, [
   } catch (err) { next(err); }
 });
 
-// DELETE ticket (editors/owner only)
-router.delete('/:ticketId', requireLead, async (req, res, next) => {
+// DELETE ticket (owner only): it erases the whole client conversation.
+router.delete('/:ticketId', requireOwner, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `DELETE FROM tickets WHERE id=$1 AND project_id=$2 RETURNING title`,

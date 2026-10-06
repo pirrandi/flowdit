@@ -5,6 +5,7 @@ const STATUS_LABEL = { open:'Open', in_review:'In Review', closed:'Closed' };
 
 let _activeFilter  = 'all';
 let _openTicketId  = null;
+let _openTicketTitle = '';
 
 // ── RENDER ────────────────────────────────────────────────────────────
 function renderTickets() {
@@ -117,8 +118,13 @@ async function openTicketModal(ticketId) {
     : !lead ? ''
     : `<button class="btn-secondary" style="font-size:10px;padding:3px 9px" id="ticket-github-btn" onclick="sendTicketToGithub(event)">Send to GitHub</button>`;
 
+  // Deleting erases the whole client conversation, so it is owner-only (server enforces it).
+  const deleteBtn = state.currentProject?.member_role !== 'owner' ? ''
+    : `<button class="btn-icon" title="Delete query" style="color:var(--c-crit)" onclick="openTicketDeleteConfirm(event)">${icon('trash-2',{size:14})}</button>`;
+
   document.getElementById('ticket-modal-status-btns').innerHTML =
-    `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${color};background:${color}18;border:1px solid ${color}44;border-radius:4px;padding:2px 8px">${STATUS_LABEL[t.status]}</span>${btns}${githubBtn}`;
+    `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${color};background:${color}18;border:1px solid ${color}44;border-radius:4px;padding:2px 8px">${STATUS_LABEL[t.status]}</span>${btns}${githubBtn}${deleteBtn}`;
+  _openTicketTitle = t.title;
 
   renderTicketThread(t.replies || []);
   document.getElementById('ticket-reply-input').value = '';
@@ -208,9 +214,38 @@ async function sendTicketToGithub(e) {
   }
 }
 
+// Custom modal instead of the native confirm(), matching the rest of the UI.
+function openTicketDeleteConfirm(e) {
+  e?.stopPropagation();
+  if (!_openTicketId) return;
+  document.getElementById('ticket-delete-confirm-text').textContent =
+    `"${_openTicketTitle}" and all its replies will be permanently deleted. The client will no longer see it in the portal.`;
+  document.getElementById('ticket-delete-confirm-modal').classList.add('open');
+}
+
+function closeTicketDeleteConfirm() {
+  document.getElementById('ticket-delete-confirm-modal').classList.remove('open');
+}
+
+async function confirmDeleteTicket() {
+  const id = _openTicketId;
+  if (!id) return;
+  closeTicketDeleteConfirm();
+  try {
+    await api.tickets.delete(state.currentProject.id, id);
+    closeTicketModal();
+    state.tickets = (state.tickets || []).filter(t => t.id !== id);
+    renderTickets();
+    showToast('Query deleted', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('ticket-modal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeTicketModal();
+  });
+  document.getElementById('ticket-delete-confirm-modal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeTicketDeleteConfirm();
   });
 });
 
@@ -221,3 +256,6 @@ window.closeTicketModal    = closeTicketModal;
 window.submitTicketReply   = submitTicketReply;
 window.changeTicketStatus  = changeTicketStatus;
 window.sendTicketToGithub  = sendTicketToGithub;
+window.openTicketDeleteConfirm  = openTicketDeleteConfirm;
+window.closeTicketDeleteConfirm = closeTicketDeleteConfirm;
+window.confirmDeleteTicket      = confirmDeleteTicket;

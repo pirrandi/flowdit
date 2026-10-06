@@ -179,6 +179,25 @@ test('pentester can read tickets but cannot reply, triage, delete or push them',
   assert.equal(del.status, 403);
 });
 
+test('only the owner can delete a ticket, replies included', async () => {
+  const { owner, project, editor } = await setup();
+  const ticket = await createTicket(owner.accessToken, project.id);
+  const base = `/api/projects/${project.id}/tickets`;
+  const reply = await request(app).post(`${base}/${ticket.id}/replies`)
+    .set(auth(editor.accessToken)).send({ body: 'Looking into it' });
+  assert.equal(reply.status, 201);
+
+  const byEditor = await request(app).delete(`${base}/${ticket.id}`).set(auth(editor.accessToken));
+  assert.equal(byEditor.status, 403);
+
+  const byOwner = await request(app).delete(`${base}/${ticket.id}`).set(auth(owner.accessToken));
+  assert.equal(byOwner.status, 200);
+  const gone = await request(app).get(`${base}/${ticket.id}`).set(auth(owner.accessToken));
+  assert.equal(gone.status, 404);
+  const { rows } = await db.query('SELECT 1 FROM ticket_replies WHERE ticket_id=$1', [ticket.id]);
+  assert.equal(rows.length, 0);
+});
+
 test('editor can reply to and triage tickets; a viewer (client account) can still reply', async () => {
   const { owner, project, editor, viewer } = await setup();
   const ticket = await createTicket(owner.accessToken, project.id);
