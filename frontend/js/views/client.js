@@ -484,7 +484,6 @@ function openNewTicketModal() {
   document.getElementById('ct-vuln').innerHTML =
     `<option value="">— Not linked to a specific finding —</option>` +
     (state.customVulns||[]).map(v => `<option value="${v.id}">[${v.severity}] ${esc(v.name)}</option>`).join('');
-  if (window.reinitCsel) window.reinitCsel('ct-vuln');
   document.getElementById('ct-error').style.display = 'none';
   document.getElementById('client-ticket-modal').classList.add('open');
 }

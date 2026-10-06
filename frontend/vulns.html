@@ -70,11 +70,11 @@
           <button type="button" class="ai-btn" id="ai-sev-btn" onclick="aiSeverity()" title="Suggest severity from name"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
         </div>
         <select class="form-input" id="modal-vuln-sev" style="cursor:pointer">
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium" selected>Medium</option>
-          <option value="low">Low</option>
-          <option value="info">Info</option>
+          <option value="critical" data-color="var(--c-crit)">Critical</option>
+          <option value="high" data-color="var(--c-high)">High</option>
+          <option value="medium" data-color="var(--c-med)" selected>Medium</option>
+          <option value="low" data-color="var(--c-low)">Low</option>
+          <option value="info" data-color="var(--c-info)">Info</option>
         </select>
       </div>
     </div>
@@ -272,20 +272,11 @@
 <script src="js/services/ws.js"></script>
 <script src="js/services/icons.js"></script>
 <script src="js/services/utils.js"></script>
-<script src="js/components/activity.js"></script>
 <script src="js/components/csel.js"></script>
+<script src="js/components/activity.js"></script>
 <script src="js/views/vulns.js?v=2"></script>
 <script src="js/page.js"></script>
 <script>
-  initCsel('modal-vuln-sev', [
-    { value: 'critical', label: 'Critical', color: 'var(--c-crit)' },
-    { value: 'high',     label: 'High',     color: 'var(--c-high)' },
-    { value: 'medium',   label: 'Medium',   color: 'var(--c-med)'  },
-    { value: 'low',      label: 'Low',      color: 'var(--c-low)'  },
-    { value: 'info',     label: 'Info',     color: 'var(--c-info)' },
-  ]);
-  initCsel('modal-vuln-target');
-
   function pageInit() {
     renderCustomVulns();
   }

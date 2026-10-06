@@ -162,10 +162,6 @@ function renderPortsTab(targetId) {
       <input type="text" class="target-inline-input" style="flex:1" placeholder="Version" id="pa-ver-${targetId}">
       <button class="btn-accent" style="padding:4px 10px;font-size:11px;flex-shrink:0" onclick="addPort('${targetId}')">+ Add</button>
     </div>`;
-  if (window.initCsel) {
-    initCsel(`pa-proto-${targetId}`, [{value:'tcp',label:'tcp'},{value:'udp',label:'udp'}]);
-    initCsel(`pa-state-${targetId}`, [{value:'open',label:'open'},{value:'filtered',label:'filtered'},{value:'closed',label:'closed'}]);
-  }
 }
 
 function portRowHtml(targetId, p) {
@@ -199,10 +195,6 @@ function editPort(targetId, portId, e) {
     <input type="text" class="target-inline-input" style="flex:1" placeholder="Version"  id="pe-ver-${portId}" value="${esc(p.version||'')}">
     <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="savePort('${targetId}','${portId}',event)">Save</button>
     <button class="btn-icon"   onclick="cancelPortEdit('${targetId}','${portId}',event)">${icon('x',{size:12})}</button>`;
-  if (window.initCsel) {
-    initCsel(`pe-proto-${portId}`, [{value:'tcp',label:'tcp'},{value:'udp',label:'udp'}]);
-    initCsel(`pe-state-${portId}`, [{value:'open',label:'open'},{value:'filtered',label:'filtered'},{value:'closed',label:'closed'}]);
-  }
 }
 
 async function savePort(targetId, portId, e) {
@@ -285,9 +277,6 @@ function renderEndpointsTab(targetId) {
       </label>
       <button class="btn-accent" style="padding:4px 10px;font-size:11px;flex-shrink:0" onclick="addEndpoint('${targetId}')">+ Add</button>
     </div>`;
-  if (window.initCsel) {
-    initCsel(`ea-method-${targetId}`, METHODS.map(m => ({value:m, label:m})));
-  }
 }
 
 function endpointRowHtml(targetId, ep) {
@@ -318,9 +307,6 @@ function editEndpoint(targetId, epId, e) {
     </label>
     <button class="btn-accent" style="padding:4px 10px;font-size:11px" onclick="saveEndpoint('${targetId}','${epId}',event)">Save</button>
     <button class="btn-icon"   onclick="cancelEndpointEdit('${targetId}','${epId}',event)">${icon('x',{size:12})}</button>`;
-  if (window.initCsel) {
-    initCsel(`ee-method-${epId}`, METHODS.map(m => ({value:m, label:m})));
-  }
 }
 
 async function saveEndpoint(targetId, epId, e) {
@@ -384,7 +370,6 @@ function openAddTargetModal() {
   document.getElementById('modal-target-status').value = 'active';
   document.getElementById('modal-target-notes').value  = '';
   document.getElementById('target-error').style.display = 'none';
-  if (window.cselSync) window.cselSync();
   document.getElementById('target-modal').classList.add('open');
   document.getElementById('modal-target-host').focus();
 }
@@ -401,7 +386,6 @@ function openEditTarget(id, e) {
   document.getElementById('modal-target-status').value = t.status;
   document.getElementById('modal-target-notes').value  = t.notes || '';
   document.getElementById('target-error').style.display = 'none';
-  if (window.cselSync) window.cselSync();
   document.getElementById('target-modal').classList.add('open');
 }
 

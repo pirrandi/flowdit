@@ -1014,44 +1014,79 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: .9; }
 .tpl-item-own { font-size: 9px; color: var(--a); font-family: var(--mono); border: 1px solid var(--a-dim); border-radius: 2px; padding: 1px 4px; }
 .tpl-empty { padding: 10px 14px; font-size: 12px; color: var(--t3); }
 
-/* ── Custom Select ──────────────────────────────── */
-.csel { position: relative; }
+/* ── Custom Select (js/components/csel.js — auto-applied to every <select>) ── */
+/* The wrapper inherits the native select's classes + inline style for layout
+   (width / flex / margins); everything visual is neutralised here and drawn
+   by .csel-trigger instead. */
+:where(.csel) { display: inline-block; vertical-align: middle; font-size: 12px; }
+.csel.csel {
+  position: relative; background: none !important; border: 0 !important;
+  padding: 0 !important; box-shadow: none !important; outline: none !important;
+  min-height: 0 !important; height: auto !important; resize: none !important;
+  cursor: default;
+}
+.csel > select { display: none !important; }
 .csel-trigger {
   width: 100%; background: var(--bg3); border: 1px solid var(--b1);
   border-radius: var(--r); padding: 8px 12px; color: var(--t1);
-  font-size: 12px; font-family: inherit; cursor: pointer;
+  font-size: inherit; font-family: inherit; line-height: inherit; cursor: pointer;
   display: flex; align-items: center; justify-content: space-between;
-  gap: 6px; transition: border-color .15s; text-align: left;
+  gap: 8px; text-align: left; outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s;
 }
-.csel-trigger:hover, .csel.open .csel-trigger { border-color: var(--b2); }
+.csel-trigger:hover { border-color: var(--b2); }
+.csel-trigger:focus-visible,
+.csel.is-open .csel-trigger { border-color: rgba(245,158,11,.45); }
+.csel-trigger:focus-visible { box-shadow: 0 0 0 2px var(--a-dim); }
+.csel-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.csel-trigger:disabled:hover { border-color: var(--b1); }
 .csel-trigger-val { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .csel-arrow {
-  width: 0; height: 0; flex-shrink: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid var(--t3);
-  transition: transform .15s; margin-top: 1px;
+  flex-shrink: 0; width: 6px; height: 6px; margin: -3px 1px 0 0;
+  border-right: 1.5px solid var(--t3); border-bottom: 1.5px solid var(--t3);
+  transform: rotate(45deg); transition: transform .15s, border-color .15s;
 }
-.csel.open .csel-arrow { transform: rotate(180deg); }
-.csel-menu {
-  position: fixed; z-index: 9999;
-  background: var(--bg1); border: 1px solid var(--b2); border-radius: var(--r);
-  overflow: hidden; opacity: 0; transform: translateY(-4px); pointer-events: none;
-  transition: opacity .12s, transform .12s; box-shadow: 0 4px 16px rgba(0,0,0,.4);
-}
-.csel.open .csel-menu { opacity: 1; transform: translateY(0); pointer-events: all; }
+.csel-trigger:hover .csel-arrow { border-color: var(--t2); }
+.csel.is-open .csel-arrow { transform: rotate(225deg); margin-top: 3px; border-color: var(--a); }
 .csel-sm { flex-shrink: 0; }
-.csel-sm .csel-trigger { width: auto; padding: 4px 22px 4px 7px; font-size: 11px; }
-.csel-sm .csel-opt { padding: 5px 10px; font-size: 11px; }
+.csel-sm .csel-trigger { padding: 4px 8px; border-radius: var(--r-sm); gap: 6px; }
+.csel-sm .csel-arrow { width: 5px; height: 5px; }
+/* Per-origin tints carried over from the native select styles */
+.csel.wstg-target-select .csel-trigger { border-color: rgba(239,68,68,.3); }
+.csel.wstg-target-select .csel-trigger:focus-visible,
+.csel.wstg-target-select.is-open .csel-trigger { border-color: var(--c-crit); }
+.csel.wstg-link-select .csel-trigger { border-color: rgba(245,158,11,.25); }
+.csel.task-status-select .csel-trigger { background: var(--bg2); }
+
+.csel-menu {
+  position: fixed; z-index: 10000; box-sizing: border-box;
+  background: var(--bg1); border: 1px solid var(--b2); border-radius: var(--r);
+  padding: 3px 0; overflow-y: auto; overscroll-behavior: contain;
+  font-family: var(--mono); font-size: 12px; color: var(--t2);
+  box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  animation: csel-in .12s ease-out;
+  scrollbar-width: thin; scrollbar-color: var(--b3) transparent;
+}
+.csel-menu.is-up { animation-name: csel-in-up; }
+[data-theme="light"] .csel-menu { box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+@keyframes csel-in    { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes csel-in-up { from { opacity: 0; transform: translateY(4px); }  to { opacity: 1; transform: none; } }
 .csel-opt {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; font-size: 12px; font-family: inherit;
-  cursor: pointer; color: var(--t2); transition: background .08s; user-select: none;
-  white-space: nowrap;
+  padding: 7px 12px; cursor: pointer; color: var(--t2);
+  border-left: 2px solid transparent; user-select: none; white-space: nowrap;
 }
-.csel-opt:hover { background: var(--bg3); color: var(--t1); }
-.csel-opt.is-sel { color: var(--t1); background: rgba(245,158,11,.05); }
-.csel-opt.is-sel::after { content: '✓'; margin-left: auto; color: var(--a); font-size: 10px; }
+.csel-opt-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.csel-opt.is-active { background: var(--bg3); color: var(--t1); }
+.csel-opt.is-sel { color: var(--t1); background: var(--a-dim); border-left-color: var(--a); }
+.csel-opt.is-sel.is-active { background: rgba(245,158,11,.18); }
+.csel-opt.is-sel::after { content: '\2713'; margin-left: 8px; color: var(--a); font-size: 10px; }
+.csel-opt.is-disabled { opacity: .4; cursor: not-allowed; }
+.csel-menu-sm .csel-opt { padding: 5px 10px; }
+.csel-group {
+  padding: 8px 12px 4px; font-size: 9px; color: var(--t3);
+  text-transform: uppercase; letter-spacing: .1em; cursor: default;
+}
 .csel-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .note-textarea {
   width: 100%; background: var(--bg3); border: 1px solid var(--b1);

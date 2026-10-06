@@ -68,16 +68,16 @@
       <div class="form-group" style="margin:0">
         <label class="form-label">Scope</label>
         <select class="form-input" id="modal-target-scope" style="cursor:pointer">
-          <option value="in">In Scope</option>
-          <option value="out">Out of Scope</option>
+          <option value="in" data-color="var(--a)">In Scope</option>
+          <option value="out" data-color="var(--t3)">Out of Scope</option>
         </select>
       </div>
       <div class="form-group" style="margin:0">
         <label class="form-label">Status</label>
         <select class="form-input" id="modal-target-status" style="cursor:pointer">
-          <option value="active">Active</option>
-          <option value="completed">Completed</option>
-          <option value="out-of-scope">Out of Scope</option>
+          <option value="active" data-color="var(--a)">Active</option>
+          <option value="completed" data-color="var(--c-low)">Completed</option>
+          <option value="out-of-scope" data-color="var(--t3)">Out of Scope</option>
         </select>
       </div>
     </div>
@@ -104,28 +104,10 @@
 <script src="js/services/ws.js"></script>
 <script src="js/services/icons.js"></script>
 <script src="js/services/utils.js"></script>
+<script src="js/components/csel.js"></script>
 <script src="js/components/activity.js"></script>
 <script src="js/views/targets.js"></script>
 <script src="js/page.js"></script>
-<script src="js/components/csel.js"></script>
-<script>
-initCsel('modal-target-type', [
-  { value: 'domain', label: 'Domain' },
-  { value: 'ip',     label: 'IP' },
-  { value: 'cidr',   label: 'CIDR' },
-  { value: 'url',    label: 'URL' },
-  { value: 'other',  label: 'Other' },
-]);
-initCsel('modal-target-scope', [
-  { value: 'in',  label: 'In Scope',     color: 'var(--a)' },
-  { value: 'out', label: 'Out of Scope', color: 'var(--t3)' },
-]);
-initCsel('modal-target-status', [
-  { value: 'active',       label: 'Active',       color: 'var(--a)' },
-  { value: 'completed',    label: 'Completed',    color: 'var(--c-low)' },
-  { value: 'out-of-scope', label: 'Out of Scope', color: 'var(--t3)' },
-]);
-</script>
 
 <script>
 function renderScopeSummary() {

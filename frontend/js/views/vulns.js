@@ -82,7 +82,6 @@ function tplApply(idx) {
   document.getElementById('modal-vuln-sev').value   = t.severity;
   document.getElementById('modal-vuln-desc').value  = t.description || '';
   document.getElementById('modal-vuln-rem').value   = t.remediation || '';
-  if (window.cselSync) window.cselSync();
 
   const inp = document.getElementById('tpl-search-input');
   if (inp) inp.value = '';
@@ -646,7 +645,6 @@ function openAddVulnModal() {
   addModalRow('modal-payloads-list', 'Payload...', true);
   _initCVSS(null);
   renderCompliancePicker([]);
-  if (window.cselSync) window.cselSync();
   document.getElementById('vuln-modal').classList.add('open');
 }
 
@@ -674,7 +672,6 @@ function openEditVuln(id, e) {
   if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...',true);
   _initCVSS(v.cvss_vector || null);
   renderCompliancePicker((v.compliance_tags || []).map(t => t.control_id));
-  if (window.cselSync) window.cselSync();
   document.getElementById('vuln-modal').classList.add('open');
 }
 
@@ -768,7 +765,7 @@ async function aiDraft() {
     const result = await _aiGenerate('vuln-draft', ctx, 'ai-draft-btn', 'Draft');
     if (result.name)        document.getElementById('modal-vuln-name').value = result.name;
     if (result.category)    document.getElementById('modal-vuln-cat').value  = result.category;
-    if (result.severity)    { document.getElementById('modal-vuln-sev').value  = result.severity; if (window.cselSync) window.cselSync(); }
+    if (result.severity)    { document.getElementById('modal-vuln-sev').value  = result.severity; }
     if (result.description) document.getElementById('modal-vuln-desc').value = result.description;
     if (result.remediation) document.getElementById('modal-vuln-rem').value  = result.remediation;
     showToast('Draft generated', 'success');
@@ -792,7 +789,6 @@ async function aiSeverity() {
     const result = await _aiGenerate('severity-suggest', { name: ctx.name, category: ctx.category }, 'ai-sev-btn', 'Suggest');
     if (result.severity) {
       document.getElementById('modal-vuln-sev').value = result.severity;
-      if (window.cselSync) window.cselSync();
       showToast(`${result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}${result.reason ? ' — ' + result.reason : ''}`, 'success');
     }
   } catch(e) { showToast(e.message, 'error'); }
@@ -828,7 +824,6 @@ function populateTargetSelect(selectedId) {
   const inScope = (state.targets||[]).filter(t => t.scope==='in');
   sel.innerHTML = '<option value="">— No target —</option>' +
     inScope.map(t => `<option value="${t.id}" ${t.id===selectedId?'selected':''}>${esc(t.host)}</option>`).join('');
-  if (window.reinitCsel) window.reinitCsel('modal-vuln-target');
 }
 
 // ── Import Scan ─────────────────────────────────────────────────────────

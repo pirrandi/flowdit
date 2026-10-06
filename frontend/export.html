@@ -701,21 +701,9 @@
 <script src="js/services/ws.js"></script>
 <script src="js/services/icons.js"></script>
 <script src="js/services/utils.js"></script>
-<script src="js/components/activity.js"></script>
 <script src="js/components/csel.js"></script>
+<script src="js/components/activity.js"></script>
 <script src="js/page.js"></script>
-<script>
-initCsel('export-scope', [
-  { value: 'all',   label: 'Full Report' },
-  { value: 'vulns', label: 'Vulns Only'  },
-  { value: 'wstg',  label: 'WSTG Only'  },
-]);
-initCsel('report-type', [
-  { value: 'technical', label: 'Technical' },
-  { value: 'executive', label: 'Executive' },
-  { value: 'retest',    label: 'Retest' },
-]);
-</script>
 <script>
 // ── Styled markdown renderer (uses .rpt CSS classes) ─────────────
 function renderMdStyled(raw) {
