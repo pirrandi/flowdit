@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mis tareas</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/transitions.css">
+<link rel="expect" href="#fd-document-end" blocking="render">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+</head>
+<body>
+
+<div id="loading-overlay" class="ovl-shell"><div class="skel-wrap"><div class="skel-stats"><div class="skel-block"></div><div class="skel-block"></div><div class="skel-block"></div><div class="skel-block"></div></div><div class="skel-block skel-tall"></div><div class="skel-block skel-tall"></div></div></div>
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
+
+<div class="workarea">
+  <main class="main">
+    <div class="page-header">
+      <div style="flex:1">
+        <div class="page-title">Mis tareas</div>
+        <div class="page-subtitle">// tareas asignadas a ti en todos tus proyectos</div>
+      </div>
+      <div class="page-actions" id="my-tasks-actions"></div>
+    </div>
+    <div id="my-tasks-main" style="padding-bottom:32px"></div>
+  </main>
+
+  <aside class="activity-col">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </aside>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/icons.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/csel.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/components/task-ui.js"></script>
+<script src="js/views/my-tasks.js"></script>
+<script src="js/components/notifications.js"></script>
+<script src="js/page.js"></script>
+<script>
+  function pageInit() { renderMyTasks(); }
+  bootPage('my-tasks');
+</script>
+<!-- End-of-document marker for <link rel="expect" blocking="render"> (see css/transitions.css). -->
+<div id="fd-document-end" hidden></div>
+</body>
+</html>

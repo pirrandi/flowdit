@@ -110,6 +110,12 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'target_added': return `added target ${name}`
     case 'target_removed': return `deleted target ${name}`
     case 'target_updated': return `updated target ${name}`
+    case 'task_created':   return `created task ${name}` + (meta?.assignee ? ` for <span class="hl">${esc(meta.assignee)}</span>` : '');
+    case 'task_assigned':  return meta?.assignee ? `assigned ${name} to <span class="hl">${esc(meta.assignee)}</span>` : `unassigned ${name}`;
+    case 'task_status_changed':
+      if (meta?.status === 'done') return `completed task ${name}`;
+      if (meta?.status === 'in_progress') return `started task ${name}`;
+      return `reopened task ${name}`;
     case 'invite_created': return `created an invite link`;
     case 'member_joined':  return `joined the project`;
     case 'ai_scan_started':  return `started an AI Agent scan`;

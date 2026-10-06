@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Client Queries</title>
 <link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/transitions.css">
+<link rel="expect" href="#fd-document-end" blocking="render">
 <link rel="icon" type="image/x-icon" href="img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
@@ -75,10 +77,13 @@
 <script src="js/components/csel.js"></script>
 <script src="js/components/activity.js"></script>
 <script src="js/views/tickets.js"></script>
+<script src="js/components/notifications.js"></script>
 <script src="js/page.js"></script>
 <script>
   function pageInit() { renderTickets(); }
   bootPage('tickets');
 </script>
+<!-- End-of-document marker for <link rel="expect" blocking="render"> (see css/transitions.css). -->
+<div id="fd-document-end" hidden></div>
 </body>
 </html>

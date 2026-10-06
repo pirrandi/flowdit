@@ -792,6 +792,66 @@ const migrations = [
   `UPDATE ai_scan_sessions SET ai_model='deepseek-flash' WHERE ai_provider='deepseek' AND ai_model='deepseek-chat'`,
   `UPDATE ai_scan_sessions SET ai_model='deepseek-v4-pro' WHERE ai_provider='deepseek' AND ai_model='deepseek-reasoner'`,
 
+  // ── PROJECT TASKS (internal work assignment) ───────────────────────────
+  // A lead assigns work to a team member; the "instructions" are the task's
+  // description + its comment thread (no separate entity). Internal only:
+  // never exposed to client-portal sessions. CHECK constraints are declared
+  // with explicit names via DROP + ADD (not inline) so the value lists can
+  // change later without leaving a stale copy behind.
+  `CREATE TABLE IF NOT EXISTS project_tasks (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title        VARCHAR(300) NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+    priority     VARCHAR(10) NOT NULL DEFAULT 'medium',
+    assignee_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+    due_date     DATE,
+    target_id    UUID REFERENCES targets(id) ON DELETE SET NULL,
+    vuln_id      UUID REFERENCES custom_vulns(id) ON DELETE SET NULL,
+    wstg_test_id VARCHAR(50),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+  )`,
+  `ALTER TABLE project_tasks DROP CONSTRAINT IF EXISTS project_tasks_status_check`,
+  `ALTER TABLE project_tasks ADD CONSTRAINT project_tasks_status_check
+     CHECK (status IN ('pending','in_progress','done'))`,
+  `ALTER TABLE project_tasks DROP CONSTRAINT IF EXISTS project_tasks_priority_check`,
+  `ALTER TABLE project_tasks ADD CONSTRAINT project_tasks_priority_check
+     CHECK (priority IN ('low','medium','high'))`,
+  `CREATE INDEX IF NOT EXISTS idx_project_tasks_project  ON project_tasks(project_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_project_tasks_assignee ON project_tasks(assignee_id, status)`,
+
+  `CREATE TABLE IF NOT EXISTS task_comments (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_id    UUID NOT NULL REFERENCES project_tasks(id) ON DELETE CASCADE,
+    user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+    body       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at)`,
+
+  // ── NOTIFICATIONS (per-user inbox) ─────────────────────────────────────
+  // Deliberately generic: `type` + (entity_type, entity_id) + free-form
+  // `payload`, so future event kinds (client queries, AI approvals, ...) plug
+  // in without a schema change. entity_id is text, not UUID, for the same
+  // reason (some entities — e.g. WSTG tests — are keyed by a string id).
+  `CREATE TABLE IF NOT EXISTS notifications (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id  UUID REFERENCES projects(id) ON DELETE CASCADE,
+    type        VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id   VARCHAR(100),
+    actor_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+    payload     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    read_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_notifications_inbox ON notifications(user_id, read_at, created_at DESC)`,
+
   // ── USER DISPLAY NAME ──────────────────────────────────────────────────
   // Cosmetic, free-text name shown wherever a person is rendered. Separate
   // from `username`, which stays the unique login identifier with its strict

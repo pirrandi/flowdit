@@ -39,4 +39,19 @@ async function userBelongsToProject(userId, projectId) {
   return rows.length > 0;
 }
 
-module.exports = { targetBelongsToProject, vulnBelongsToProject, userBelongsToProject };
+// The same membership rule as userBelongsToProject, as a correlated SQL
+// predicate for queries that span many projects at once (a user's inbox, their
+// assigned tasks across projects): `projectCol` is the column holding the
+// project id, `userParam` the placeholder holding the user id (e.g. '$1').
+// Both are code-supplied identifiers, never user input.
+function projectAccessSql(projectCol, userParam) {
+  return `EXISTS (
+    SELECT 1 FROM projects ap
+    LEFT JOIN project_members apm ON apm.project_id = ap.id AND apm.user_id = ${userParam}
+    LEFT JOIN organization_members aom ON aom.organization_id = ap.organization_id
+          AND aom.user_id = ${userParam} AND aom.role IN ('owner','admin')
+    WHERE ap.id = ${projectCol} AND (apm.user_id IS NOT NULL OR aom.user_id IS NOT NULL)
+  )`;
+}
+
+module.exports = { targetBelongsToProject, vulnBelongsToProject, userBelongsToProject, projectAccessSql };

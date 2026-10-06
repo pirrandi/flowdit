@@ -57,6 +57,8 @@ app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/compliance', require('./routes/compliance'));
 app.use('/api/report-templates', require('./routes/report-templates'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/me',        require('./routes/me'));
 
 // Nested project routes — mergeParams makes :projectId available in child routers
 const projectRouter = express.Router({ mergeParams: true });
@@ -66,6 +68,7 @@ projectRouter.use('/vulns',    require('./routes/vulns'));
 projectRouter.use('/activity', require('./routes/activity'));
 projectRouter.use('/targets',  require('./routes/targets'));
 projectRouter.use('/tickets',    require('./routes/tickets'));
+projectRouter.use('/tasks',      require('./routes/tasks'));
 projectRouter.use('/whiteboard', require('./routes/whiteboard'));
 projectRouter.use('/report-config', require('./routes/report-config'));
 projectRouter.use('/import',    require('./routes/import'));

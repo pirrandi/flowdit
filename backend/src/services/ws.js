@@ -153,6 +153,22 @@ function disconnectUser(userId) {
   userSockets.delete(userId);
 }
 
+// Push a message to every open socket of ONE user, whatever project room each
+// socket joined — the per-user channel used by the notification inbox. Every
+// authenticated socket is already indexed in userSockets (see the auth
+// handshake above), and a socket only gets there after its JWT verified AND
+// project membership checked, so a recipient's sockets are the only ones that
+// ever see their notifications. Portal sessions never get a socket (no `sub`,
+// fails the membership check), so nothing reaches them either.
+function sendToUser(userId, data) {
+  const sockets = userSockets.get(userId);
+  if (!sockets) return;
+  const msg = JSON.stringify(data);
+  sockets.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
 // Broadcast an activity event to all members of a project
 function broadcastActivity(projectId, event) {
   const room = rooms.get(projectId);
@@ -190,4 +206,4 @@ function broadcastPresence(projectId) {
   });
 }
 
-module.exports = { setup, broadcastActivity, broadcastScanEvent, disconnectUser };
+module.exports = { setup, broadcastActivity, broadcastScanEvent, disconnectUser, sendToUser };

@@ -5,6 +5,12 @@ const { requireProjectAccess, portalRequiresFlag } = require('../middleware/proj
 
 router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_activity'));
 
+// Internal-only work items that are logged to the team feed but must never
+// reach the client portal (even with show_activity on): task assignment and
+// progress are the team's internal coordination, not engagement progress.
+// Code-defined constants, never user input.
+const PORTAL_HIDDEN_ENTITIES = ['task'];
+
 // GET /projects/:projectId/activity?limit=50&offset=0
 router.get('/', async (req, res, next) => {
   const limit  = Math.min(parseInt(req.query.limit)  || 50, 200);
@@ -17,6 +23,7 @@ router.get('/', async (req, res, next) => {
        FROM activity_log al
        JOIN users u ON u.id = al.user_id
        WHERE al.project_id = $1
+         ${req.isPortal ? `AND al.entity_type NOT IN (${PORTAL_HIDDEN_ENTITIES.map(e => `'${e}'`).join(',')})` : ''}
        ORDER BY al.created_at DESC
        LIMIT $2 OFFSET $3`,
       [req.params.projectId, limit, offset]

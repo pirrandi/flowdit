@@ -1,0 +1,49 @@
+/* ── transitions.css — cross-document view transitions ───────────────
+   Linked ONLY by the internal app pages that share the sidenav+topbar
+   shell (not export.html, which Puppeteer renders headless for the PDF,
+   nor the portal/login/project-list pages). A transition runs only when
+   both the old and the new page opt in, so any other navigation is a
+   normal page load. Browsers without support (Firefox, older Safari)
+   ignore all of this and just navigate.
+
+   The sidenav and topbar keep stable names so they are not animated: the
+   new page paints them in its first frame from the cached shell snapshot
+   (see page.js), and the old snapshot is dropped, so they swap in place.
+   Everything else (main content, activity column, loading skeleton) is a
+   short cross-fade. Users who prefer reduced motion get no transition.
+
+   Each of those pages also carries
+     <link rel="expect" href="#fd-document-end" blocking="render">
+   and a hidden <div id="fd-document-end"> as the last element of <body>:
+   the browser holds the first render until that marker is parsed, i.e.
+   until the parser-blocking scripts before it have run and bootPage() has
+   synchronously painted the sidenav from the snapshot. Without it the
+   transition could capture an empty sidenav. Browsers that don't know
+   rel=expect ignore it. The list of opted-in pages is mirrored in
+   _VT_PAGES (page.js). */
+
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+
+.sidenav { view-transition-name: fd-sidenav; }
+.topbar  { view-transition-name: fd-topbar; }
+#ai-fab  { view-transition-name: fd-ai-fab; }
+
+/* Static parts: show the new page's pixels at once, no fade, no morph. */
+::view-transition-group(fd-sidenav),
+::view-transition-group(fd-topbar),
+::view-transition-group(fd-ai-fab),
+::view-transition-new(fd-sidenav),
+::view-transition-new(fd-topbar),
+::view-transition-new(fd-ai-fab) { animation: none; }
+::view-transition-old(fd-sidenav),
+::view-transition-old(fd-topbar),
+::view-transition-old(fd-ai-fab) { display: none; }
+
+/* Content area: quick fade. */
+::view-transition-old(root) { animation: 110ms ease-out both fd-vt-fade-out; }
+::view-transition-new(root) { animation: 170ms ease-out both fd-vt-fade-in; }
+
+@keyframes fd-vt-fade-out { to   { opacity: 0; } }
+@keyframes fd-vt-fade-in  { from { opacity: 0; } }

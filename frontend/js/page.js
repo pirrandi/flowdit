@@ -2,18 +2,103 @@
 // Loaded by dashboard.html, owstg.html, portswigger.html, vulns.html, members.html
 
 // ── AUTH GUARD ────────────────────────────────────────────────────
-window.addEventListener('fd:logout', () => { window.location.href = '/'; });
+window.addEventListener('fd:logout', () => { clearShellSnapshot(); window.location.href = '/'; });
+
+// ── SHELL SNAPSHOT — instant sidenav/topbar paint between pages ──────
+// Every section is its own HTML page, so each navigation used to paint an
+// empty sidenav, then a partial one, then the full one once the API calls
+// returned. The last rendered shell (project header, progress, AI badge) is
+// kept in sessionStorage and painted synchronously at the start of
+// bootPage(), so the new page's first frame already shows the full sidebar
+// (which is also what lets the cross-document view transition keep it still).
+//
+// It holds only display data for the current project. The user part is
+// never stored here: it is read from localStorage `fd_user`, which already
+// holds it. No tokens. Cleared on logout, on 401 (tokens.clear() in api.js)
+// and when switching project. The client portal does not load page.js.
+const SHELL_SNAPSHOT_KEY = 'fd_shell';
+const SHELL_SNAPSHOT_VERSION = 1;
+let _shellSnap = null;          // snapshot painted on this page, until real data replaces it
+let _projectDataLoaded = false; // true once loadProjectData() has filled state
+
+function clearShellSnapshot() {
+  _shellSnap = null;
+  try { sessionStorage.removeItem(SHELL_SNAPSHOT_KEY); } catch {}
+}
+
+function _storedUser() {
+  try {
+    const u = JSON.parse(localStorage.getItem('fd_user') || 'null');
+    return u && u.id ? u : null;
+  } catch { return null; }
+}
+
+function _readShellSnapshot() {
+  try {
+    const snap = JSON.parse(sessionStorage.getItem(SHELL_SNAPSHOT_KEY) || 'null');
+    if (!snap || snap.v !== SHELL_SNAPSHOT_VERSION || !snap.project?.id) return null;
+    return snap;
+  } catch { return null; }
+}
+
+function _saveShellSnapshot() {
+  const p = state.currentProject;
+  if (!_projectDataLoaded || !state.user?.id || !p?.id || p.member_role === 'viewer') return;
+  const { done, total } = calcOverallProgress();
+  const snap = {
+    v: SHELL_SNAPSHOT_VERSION,
+    uid: state.user.id,
+    project: {
+      id: p.id, name: p.name, description: p.description || '',
+      logo_url: p.logo_url || null, logo_bg: p.logo_bg || null,
+      member_role: p.member_role, tickets_enabled: !!p.tickets_enabled,
+    },
+    pct: total ? Math.round(done / total * 100) : 0,
+    aiBadge: state.navAiBadge || null,
+  };
+  try { sessionStorage.setItem(SHELL_SNAPSHOT_KEY, JSON.stringify(snap)); } catch {}
+}
+
+// Synchronous: must run before the first await of bootPage().
+function _paintShellFromSnapshot() {
+  const snap = _readShellSnapshot();
+  const user = _storedUser();
+  if (!snap || !user || snap.uid !== user.id) return false;
+  // Only when this page will resolve to the same project as the snapshot.
+  const urlPid = new URLSearchParams(window.location.search).get('pid');
+  let wantedPid = urlPid;
+  if (!wantedPid) { try { wantedPid = localStorage.getItem('fd_project'); } catch {} }
+  if (wantedPid !== snap.project.id) return false;
+  _shellSnap = { user, project: snap.project, pct: snap.pct };
+  if (state.navAiBadge == null) state.navAiBadge = snap.aiBadge || null;
+  renderTopbar();
+  renderSidenav();
+  mountAiChat();
+  return true;
+}
+
+// Only touch the DOM when the markup really changed, so re-rendering with
+// fresh data after the cached paint does not flash (or wipe the search box).
+function _setShellHtml(el, html) {
+  if (el._fdShellHtml === html) return false;
+  el.innerHTML = html;
+  el._fdShellHtml = html;
+  return true;
+}
 
 async function bootPage(viewName) {
   if (!api.auth.hasSession()) { window.location.href = '/'; return; }
+  state.currentView = viewName;
+  _paintShellFromSnapshot();
+  _initNavSpeculation();
+
   try { state.user = await api.auth.me(); }
   catch (err) {
-    if (err.status === 401) { window.location.href = '/'; return; }
+    if (err.status === 401) { clearShellSnapshot(); window.location.href = '/'; return; }
     showToast('Could not reach the server, please retry', 'error');
     return;
   }
 
-  state.currentView = viewName;
   renderTopbar();
   renderSidenav();
 
@@ -34,16 +119,25 @@ async function bootPage(viewName) {
   }
   if (!state.currentProject && state.projects.length) state.currentProject = state.projects[0];
 
+  // The cached shell belongs to another project (or none) → drop it.
+  if (_shellSnap && _shellSnap.project.id !== state.currentProject?.id) {
+    clearShellSnapshot();
+    renderSidenav();
+  }
+
   // No project at all → go to project list
   if (!state.currentProject) { window.location.href = 'projects'; return; }
 
   // Viewers always go to the client portal
   if (state.currentProject.member_role === 'viewer') {
+    clearShellSnapshot();
     window.location.href = `client?pid=${state.currentProject.id}`;
     return;
   }
 
   await loadProjectData(state.currentProject.id);
+  _projectDataLoaded = true;
+  _shellSnap = null; // real data from here on
   renderSidenav();  // re-render now that currentProject and projects are loaded
   renderTopbar();   // re-render with correct role color
   if (state.onlineUsers?.length) renderOnlinePresence(state.onlineUsers); // restore after topbar rebuild
@@ -52,6 +146,7 @@ async function bootPage(viewName) {
   if (typeof pageInit === 'function') pageInit();
   refreshTopbarProgress();
   initNavAiBadge(); // no await — punto vivo en "AI Agent" del nav, visible desde cualquier página
+  if (typeof initNotifications === 'function') initNotifications(); // no await — badge de la campana
 }
 
 // ── Badge del AI Agent en el nav — "que se complemente con el ecosistema" ─
@@ -76,6 +171,7 @@ function setNavAiBadge(status) {
   // nombre del proyecto) — sin esto, ese re-render pisaba el badge con el
   // template oculto por defecto y quedaba invisible hasta el próximo evento WS.
   state.navAiBadge = ['running', 'waiting_approval'].includes(status) ? status : null;
+  _saveShellSnapshot();
   const badge = document.getElementById('nav-ai-badge');
   if (!badge) return;
   if (status === 'running') {
@@ -118,6 +214,7 @@ async function loadProjectData(pid) {
 }
 
 function switchProject(id) {
+  clearShellSnapshot();
   localStorage.setItem('fd_project', id);
   window.location.href = `dashboard?pid=${id}`;
 }
@@ -138,6 +235,7 @@ function calcOverallProgress() {
 function refreshTopbarProgress() {
   const { done, total } = calcOverallProgress();
   updateTopbarProgress(done, total);
+  _saveShellSnapshot();
 }
 
 function updateTopbarProgress(done, total) {
@@ -168,14 +266,17 @@ const _NAV_ICONS = {
   'members':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5.5" r="2.5"/><path d="M1 14c0-3 2-4.5 5-4.5s5 1.5 5 4.5"/><circle cx="12.5" cy="5" r="2"/><path d="M12.5 11c2.5.2 3.5 1.5 3.5 3"/></svg>`,
   'settings':    `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.5 3.5l1 1M11.5 11.5l1 1M3.5 12.5l1-1M11.5 4.5l1-1"/></svg>`,
   'tickets':     `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h12v9H9l-2.5 3L4 11H2z"/></svg>`,
+  'tasks':       icon('list-checks', { size: 14, strokeWidth: 1.75 }),
+  'my-tasks':    icon('user', { size: 14, strokeWidth: 1.75 }),
   'portswigger': `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1v5L2 14h12L10 6V1"/><line x1="5.5" y1="1" x2="10.5" y2="1"/><circle cx="7" cy="11" r="1" fill="currentColor" stroke="none"/></svg>`,
 };
 
 function renderSidenav() {
   const current = window.location.pathname.split('/').pop() || 'dashboard';
-  const proj = state.currentProject;
+  // Before the project data arrives, fall back to the cached shell snapshot.
+  const proj = state.currentProject || _shellSnap?.project || null;
   const pid  = proj ? `?pid=${proj.id}` : '';
-  const u    = state.user;
+  const u    = state.user || _shellSnap?.user || null;
 
   const navGroups = [
     {
@@ -184,6 +285,7 @@ function renderSidenav() {
         { href:`dashboard${pid}`,   label:'Overview'      },
         { href:`targets${pid}`,     label:'Targets'       },
         { href:`vulns${pid}`,       label:'Findings'      },
+        { href:`tasks${pid}`,       label:'Tareas'        },
         { href:`export${pid}`,      label:'Report'        },
         { href:`whiteboard${pid}`,  label:'Whiteboard'    },
         { href:`ai-agent${pid}`,    label:'AI Agent'      },
@@ -199,6 +301,7 @@ function renderSidenav() {
     {
       label: 'Team',
       items: [
+        { href:`my-tasks${pid}`,    label:'Mis tareas'    },
         { href:`members${pid}`,     label:'Members'       },
         { href:`settings${pid}`,    label:'Settings'      },
         ...(proj?.tickets_enabled ? [{ href:`tickets${pid}`, label:'Queries' }] : []),
@@ -212,8 +315,9 @@ function renderSidenav() {
     },
   ];
 
-  const { done, total } = calcOverallProgress();
-  const pct = total ? Math.round(done/total*100) : 0;
+  let pct;
+  if (!_projectDataLoaded && _shellSnap) pct = _shellSnap.pct || 0;
+  else { const { done, total } = calcOverallProgress(); pct = total ? Math.round(done/total*100) : 0; }
 
   let html = `
     <div class="brand">
@@ -265,27 +369,113 @@ function renderSidenav() {
     const role  = proj?.member_role;
     const color = roleColor(role);
     html += `
-    <div class="nav-foot">
+    <div class="nav-foot nav-foot-user" onclick="toggleUserMenu()" title="Account">
       ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="nav-foot-name" title="@${esc(u.username)}">${esc(displayName(u))}</div>
         ${role ? `<div class="nav-foot-role">${role}</div>` : ''}
+      </div>
+      <span class="nav-foot-chevron">${icon('chevron-up', { size: 13 })}</span>
+      <div class="user-dropdown user-dropdown-up" id="user-dropdown">
+        <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">${icon('user', { size: 13 })} Edit Profile</button>
+        <button class="dropdown-item" onclick="window.location.href='orgs'">${icon('building-2', { size: 13 })} Organizations</button>
+        <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out', { size: 13 })} Logout</button>
       </div>
     </div>`;
   }
 
   const sidenav = document.getElementById('sidenav');
-  if (sidenav) sidenav.innerHTML = html;
+  if (sidenav && _setShellHtml(sidenav, html)) _saveShellSnapshot();
 }
 
-// ── TOPBAR (slim — project context + user only) ───────────────────
+// ── SIDENAV NAVIGATION — instant highlight + prefetch ────────────
+// Move the active highlight as soon as a section is clicked, instead of
+// waiting for the next page to render it.
+document.addEventListener('click', e => {
+  const link = e.target.closest?.('#sidenav a.nav-item');
+  if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  document.querySelectorAll('#sidenav a.nav-item.active').forEach(a => a.classList.remove('active'));
+  link.classList.add('active');
+});
+
+// Back/forward cache restores the page as it was left, with the highlight
+// already moved to the section we navigated to: put it back.
+window.addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  const current = window.location.pathname.split('/').pop() || 'dashboard';
+  document.querySelectorAll('#sidenav a.nav-item').forEach(a => {
+    a.classList.toggle('active', (a.getAttribute('href') || '').split('?')[0] === current);
+  });
+});
+
+// Cross-document view transitions (css/transitions.css): only the pages
+// that link transitions.css opt in. When the next page does not (login,
+// project list, report export...), Chrome would start the transition here
+// and then abort it with an "opt-in disabled" InvalidStateError in the
+// console, so skip it up front. Keep in sync with the pages linking it.
+const _VT_PAGES = new Set(['dashboard', 'targets', 'vulns', 'tasks', 'whiteboard', 'ai-agent',
+  'owstg', 'methodology', 'my-tasks', 'members', 'settings', 'tickets', 'portswigger']);
+window.addEventListener('pageswap', e => {
+  const vt = e.viewTransition;
+  if (!vt) return;
+  [vt.ready, vt.finished, vt.updateCallbackDone].forEach(pr => pr?.catch?.(() => {}));
+  let target = '';
+  try {
+    const url = new URL(e.activation?.entry?.url || '', location.href);
+    if (url.origin === location.origin) target = url.pathname.split('/').pop().replace(/\.html$/, '');
+  } catch {}
+  if (!_VT_PAGES.has(target)) vt.skipTransition();
+});
+
+// Prefetch (document only, no prerender: these pages open a WebSocket,
+// announce presence and call APIs on load) the sidenav sections on hover.
+// Speculation Rules where supported; <link rel=prefetch> on hover otherwise.
+// CSP note: script-src has 'unsafe-inline', which also covers inline
+// speculation rules, so no nginx change is needed.
+let _navSpeculationReady = false;
+function _initNavSpeculation() {
+  if (_navSpeculationReady) return;
+  _navSpeculationReady = true;
+  try {
+    if (HTMLScriptElement.supports?.('speculationrules')) {
+      const s = document.createElement('script');
+      s.type = 'speculationrules';
+      s.textContent = JSON.stringify({
+        prefetch: [{
+          source: 'document',
+          where: { and: [
+            { selector_matches: '#sidenav a.nav-item' },
+            { not: { selector_matches: '#sidenav a.nav-item.active' } },
+          ] },
+          eagerness: 'moderate',
+        }],
+      });
+      document.head.appendChild(s);
+      return;
+    }
+  } catch {}
+  const done = new Set();
+  const prefetch = e => {
+    const link = e.target.closest?.('#sidenav a.nav-item');
+    if (!link || link.classList.contains('active') || link.origin !== location.origin) return;
+    const href = link.href;
+    if (done.has(href)) return;
+    done.add(href);
+    const l = document.createElement('link');
+    l.rel = 'prefetch';
+    l.href = href;
+    document.head.appendChild(l);
+  };
+  document.addEventListener('pointerover', prefetch);
+  document.addEventListener('pointerdown', prefetch);
+}
+
+// ── TOPBAR (slim — search, presence, notifications) ──────────────
+// The account menu (profile, orgs, logout) lives in the sidenav foot.
 function renderTopbar() {
-  const u    = state.user;
-  const role = state.currentProject?.member_role;
-  const color = roleColor(role);
   const el = document.getElementById('topbar');
   if (!el) return;
-  el.innerHTML = `
+  _setShellHtml(el, `
     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
       <div class="search-wrap">
         <span class="search-icon">${icon('search', { size: 14 })}</span>
@@ -295,17 +485,8 @@ function renderTopbar() {
     <div style="display:flex;align-items:center;gap:10px">
       <div class="online-avatars" id="online-presence"></div>
       <div id="live-dot" class="live-badge" title="Connecting..."></div>
-      <div class="user-pill" onclick="toggleUserMenu()">
-        ${avatarHtml(displayName(u), color, 24, u.avatar_url)}
-        <span title="@${esc(u.username)}">${esc(displayName(u))}</span>
-        ${role ? `<span style="font-family:var(--mono);font-size:9px;color:${color};opacity:.8">${role}</span>` : ''}
-        <div class="user-dropdown" id="user-dropdown">
-          <button class="dropdown-item" onclick="openProfileModal();event.stopPropagation()">${icon('user', { size: 13 })} Edit Profile</button>
-          <button class="dropdown-item" onclick="window.location.href='orgs'">${icon('building-2', { size: 13 })} Organizations</button>
-          <button class="dropdown-item danger" onclick="doLogout()">${icon('log-out', { size: 13 })} Logout</button>
-        </div>
-      </div>
-    </div>`;
+      ${typeof notifBellHtml === 'function' ? notifBellHtml() : ''}
+    </div>`);
 }
 
 // ── PROFILE MODAL ─────────────────────────────────────────────────
@@ -447,7 +628,14 @@ async function saveProfile() {
     state.user = { ...state.user, ...updated };
     localStorage.setItem('fd_user', JSON.stringify(state.user));
     closeProfileModal();
-    renderTopbar();
+    // Keep the cached members list in step so views that resolve people via
+    // state.members (presence, activity avatars, assignee labels) pick it up.
+    const me = (state.members || []).find(m => m.id === state.user.id);
+    if (me) Object.assign(me, { username: state.user.username, display_name: state.user.display_name ?? me.display_name, avatar_url: state.user.avatar_url ?? me.avatar_url });
+    // The name and avatar are shown in the sidenav foot, not the topbar.
+    renderSidenav();
+    if (state.onlineUsers && typeof renderOnlinePresence === 'function') renderOnlinePresence(state.onlineUsers);
+    if (typeof renderMembers === 'function' && state.currentView === 'members') renderMembers();
     // A server that predates display names ignores the field and omits it
     // from the response: say so instead of silently dropping the edit.
     if ('display_name' in payload && !('display_name' in updated)) {
@@ -624,10 +812,11 @@ function handleSearch(q) {
 // ── USER MENU ─────────────────────────────────────────────────────
 function toggleUserMenu() { document.getElementById('user-dropdown')?.classList.toggle('open'); }
 function closeUserMenu()  { document.getElementById('user-dropdown')?.classList.remove('open'); }
-document.addEventListener('click', e => { if (!e.target.closest('.user-pill')) closeUserMenu(); });
+document.addEventListener('click', e => { if (!e.target.closest('.user-pill, .nav-foot-user')) closeUserMenu(); });
 
 async function doLogout() {
   wsClient.disconnect();
+  clearShellSnapshot();
   await api.auth.logout().catch(() => {});
   localStorage.removeItem('fd_project');
   window.location.href = '/';

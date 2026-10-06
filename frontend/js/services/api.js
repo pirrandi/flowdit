@@ -9,7 +9,11 @@ const tokens = {
   get access()  { return localStorage.getItem('fd_access'); },
   get refresh() { return localStorage.getItem('fd_refresh'); },
   set(a, r)  { localStorage.setItem('fd_access', a); if (r) localStorage.setItem('fd_refresh', r); },
-  clear()    { ['fd_access','fd_refresh','fd_user'].forEach(k => localStorage.removeItem(k)); },
+  clear()    {
+    ['fd_access','fd_refresh','fd_user'].forEach(k => localStorage.removeItem(k));
+    // Cached sidenav snapshot (page.js) dies with the session.
+    try { sessionStorage.removeItem('fd_shell'); } catch {}
+  },
 };
 
 // Portal session — stored in sessionStorage so it expires when the tab closes
@@ -231,6 +235,25 @@ const api = {
   },
   activity: {
     list: (pid, limit=50) => request('GET', `/projects/${pid}/activity?limit=${limit}`),
+  },
+  // Internal task assignment. Leads create/edit/assign/delete; the assignee
+  // (or a lead) changes status and comments — enforced server-side.
+  tasks: {
+    list:    (pid, q = {})    => request('GET',    `/projects/${pid}/tasks?${new URLSearchParams(q)}`),
+    get:     (pid, tid)       => request('GET',    `/projects/${pid}/tasks/${tid}`),
+    create:  (pid, d)         => request('POST',   `/projects/${pid}/tasks`, d),
+    update:  (pid, tid, d)    => request('PATCH',  `/projects/${pid}/tasks/${tid}`, d),
+    delete:  (pid, tid)       => request('DELETE', `/projects/${pid}/tasks/${tid}`),
+    comment: (pid, tid, body) => request('POST',   `/projects/${pid}/tasks/${tid}/comments`, { body }),
+  },
+  me: {
+    tasks: (includeDone = false) => request('GET', `/me/tasks${includeDone ? '?include_done=1' : ''}`),
+  },
+  notifications: {
+    list:        (q = {}) => request('GET',  `/notifications?${new URLSearchParams(q)}`),
+    unreadCount: ()       => request('GET',  '/notifications/unread-count'),
+    markRead:    (id)     => request('POST', `/notifications/${id}/read`),
+    markAllRead: ()       => request('POST', '/notifications/read-all'),
   },
   whiteboard: {
     get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),

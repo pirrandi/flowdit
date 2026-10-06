@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tareas</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/transitions.css">
+<link rel="expect" href="#fd-document-end" blocking="render">
+<link rel="icon" type="image/x-icon" href="img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<script src="js/config.js"></script>
+</head>
+<body>
+
+<div id="loading-overlay" class="ovl-shell"><div class="skel-wrap"><div class="skel-stats"><div class="skel-block"></div><div class="skel-block"></div><div class="skel-block"></div><div class="skel-block"></div></div><div class="skel-block skel-tall"></div><div class="skel-block skel-tall"></div></div></div>
+<nav class="sidenav" id="sidenav"></nav>
+<header class="topbar" id="topbar"></header>
+
+<div class="workarea">
+  <main class="main">
+    <div class="page-header">
+      <div style="flex:1">
+        <div class="page-title">Tareas</div>
+        <div class="page-subtitle" id="tasks-subtitle">// trabajo asignado al equipo del proyecto</div>
+      </div>
+      <div class="page-actions" id="tasks-actions"></div>
+    </div>
+    <div id="tasks-main" style="padding-bottom:32px"></div>
+  </main>
+
+  <aside class="activity-col">
+    <div class="activity-header">
+      <span class="activity-title">Activity</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-badge"></div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">live</span>
+      </div>
+    </div>
+    <div class="activity-list" id="activity-list"><div class="activity-empty">No activity yet</div></div>
+  </aside>
+</div>
+
+<!-- Task detail modal -->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal" style="max-width:640px;width:100%;display:flex;flex-direction:column;max-height:85vh">
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div class="modal-title" id="task-modal-title" style="margin:0 0 6px;word-break:break-word"></div>
+        <div id="task-modal-meta" class="task-card-meta"></div>
+      </div>
+      <div id="task-modal-actions" style="display:flex;gap:6px;flex-shrink:0;align-items:center"></div>
+      <button class="btn-icon" onclick="closeTaskModal()" style="flex-shrink:0" data-icon="x"></button>
+    </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;padding-right:4px">
+      <div class="form-label">Indicaciones</div>
+      <div id="task-modal-desc" class="task-desc md-body"></div>
+      <div class="form-label">Comentarios</div>
+      <div id="task-modal-thread" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
+    </div>
+    <div id="task-comment-readonly" style="display:none;flex-shrink:0;border-top:1px solid var(--b1);padding-top:12px;font-family:var(--mono);font-size:11px;color:var(--t3)">
+      Solo la persona asignada o un responsable del proyecto puede comentar o cambiar el estado.
+    </div>
+    <div id="task-comment-box" style="display:flex;gap:8px;flex-shrink:0;border-top:1px solid var(--b1);padding-top:12px">
+      <textarea id="task-comment-input" class="form-input note-textarea" placeholder="Escribe un comentario… (Ctrl+Enter para enviar)" style="flex:1;min-height:60px;resize:none"
+        onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitTaskComment()"></textarea>
+      <button class="btn-save" onclick="submitTaskComment()" style="align-self:flex-end;padding:8px 16px">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- New / edit task modal (leads only) -->
+<div class="modal-overlay" id="task-form-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title" id="task-form-title">Nueva tarea</div>
+    <div class="form-group">
+      <label class="form-label" for="tf-title">Título</label>
+      <input type="text" class="form-input" id="tf-title" maxlength="300" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="tf-desc">Indicaciones <span style="text-transform:none;letter-spacing:0">(markdown)</span></label>
+      <textarea class="form-input note-textarea" id="tf-desc" style="min-height:120px;resize:vertical;margin-top:0"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group">
+        <label class="form-label" for="tf-assignee">Asignado a</label>
+        <select class="form-input" id="tf-assignee" style="cursor:pointer"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tf-priority">Prioridad</label>
+        <select class="form-input" id="tf-priority" style="cursor:pointer">
+          <option value="low">Baja</option>
+          <option value="medium" selected>Media</option>
+          <option value="high">Alta</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tf-due">Vencimiento</label>
+        <input type="date" class="form-input" id="tf-due">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tf-wstg">Prueba WSTG <span style="text-transform:none;letter-spacing:0">(opcional)</span></label>
+        <select class="form-input" id="tf-wstg" style="cursor:pointer"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tf-target">Target vinculado</label>
+        <select class="form-input" id="tf-target" style="cursor:pointer"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tf-vuln">Hallazgo vinculado</label>
+        <select class="form-input" id="tf-vuln" style="cursor:pointer"></select>
+      </div>
+    </div>
+    <div class="form-error" id="tf-error"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeTaskForm()">Cancelar</button>
+      <button class="btn-save" id="tf-save-btn" onclick="saveTaskForm()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="js/data.js"></script>
+<script src="js/services/state.js"></script>
+<script src="js/services/api.js"></script>
+<script src="js/services/ws.js"></script>
+<script src="js/services/icons.js"></script>
+<script src="js/services/utils.js"></script>
+<script src="js/components/csel.js"></script>
+<script src="js/components/activity.js"></script>
+<script src="js/components/task-ui.js"></script>
+<script src="js/views/tasks.js"></script>
+<script src="js/components/notifications.js"></script>
+<script src="js/page.js"></script>
+<script>
+  function pageInit() { renderTasks(); }
+  bootPage('tasks');
+</script>
+<!-- End-of-document marker for <link rel="expect" blocking="render"> (see css/transitions.css). -->
+<div id="fd-document-end" hidden></div>
+</body>
+</html>
