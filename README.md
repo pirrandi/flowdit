@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/img/flowdit-logo.png" alt="Flowdit" height="60">
+  <img src="frontend/img/banner.png" alt="Flowdit: your whole pentest engagement, in one self-hosted place" width="100%">
 </p>
 
 <p align="center">
@@ -92,26 +92,30 @@ Auto-detected by file content, all sharing one endpoint:
 
 <img src="frontend/img/screenshots/client-portal.png" alt="Read-only client portal" width="100%">
 
-- Read-only view for clients, accessible via invite link
+- Read-only view for clients, with one link per client contact: each link can expire, is revoked on its own without affecting other contacts, and shows when it was last used. An optional project password adds a second factor
+- Clients only see findings the team explicitly publishes; drafts stay internal
 - Configurable visibility: findings, WSTG progress, targets, activity feed
-- Ticket system: clients can open queries linked to specific findings, and the team responds in thread
+- Ticket system: clients can open queries linked to specific findings, and the team responds in thread. Each query is attributed to the contact whose link opened it
 - Push a ticket to GitHub Issues with one click (per-project repo + token, see [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md))
 
 ### Organizations & Access
 
 - Multi-tenant organizations: group projects under a company account with owner/admin/member roles, where owners and admins see every project without per-project invites
-- Team members with per-project roles: owner, editor, viewer
+- Team members with per-project roles: owner, editor, pentester, viewer. Pentesters work on findings and testing, while client-facing actions (publishing findings, answering queries, exporting reports) stay with leads
+- Projects can be moved between organizations
+- Accounts are provisioned by an operator through a CLI; public self-registration is off by default
 - SSO via Microsoft Entra ID (OIDC), configured per organization, with JIT user provisioning and optional enforcement per email domain
 - Two-factor authentication (TOTP), opt-in per user, independent of SSO
 
 ### Collaboration & Platform
 
 - Real-time activity feed via WebSockets, membership-checked per project
+- Task board per project with assignees, status and comments, plus a "My tasks" view across projects and live in-app notifications
 - Collaborative whiteboard per project
 - Project branding, upload a logo per engagement
 - Timeline tracking with start, end, and report dates
 - Dark and light theme, compact density mode
-- Hardened by default: CSP headers, sanitized Markdown rendering, no CDN dependencies at runtime
+- Hardened by default: CSP headers, sanitized Markdown rendering, no third-party scripts at runtime
 
 ---
 
@@ -149,18 +153,21 @@ Auto-detected by file content, all sharing one endpoint:
 Spins up Postgres, backend (with Chromium/Ghostscript for PDF export), and Nginx, with no manual setup:
 
 ```bash
-git clone https://github.com/Pirrandi/flowdit.git
+git clone https://github.com/pirrandi/flowdit.git
 cd flowdit
 docker compose --profile full up -d --build
+
+# Create your first account (public registration is off by default)
+docker compose exec backend npm run user:create -- --username admin --email you@example.com
 ```
 
-Then open http://localhost. This is meant for trying Flowdit locally, not for production. See [DEPLOY.md](DEPLOY.md) for a real deployment (systemd/PM2, SSL, hardened env).
+Then open http://localhost and sign in with the password the last command printed. This is meant for trying Flowdit locally, not for production. See [DEPLOY.md](DEPLOY.md) for a real deployment (systemd/PM2, SSL, hardened env).
 
 ### Manual setup
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Pirrandi/flowdit.git
+git clone https://github.com/pirrandi/flowdit.git
 cd flowdit
 
 # 2. Configure environment
@@ -173,11 +180,14 @@ cd backend && npm install && cd ..
 # 4. Run database migrations
 cd backend && node src/db/migrate.js && cd ..
 
-# 5. Start the backend with PM2
+# 5. Create your first account (prints a generated password once)
+cd backend && npm run user:create -- --username admin --email you@example.com && cd ..
+
+# 6. Start the backend with PM2
 cd backend && pm2 start src/index.js --name flowdit-backend
 pm2 save && pm2 startup
 
-# 6. Configure Nginx
+# 7. Configure Nginx
 # Point your domain root to frontend/
 # Proxy /api and /ws to the backend port (default: 4000)
 # See DEPLOY.md for the full Nginx config and SSL setup
@@ -199,6 +209,7 @@ pm2 save && pm2 startup
 | `SSO_ENCRYPTION_KEY`| Encrypts per-org OIDC client secrets, 2FA secrets and client portal link tokens at rest | Only if using SSO/2FA or the client portal |
 | `PUBLIC_API_URL`    | This backend's externally-reachable origin, for the SSO redirect URI | Only if using SSO |
 | `INTERNAL_APP_URL`  | Internal URL Puppeteer uses to reach the frontend for PDF export  | Yes (falls back to `FRONTEND_URL`) |
+| `ALLOW_PUBLIC_REGISTRATION` | `true` re-enables self-registration; off by default (use `npm run user:create`) | No |
 | `DEMO_MODE`         | Blocks a few destructive actions on a shared demo account         | No       |
 | `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` | SMTP server for client-portal email notifications | No       |
 | `GROQ_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `KIMI_API_KEY` | Keys for the AI providers you plan to use, picked per project | No |

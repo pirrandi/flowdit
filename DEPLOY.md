@@ -60,7 +60,7 @@ GRANT ALL PRIVILEGES ON DATABASE flowdit TO flowdit_user;
 
 ```bash
 # Clone the repo
-git clone https://github.com/Pirrandi/flowdit.git /var/www/flowdit
+git clone https://github.com/pirrandi/flowdit.git /var/www/flowdit
 cd /var/www/flowdit
 
 # Configure environment
@@ -106,6 +106,10 @@ SMTP_FROM=Flowdit <no-reply@yourdomain.com>
 cd /var/www/flowdit/backend
 npm install
 node src/db/migrate.js
+
+# Create the first account: public registration is off by default.
+# Omit --password to get a strong generated one, printed once.
+npm run user:create -- --username admin --email you@example.com
 ```
 
 ---
