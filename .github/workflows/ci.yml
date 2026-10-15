@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The full suite takes ~3 minutes; a hung test must not burn the 6h default.
+    timeout-minutes: 15
 
     services:
       postgres:

@@ -44,6 +44,22 @@ test('configuring a repo and PAT never echoes the token back, only a boolean fla
   assert.equal(JSON.stringify(updated.body).includes('supersecret'), false);
 });
 
+test('saving a PAT without SSO_ENCRYPTION_KEY fails with an error instead of hanging', async () => {
+  const { access, pid } = await setup();
+  const key = process.env.SSO_ENCRYPTION_KEY;
+  delete process.env.SSO_ENCRYPTION_KEY;
+  try {
+    const res = await request(app)
+      .patch(`/api/projects/${pid}`)
+      .set('Authorization', `Bearer ${access}`)
+      .send({ github_pat: 'ghp_supersecret' })
+      .timeout(5000);
+    assert.equal(res.status, 500);
+  } finally {
+    process.env.SSO_ENCRYPTION_KEY = key;
+  }
+});
+
 test('sending a configured ticket to GitHub creates an issue and stores the link', async () => {
   const { access, pid, tid } = await setup();
   await request(app)

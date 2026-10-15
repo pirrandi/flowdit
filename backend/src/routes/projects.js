@@ -129,54 +129,58 @@ router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res,
   const updates = [], values = [];
   fields.forEach(f => { if (req.body[f] !== undefined) { updates.push(`${f}=$${values.length+1}`); values.push(req.body[f]); } });
 
-  // portal_password — hash before storing, empty string clears it
-  if (req.body.portal_password !== undefined) {
-    if (req.body.portal_password) {
-      const hash = await bcrypt.hash(req.body.portal_password, 10);
-      updates.push(`portal_password_hash=$${values.length+1}`); values.push(hash);
-    } else {
-      updates.push(`portal_password_hash=NULL`);
-    }
-  }
-
-  // github_pat — encrypted at rest, same as portal_password's hash-not-store
-  // pattern: omitted = untouched, empty string = cleared, non-empty = set.
-  if (req.body.github_pat !== undefined) {
-    updates.push(`github_pat_enc=$${values.length+1}`);
-    values.push(req.body.github_pat ? encrypt(req.body.github_pat) : null);
-  }
-
-  // ai_api_keys — per-project override of a hosted AI provider's API key
-  // (Groq/DeepSeek/Anthropic/Kimi only; 'custom' stays host-level, see
-  // services/ai/custom.js). Same omitted/cleared/set semantics as
-  // github_pat above, but jsonb-keyed so one PATCH can touch several
-  // providers at once without clobbering the ones it doesn't mention.
-  // Composed as a single atomic read-modify-write expression (remove the
-  // cleared keys, then overlay the newly-set ones) rather than a
-  // SELECT-then-UPDATE round trip.
-  if (req.body.ai_api_keys && typeof req.body.ai_api_keys === 'object') {
-    const removeKeys = [];
-    const setPairs   = [];
-    AI_KEY_PROVIDERS.forEach(provider => {
-      if (!(provider in req.body.ai_api_keys)) return;
-      const raw = req.body.ai_api_keys[provider];
-      const val = typeof raw === 'string' ? raw.trim() : raw;
-      if (val) {
-        values.push(encrypt(val));
-        setPairs.push([provider, values.length]);
+  // Hashing/encryption below can throw (e.g. SSO_ENCRYPTION_KEY unset): Express 4
+  // doesn't catch async rejections, so without this the request would hang.
+  try {
+    // portal_password — hash before storing, empty string clears it
+    if (req.body.portal_password !== undefined) {
+      if (req.body.portal_password) {
+        const hash = await bcrypt.hash(req.body.portal_password, 10);
+        updates.push(`portal_password_hash=$${values.length+1}`); values.push(hash);
       } else {
-        removeKeys.push(provider);
+        updates.push(`portal_password_hash=NULL`);
       }
-    });
-    if (removeKeys.length || setPairs.length) {
-      let expr = 'ai_api_keys_enc';
-      removeKeys.forEach(k => { expr += ` - '${k}'`; });
-      if (setPairs.length) {
-        expr += ` || jsonb_build_object(${setPairs.map(([k, idx]) => `'${k}', $${idx}::text`).join(', ')})`;
-      }
-      updates.push(`ai_api_keys_enc = ${expr}`);
     }
-  }
+
+    // github_pat — encrypted at rest, same as portal_password's hash-not-store
+    // pattern: omitted = untouched, empty string = cleared, non-empty = set.
+    if (req.body.github_pat !== undefined) {
+      updates.push(`github_pat_enc=$${values.length+1}`);
+      values.push(req.body.github_pat ? encrypt(req.body.github_pat) : null);
+    }
+
+    // ai_api_keys — per-project override of a hosted AI provider's API key
+    // (Groq/DeepSeek/Anthropic/Kimi only; 'custom' stays host-level, see
+    // services/ai/custom.js). Same omitted/cleared/set semantics as
+    // github_pat above, but jsonb-keyed so one PATCH can touch several
+    // providers at once without clobbering the ones it doesn't mention.
+    // Composed as a single atomic read-modify-write expression (remove the
+    // cleared keys, then overlay the newly-set ones) rather than a
+    // SELECT-then-UPDATE round trip.
+    if (req.body.ai_api_keys && typeof req.body.ai_api_keys === 'object') {
+      const removeKeys = [];
+      const setPairs   = [];
+      AI_KEY_PROVIDERS.forEach(provider => {
+        if (!(provider in req.body.ai_api_keys)) return;
+        const raw = req.body.ai_api_keys[provider];
+        const val = typeof raw === 'string' ? raw.trim() : raw;
+        if (val) {
+          values.push(encrypt(val));
+          setPairs.push([provider, values.length]);
+        } else {
+          removeKeys.push(provider);
+        }
+      });
+      if (removeKeys.length || setPairs.length) {
+        let expr = 'ai_api_keys_enc';
+        removeKeys.forEach(k => { expr += ` - '${k}'`; });
+        if (setPairs.length) {
+          expr += ` || jsonb_build_object(${setPairs.map(([k, idx]) => `'${k}', $${idx}::text`).join(', ')})`;
+        }
+        updates.push(`ai_api_keys_enc = ${expr}`);
+      }
+    }
+  } catch (err) { return next(err); }
 
   if (!updates.length) return res.json(sanitizeProject(req.project));
   values.push(req.params.projectId);
