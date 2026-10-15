@@ -121,6 +121,9 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'project_moved':  return `moved the project to organization ${name}`;
     case 'portal_link_generated':
       return meta?.regenerated ? `regenerated the client portal link (old link revoked)` : `generated the client portal link`;
+    case 'portal_link_created':
+      return `created a client portal link for ${name}` + (meta?.expires_at ? ` (expires ${esc(new Date(meta.expires_at).toLocaleDateString())})` : '');
+    case 'portal_link_revoked': return `revoked the client portal link for ${name}`;
     case 'ai_scan_started':  return `started an AI Agent scan`;
     case 'ai_scan_deleted':  return `deleted an AI Agent scan session`;
     // El único aviso real que dispara el modo autónomo del agente (ver

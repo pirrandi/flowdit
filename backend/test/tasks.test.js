@@ -295,10 +295,12 @@ test('portal session gets 403 on tasks, me/tasks and notifications', async () =>
     .set(auth(owner.accessToken))
     .send({ client_view_enabled: true, show_activity: true });
   assert.equal(patch.status, 200);
-  const tok = await request(app)
-    .post(`/api/projects/${project.id}/portal/token`)
-    .set(auth(owner.accessToken));
-  const sess = await request(app).post('/api/portal/auth').send({ token: tok.body.portal_token });
+  const link = await request(app)
+    .post(`/api/projects/${project.id}/portal/links`)
+    .set(auth(owner.accessToken))
+    .send({ label: 'Client Contact' });
+  assert.equal(link.status, 201);
+  const sess = await request(app).post('/api/portal/auth').send({ token: link.body.token });
   assert.equal(sess.status, 200);
   const portal = sess.body.accessToken;
 

@@ -1,4 +1,5 @@
 const db = require('../db');
+const { ACTIVE_SQL } = require('../services/portalLinks');
 
 async function requireProjectAccess(req, res, next) {
   const { projectId } = req.params;
@@ -7,17 +8,29 @@ async function requireProjectAccess(req, res, next) {
   if (req.isPortal) {
     if (req.portalProjectId !== projectId)
       return res.status(403).json({ error: 'Access denied' });
+    // Sessions minted before per-contact links carry no linkId — they were
+    // bound to the old shared token and can't be tied to a link, so they end.
+    if (!req.portalLinkId)
+      return res.status(401).json({ error: 'Portal link has changed. Please use the new link.' });
     try {
       const { rows } = await db.query('SELECT * FROM projects WHERE id = $1', [projectId]);
       if (!rows.length) return res.status(404).json({ error: 'Project not found' });
-      // Verify the link hasn't been regenerated since this session was issued
-      if (!rows[0].portal_token || req.portalTok !== rows[0].portal_token)
+      // The session's link must still exist in THIS project and be active: a
+      // revoked or expired link ends its session on the next request, without
+      // touching other contacts' sessions.
+      const { rows: links } = await db.query(
+        `SELECT pl.id, pl.label, pl.email, pl.is_legacy FROM portal_links pl
+         WHERE pl.id = $1 AND pl.project_id = $2 AND ${ACTIVE_SQL}`,
+        [req.portalLinkId, projectId]
+      );
+      if (!links.length)
         return res.status(401).json({ error: 'Portal link has changed. Please use the new link.' });
       // Revoke immediately if the owner turns the portal off mid-session — a JWT already
       // issued shouldn't keep working just because it hasn't expired yet.
       if (!rows[0].client_view_enabled)
         return res.status(403).json({ error: 'Client portal is not enabled for this project' });
       req.project    = rows[0];
+      req.portalLink = links[0];
       req.memberRole = 'viewer';
       return next();
     } catch (err) { return next(err); }
@@ -29,7 +42,7 @@ async function requireProjectAccess(req, res, next) {
   // without being manually invited to each one). Direct membership always
   // wins if both exist (COALESCE prefers pm.role). Org owner maps to project
   // 'owner' — a strong, intentional grant (can rename/delete/manage members/
-  // regenerate the client portal link) for the literal company-account
+  // manage the client portal links) for the literal company-account
   // owner. Org admin maps to project 'editor' (can edit data, not delete
   // or touch membership).
   try {

@@ -193,6 +193,7 @@ async function renderSettings() {
   // entrada (arriba) y se completa acá con la lista real del proveedor, sin
   // bloquear el resto de la página mientras responde.
   if (isOwner) loadAiModels(pid, p.ai_provider || 'groq', p.ai_model);
+  if (isOwner) loadPortalLinks(pid);
 }
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -374,61 +375,121 @@ function buildClientSettings(p) {
       ${toggle('portal_hide_team_avatars', 'Ocultar avatares del equipo', 'En el portal, las fotos de perfil del equipo se reemplazan por iniciales')}
       ${toggle('portal_hide_log_times',    'Ocultar hora de los logs',    'El feed de actividad del portal no muestra la hora de cada acción')}
       ${toggle('tickets_enabled',     'Habilitar queries',       'El cliente puede abrir preguntas vinculadas a un hallazgo')}
-      ${buildPortalLinkSection(p)}
+      ${buildPortalLinksSection(p)}
     </div>`;
 }
 
-function buildPortalLinkSection(p) {
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login`;
-  // Token in the fragment: browsers never send it to the server, so it stays
-  // out of nginx logs and Referer headers.
-  const link = p.portal_token ? `${base}#token=${p.portal_token}` : null;
-
+// One link per client contact. The list itself is fetched after render
+// (loadPortalLinks) so the rest of the settings page doesn't wait on it.
+function buildPortalLinksSection(p) {
   return `
     <div style="margin-top:8px;padding-top:14px;border-top:1px solid var(--b1)">
-      <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:10px">Access Link</div>
+      <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:10px">Portal Links</div>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 10px;line-height:1.6">
+        One link per client contact. Revoking a link only cuts off that contact.
+      </p>
 
-      ${link ? `
-        <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
-          <input readonly class="form-input" value="${esc(link)}"
-            style="flex:1;font-size:10px;font-family:var(--mono);color:var(--t2);cursor:text"
-            onclick="this.select()">
-          <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="copyPortalLink('${esc(link)}')">Copy</button>
-        </div>` : `
-        <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 10px;line-height:1.6">
-          No link generated yet. Click below to create one.
-        </p>`}
-
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="regeneratePortalLink()">
-          ${link ? 'Regenerate link' : 'Generate link'}
-        </button>
-        ${link ? `<span style="font-family:var(--mono);font-size:10px;color:var(--t3)">Regenerating invalidates the old link</span>` : ''}
+      <div id="portal-links-list" style="display:flex;flex-direction:column;gap:2px;margin-bottom:12px">
+        <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0">Loading links…</p>
       </div>
 
-      ${link ? `
-        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
-          <div class="client-setting-row" style="padding:8px 0;border-bottom:none">
-            <div>
-              <div style="font-size:13px;font-weight:600;margin-bottom:2px">Require password</div>
-              <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Client must enter a password to access the portal</div>
-            </div>
-            <button class="setting-toggle ${p.portal_require_password?'on':''}"
-              onclick="toggleProjectFlag('portal_require_password',${!p.portal_require_password})">
-              <span class="setting-toggle-knob"></span>
-            </button>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--b1);border-radius:var(--r)">
+        <div class="form-label" style="margin-bottom:0">New link</div>
+        <input type="text" class="form-input" id="portal-link-label" maxlength="200"
+          placeholder="Contact name (e.g. Jane Doe @ Acme)" style="font-size:12px">
+        <input type="email" class="form-input" id="portal-link-email" maxlength="320"
+          placeholder="Contact email (optional)" style="font-size:12px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <select class="form-input" id="portal-link-expiry" style="flex:1;font-size:12px">
+            <option value="30">Expires in 30 days</option>
+            <option value="90" selected>Expires in 90 days</option>
+            <option value="365">Expires in 1 year</option>
+            <option value="">Never expires</option>
+          </select>
+          <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="createPortalLink()">Create link</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+        <div class="client-setting-row" style="padding:8px 0;border-bottom:none">
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px">Require password</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Client must enter a password to access the portal</div>
           </div>
-          ${p.portal_require_password ? `
-            <div style="display:flex;gap:6px;align-items:center">
-              <input type="password" class="form-input" id="portal-pw-input"
-                placeholder="Set new password" style="flex:1;font-size:12px">
-              <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="savePortalPassword()">Set</button>
-            </div>
-            <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:0;line-height:1.5">
-              ${p.has_portal_password ? 'A password is currently set. Enter a new one to replace it.' : 'No password set yet.'}
-            </p>` : ''}
-        </div>` : ''}
+          <button class="setting-toggle ${p.portal_require_password?'on':''}"
+            onclick="toggleProjectFlag('portal_require_password',${!p.portal_require_password})">
+            <span class="setting-toggle-knob"></span>
+          </button>
+        </div>
+        ${p.portal_require_password ? `
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="password" class="form-input" id="portal-pw-input"
+              placeholder="Set new password" style="flex:1;font-size:12px">
+            <button class="btn btn-ghost" style="flex-shrink:0;font-size:11px;padding:6px 12px" onclick="savePortalPassword()">Set</button>
+          </div>
+          <p style="font-family:var(--mono);font-size:10px;color:var(--t3);margin:0;line-height:1.5">
+            ${p.has_portal_password ? 'A password is currently set. Enter a new one to replace it.' : 'No password set yet.'}
+          </p>` : ''}
+      </div>
     </div>`;
+}
+
+// Last fetched links, by id — the copy button looks the token up here instead
+// of carrying it in an inline onclick attribute.
+let _portalLinks = {};
+
+function portalLinkUrl(token) {
+  // Token in the fragment: browsers never send it to the server, so it stays
+  // out of nginx logs and Referer headers.
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/client-login`;
+  return `${base}#token=${token}`;
+}
+
+function buildPortalLinkRow(l) {
+  const pill = { active: 'pill-done', revoked: 'pill-fail', expired: 'pill-cleared' }[l.status] || 'pill-cleared';
+  const expires = l.expires_at ? new Date(l.expires_at).toLocaleDateString() : 'never';
+  const meta = [
+    l.email ? esc(l.email) : null,
+    `${l.status === 'expired' ? 'expired' : 'expires'} ${esc(expires)}`,
+    `last used ${l.last_used_at ? esc(relativeDate(l.last_used_at)) : 'never'}`,
+    `${l.use_count} ${l.use_count === 1 ? 'use' : 'uses'}`,
+  ].filter(Boolean).join(' · ');
+  const active = l.status === 'active';
+  return `
+    <div class="client-setting-row" style="padding:8px 0;gap:8px">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:6px">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label)}</span>
+          <span class="activity-status-pill ${pill}">${esc(l.status)}</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3);line-height:1.5">${meta}</div>
+      </div>
+      ${active ? `
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        ${l.token ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="copyPortalLinkById('${esc(l.id)}')">Copy link</button>` : ''}
+        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="revokePortalLink('${esc(l.id)}')">Revoke</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function loadPortalLinks(pid) {
+  let links;
+  try {
+    links = await api.portal.links.list(pid);
+  } catch (e) {
+    const box = document.getElementById('portal-links-list');
+    if (box) box.innerHTML = `<p style="font-family:var(--mono);font-size:11px;color:var(--c-crit);margin:0">Could not load links: ${esc(e.message)}</p>`;
+    return;
+  }
+  // renderSettings() may have re-run (or the project changed) while this was
+  // in flight — re-read the element and ignore a stale project's answer.
+  if (state.currentProject?.id !== pid) return;
+  _portalLinks = Object.fromEntries(links.map(l => [l.id, l]));
+  const box = document.getElementById('portal-links-list');
+  if (!box) return;
+  box.innerHTML = links.length
+    ? links.map(buildPortalLinkRow).join('')
+    : `<p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0;line-height:1.6">No links yet. Create one per client contact below.</p>`;
 }
 
 // ── actions ───────────────────────────────────────────────────────────
@@ -588,26 +649,47 @@ async function setLogoBg(bg) {
   } catch(e) { showToast(e.message, 'error'); }
 }
 
-async function regeneratePortalLink() {
-  if (!state.currentProject) return;
-  const pid = state.currentProject.id;
-  if (state.currentProject.portal_token) {
-    if (!confirm('Regenerating the link will invalidate the current one. Clients with the old link will lose access. Continue?')) return;
-  }
+async function createPortalLink() {
+  const pid   = state.currentProject.id;
+  const label = document.getElementById('portal-link-label')?.value.trim();
+  const email = document.getElementById('portal-link-email')?.value.trim();
+  const days  = document.getElementById('portal-link-expiry')?.value;
+  if (!label) { showToast('Enter the contact name first', 'error'); return; }
   try {
-    const updated = await api.portal.regenerate(pid);
-    state.currentProject = { ...state.currentProject, ...updated };
-    const idx = state.projects.findIndex(p => p.id === pid);
-    if (idx > -1) state.projects[idx] = state.currentProject;
-    showToast('Portal link generated', 'success');
-    renderSettings();
+    const link = await api.portal.links.create(pid, {
+      label,
+      email: email || null,
+      expires_in_days: days ? parseInt(days, 10) : null,
+    });
+    await loadPortalLinks(pid);
+    ['portal-link-label', 'portal-link-email'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    try {
+      await navigator.clipboard.writeText(portalLinkUrl(link.token));
+      showToast(`Link for ${label} created and copied`, 'success');
+    } catch {
+      showToast(`Link for ${label} created — use "Copy link" to copy it`, 'success');
+    }
   } catch(e) { showToast(e.message, 'error'); }
 }
 
-function copyPortalLink(link) {
-  navigator.clipboard.writeText(link)
+function copyPortalLinkById(id) {
+  const link = _portalLinks[id];
+  if (!link?.token) { showToast('This link can no longer be copied', 'error'); return; }
+  navigator.clipboard.writeText(portalLinkUrl(link.token))
     .then(() => showToast('Link copied', 'success'))
     .catch(() => showToast('Could not copy to clipboard', 'error'));
+}
+
+async function revokePortalLink(id) {
+  const link = _portalLinks[id];
+  if (!link) return;
+  if (!confirm(`Revoke the portal link for "${link.label}"? They will lose access immediately.`)) return;
+  const pid = state.currentProject.id;
+  try {
+    await api.portal.links.revoke(pid, id);
+    showToast('Link revoked', 'success');
+    await loadPortalLinks(pid);
+  } catch(e) { showToast(e.message, 'error'); }
 }
 
 async function savePortalPassword() {
@@ -691,6 +773,7 @@ window.removeLogo           = removeLogo;
 window.setLogoBg            = setLogoBg;
 window.deleteProject        = deleteProject;
 window.moveProjectToOrg     = moveProjectToOrg;
-window.regeneratePortalLink = regeneratePortalLink;
-window.copyPortalLink       = copyPortalLink;
+window.createPortalLink     = createPortalLink;
+window.copyPortalLinkById   = copyPortalLinkById;
+window.revokePortalLink     = revokePortalLink;
 window.savePortalPassword   = savePortalPassword;

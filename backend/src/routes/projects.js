@@ -1,12 +1,12 @@
 const router = require('express').Router();
-const { body, validationResult } = require('express-validator');
-const crypto   = require('crypto');
+const { body, param, validationResult } = require('express-validator');
 const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth, requireUser, blockDemoDestructive } = require('../middleware/auth');
 const { requireProjectAccess, requireOwner } = require('../middleware/project');
 const { encrypt } = require('../utils/crypto');
+const portalLinks = require('../services/portalLinks');
 const { PROVIDERS: ALL_AI_PROVIDERS } = require('../services/ai');
 
 router.use(requireAuth);
@@ -19,12 +19,11 @@ router.use(requireAuth);
 const AI_KEY_PROVIDERS = ALL_AI_PROVIDERS.filter(p => p !== 'custom');
 
 // Strip secrets from project objects — frontend only needs boolean flags.
-// `role` is the caller's effective project role: the client portal link token
-// is only handed to the owner (the only role that can generate it); anyone
-// else holding it could mint portal sessions behind the owner's back.
-function sanitizeProject(p, role) {
+// portal_token is the pre-portal_links shared client link: no longer used by
+// anything, never returned to anyone (owners manage links via /portal/links).
+function sanitizeProject(p) {
   const out = { ...p };
-  if (role !== 'owner') delete out.portal_token;
+  delete out.portal_token;
   out.has_portal_password = !!out.portal_password_hash;
   out.has_github_pat = !!out.github_pat_enc;
   out.ai_api_keys_set = Object.fromEntries(AI_KEY_PROVIDERS.map(k => [k, !!out.ai_api_keys_enc?.[k]]));
@@ -83,7 +82,7 @@ router.get('/', async (req, res, next) => {
        ORDER BY p.updated_at DESC`,
       [req.user.id]
     );
-    res.json(rows.map(r => sanitizeProject(r, r.member_role)));
+    res.json(rows.map(r => sanitizeProject(r)));
   } catch (err) { next(err); }
 });
 
@@ -116,13 +115,13 @@ router.post('/', [
       `INSERT INTO project_members (project_id, user_id, role) VALUES ($1,$2,'owner')`,
       [project.id, req.user.id]
     );
-    res.status(201).json(sanitizeProject({ ...project, member_role:'owner' }, 'owner'));
+    res.status(201).json(sanitizeProject({ ...project, member_role:'owner' }));
   } catch (err) { next(err); }
 });
 
 // GET /projects/:projectId
 router.get('/:projectId', requireProjectAccess, (req, res) =>
-  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : sanitizeProject(req.project, req.memberRole)));
+  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : sanitizeProject(req.project)));
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
@@ -179,28 +178,108 @@ router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res,
     }
   }
 
-  if (!updates.length) return res.json(sanitizeProject(req.project, req.memberRole));
+  if (!updates.length) return res.json(sanitizeProject(req.project));
   values.push(req.params.projectId);
   try {
     const { rows } = await db.query(`UPDATE projects SET ${updates.join(',')} WHERE id=$${values.length} RETURNING *`, values);
-    res.json(sanitizeProject(rows[0], req.memberRole));
+    res.json(sanitizeProject(rows[0]));
   } catch (err) { next(err); }
 });
 
-// POST /projects/:projectId/portal/token — generate or regenerate portal link token
-router.post('/:projectId/portal/token', requireProjectAccess, requireOwner, async (req, res, next) => {
-  const token = crypto.randomBytes(24).toString('hex');
+// ── CLIENT PORTAL LINKS (one per client contact) ────────────────────
+// Owner-only. requireUser first, so a portal session is refused before it
+// even reaches the project lookup.
+
+const LINK_SELECT = `
+  SELECT pl.id, pl.label, pl.email, pl.is_legacy, pl.created_at, pl.expires_at,
+         pl.revoked_at, pl.last_used_at, pl.use_count, pl.token_enc,
+         ${portalLinks.STATUS_SQL} AS status,
+         COALESCE(u.display_name, u.username) AS created_by_name
+  FROM portal_links pl
+  LEFT JOIN users u ON u.id = pl.created_by`;
+
+// token_enc/token_hash never leave the API; the url-ready token is only
+// handed out while the link still works.
+function presentLink(row, token) {
+  const { token_enc: _enc, token_hash: _hash, ...out } = row;
+  out.token = out.status === 'active' ? (token || portalLinks.tokenOf(row)) : null;
+  return out;
+}
+
+// GET /projects/:projectId/portal/links
+router.get('/:projectId/portal/links', requireUser, requireProjectAccess, requireOwner, async (req, res, next) => {
   try {
-    await db.query('UPDATE projects SET portal_token=$1 WHERE id=$2', [token, req.params.projectId]);
-    // Audit trail: who issued (or rotated, revoking the old one) the client link.
+    const { rows } = await db.query(
+      `${LINK_SELECT} WHERE pl.project_id = $1 ORDER BY pl.created_at DESC`,
+      [req.params.projectId]
+    );
+    res.json(rows.map(r => presentLink(r)));
+  } catch (err) { next(err); }
+});
+
+// POST /projects/:projectId/portal/links  { label, email?, expires_in_days? }
+router.post('/:projectId/portal/links', requireUser, requireProjectAccess, requireOwner, [
+  body('label').isString().trim().isLength({ min: 1, max: 200 }),
+  body('email').optional({ values: 'falsy' }).isString().trim().isEmail().isLength({ max: 320 }),
+  body('expires_in_days').optional({ values: 'null' }).isInt({ min: 1, max: 3650 }).toInt(),
+], async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { label } = req.body;
+  const email = req.body.email || null;
+  const days  = req.body.expires_in_days ?? null;
+  const token = portalLinks.generateToken();
+  try {
+    const { rows: inserted } = await db.query(
+      `INSERT INTO portal_links (project_id, label, email, token_hash, token_enc, created_by, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6, CASE WHEN $7::int IS NULL THEN NULL ELSE NOW() + make_interval(days => $7::int) END)
+       RETURNING id`,
+      [req.params.projectId, label, email, portalLinks.hashToken(token), encrypt(token), req.user.id, days]
+    );
+    const { rows } = await db.query(`${LINK_SELECT} WHERE pl.id = $1`, [inserted[0].id]);
     await activity.log({
       projectId:  req.params.projectId,
       user:       req.user,
-      action:     'portal_link_generated',
+      action:     'portal_link_created',
       entityType: 'portal',
-      meta:       { regenerated: !!req.project.portal_token },
+      entityId:   rows[0].id,
+      entityName: label,
+      meta:       { expires_at: rows[0].expires_at },
     });
-    res.json({ portal_token: token });
+    res.status(201).json(presentLink(rows[0], token));
+  } catch (err) { next(err); }
+});
+
+// POST /projects/:projectId/portal/links/:linkId/revoke — idempotent
+router.post('/:projectId/portal/links/:linkId/revoke', requireUser, requireProjectAccess, requireOwner, [
+  param('linkId').isUUID(),
+], async (req, res, next) => {
+  if (!validationResult(req).isEmpty()) return res.status(404).json({ error: 'Portal link not found' });
+  try {
+    const { rows: revoked } = await db.query(
+      `UPDATE portal_links SET revoked_at = NOW()
+       WHERE id = $1 AND project_id = $2 AND revoked_at IS NULL
+       RETURNING id`,
+      [req.params.linkId, req.params.projectId]
+    );
+    const { rows } = await db.query(
+      `${LINK_SELECT} WHERE pl.id = $1 AND pl.project_id = $2`,
+      [req.params.linkId, req.params.projectId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Portal link not found' });
+    // Only the first revoke is an event; repeating it is a no-op.
+    if (revoked.length) {
+      await activity.log({
+        projectId:  req.params.projectId,
+        user:       req.user,
+        action:     'portal_link_revoked',
+        entityType: 'portal',
+        entityId:   rows[0].id,
+        entityName: rows[0].label,
+      });
+    }
+    res.json(presentLink(rows[0]));
   } catch (err) { next(err); }
 });
 

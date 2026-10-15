@@ -25,17 +25,18 @@ async function setupPortal(flags = {}) {
     .send({ client_view_enabled: true, show_findings: true, ...flags });
   assert.equal(patch.status, 200);
 
-  const tok = await request(app)
-    .post(`/api/projects/${project.id}/portal/token`)
-    .set(auth(owner.accessToken));
-  assert.equal(tok.status, 200);
+  const link = await request(app)
+    .post(`/api/projects/${project.id}/portal/links`)
+    .set(auth(owner.accessToken))
+    .send({ label: 'Client Contact' });
+  assert.equal(link.status, 201);
 
   const sess = await request(app)
     .post('/api/portal/auth')
-    .send({ token: tok.body.portal_token });
+    .send({ token: link.body.token });
   assert.equal(sess.status, 200);
 
-  return { owner, project, portalToken: sess.body.accessToken };
+  return { owner, project, link: link.body, portalToken: sess.body.accessToken };
 }
 
 async function createFinding(ownerToken, projectId, body) {
@@ -223,13 +224,16 @@ test('portal session is refused on every methodology route and on report-config'
   assert.equal(dead.status, 404);
 });
 
-test('only the owner receives portal_token in project get and list', async () => {
+test('no role receives the legacy portal_token in project get and list', async () => {
   const { owner, project } = await setupPortal();
+  // Only pre-portal_links projects still carry one; it must never be echoed.
+  await db.query(`UPDATE projects SET portal_token='legacy-shared-token' WHERE id=$1`, [project.id]);
 
   const own = await request(app).get(`/api/projects/${project.id}`).set(auth(owner.accessToken));
-  assert.ok(own.body.portal_token, 'owner gets the portal token');
+  assert.equal(own.status, 200);
+  assert.equal(own.body.portal_token, undefined, 'owner must not get portal_token (get)');
   const ownList = await request(app).get('/api/projects').set(auth(owner.accessToken));
-  assert.ok(ownList.body.find(p => p.id === project.id).portal_token);
+  assert.equal(ownList.body.find(p => p.id === project.id).portal_token, undefined, 'owner must not get portal_token (list)');
 
   for (const role of ['viewer', 'pentester', 'editor']) {
     const member = await addMember(owner.accessToken, project.id, role);
@@ -362,7 +366,8 @@ test('portal ticket chat hides team identity and, when switched on, timestamps',
   assert.equal(res.body.replies.length, 2);
   const [team, client] = res.body.replies;
   assert.deepEqual([team.is_team, team.author_name], [true, owner.user.username]);
-  assert.deepEqual([client.is_team, client.author_name], [false, 'Alice']);
+  // A per-contact link names the author; the body's client_name is ignored.
+  assert.deepEqual([client.is_team, client.author_name], [false, 'Client Contact']);
   for (const r of res.body.replies) {
     assert.equal(r.created_at, null, 'reply time must be hidden');
     for (const f of internal) assert.equal(r[f], undefined, `reply must not expose ${f}`);
@@ -393,28 +398,23 @@ test('portal ticket chat keeps timestamps when the switch is off', async () => {
   assert.equal(res.body.replies[0].author_id, undefined);
 });
 
-test('generating and rotating the portal link is audited and hidden from the portal feed', async () => {
-  const { owner, project, portalToken } = await setupPortal({ show_activity: true });
-  // setupPortal generated the first link; rotate it once.
-  const rot = await request(app)
-    .post(`/api/projects/${project.id}/portal/token`)
+test('creating and revoking portal links is audited and hidden from the portal feed', async () => {
+  const { owner, project, link, portalToken } = await setupPortal({ show_activity: true });
+  const other = await request(app)
+    .post(`/api/projects/${project.id}/portal/links`)
+    .set(auth(owner.accessToken))
+    .send({ label: 'Second Contact' });
+  assert.equal(other.status, 201);
+  const rev = await request(app)
+    .post(`/api/projects/${project.id}/portal/links/${other.body.id}/revoke`)
     .set(auth(owner.accessToken));
-  assert.equal(rot.status, 200);
-
-  const { rows } = await db.query(
-    `SELECT meta FROM activity_log WHERE project_id=$1 AND action='portal_link_generated' ORDER BY created_at`,
-    [project.id]
-  );
-  assert.deepEqual(rows.map(r => r.meta.regenerated), [false, true]);
+  assert.equal(rev.status, 200);
 
   const team = await request(app).get(`/api/projects/${project.id}/activity`).set(auth(owner.accessToken));
-  assert.ok(team.body.some(e => e.action === 'portal_link_generated'));
+  assert.ok(team.body.some(e => e.action === 'portal_link_created' && e.entity_name === link.label));
+  assert.ok(team.body.some(e => e.action === 'portal_link_revoked' && e.entity_name === 'Second Contact'));
 
-  // The old portal session is revoked by the rotation; mint a fresh one.
-  const sess = await request(app).post('/api/portal/auth').send({ token: rot.body.portal_token });
-  assert.equal(sess.status, 200);
-  assert.notEqual(sess.body.accessToken, portalToken);
-  const feed = await request(app).get(`/api/projects/${project.id}/activity`).set(auth(sess.body.accessToken));
+  const feed = await request(app).get(`/api/projects/${project.id}/activity`).set(auth(portalToken));
   assert.equal(feed.status, 200);
-  assert.ok(!feed.body.some(e => e.action === 'portal_link_generated'));
+  assert.ok(!feed.body.some(e => e.entity_type === 'portal'));
 });

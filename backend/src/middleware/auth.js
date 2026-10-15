@@ -14,7 +14,7 @@ async function requireAuth(req, res, next) {
     if (payload.type === 'portal') {
       req.isPortal        = true;
       req.portalProjectId = payload.projectId;
-      req.portalTok       = payload.tok;   // bound to a specific portal link
+      req.portalLinkId    = payload.linkId; // bound to one contact's portal link
       req.user            = { id: null, username: 'client', role: 'viewer' };
       return next();
     }

@@ -8,6 +8,8 @@ if (!process.env.DB_NAME || !process.env.DB_NAME.includes('test')) {
   );
 }
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_only_jwt_secret_do_not_use_in_prod';
+// Portal links store an encrypted copy of their token (utils/crypto.js).
+process.env.SSO_ENCRYPTION_KEY = process.env.SSO_ENCRYPTION_KEY || 'test_only_sso_key_do_not_use_in_prod';
 // Public registration is disabled by default in prod (pentest platform: accounts
 // are provisioned by an operator). Tests still exercise the register/SSO paths
 // and provision their fixtures through the endpoint, so enable it here.
@@ -20,7 +22,7 @@ const { seedTemplates } = require('../src/db/vuln-templates');
 const TABLES = [
   'organization_sso_configs', 'organization_invites', 'organization_members',
   'ai_usage', 'whiteboard_state', 'report_config', 'report_templates',
-  'ticket_replies', 'tickets',
+  'ticket_replies', 'tickets', 'portal_links',
   'target_endpoints', 'target_ports', 'activity_log', 'project_methodologies',
   'methodology_progress', 'methodologies', 'custom_vulns', 'ps_progress',
   'wstg_item_checks', 'wstg_progress', 'project_invites', 'project_members',

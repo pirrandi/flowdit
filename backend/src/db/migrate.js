@@ -3,6 +3,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../..', '.env') });
 const db = require('./index');
 const { seedTemplates } = require('./vuln-templates');
+const { backfillLegacyPortalLinks } = require('../services/portalLinks');
 
 const migrations = [
 
@@ -858,6 +859,39 @@ const migrations = [
   // charset. Nullable and not unique: the UI falls back to username.
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(50)`,
 
+  // ── PER-CONTACT CLIENT PORTAL LINKS ────────────────────────────────────
+  // One revocable, optionally expiring link per client contact, replacing the
+  // single shared projects.portal_token (kept as a column, no longer used for
+  // auth; backfilled into a legacy row by services/portalLinks.js). Lookup is
+  // by token_hash (SHA-256 hex); token_enc is AES-256-GCM (utils/crypto.js)
+  // so the owner can re-copy the link and reply emails can include it.
+  `CREATE TABLE IF NOT EXISTS portal_links (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    label        VARCHAR(200) NOT NULL,
+    email        VARCHAR(320),
+    token_hash   CHAR(64) UNIQUE NOT NULL,
+    token_enc    TEXT NOT NULL,
+    is_legacy    BOOLEAN NOT NULL DEFAULT false,
+    created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at   TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ,
+    last_used_at TIMESTAMPTZ,
+    use_count    INT NOT NULL DEFAULT 0
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_portal_links_project ON portal_links(project_id)`,
+  // At most one legacy row per project, so the backfill can never duplicate it.
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_portal_links_legacy ON portal_links(project_id) WHERE is_legacy`,
+  // Which contact's link opened a portal ticket. The FK is declared by name
+  // via DROP + ADD, not inline: an inline REFERENCES on ADD COLUMN IF NOT
+  // EXISTS adds a new numbered copy of the constraint on every run (same
+  // problem as inline CHECKs, see the cleanup block at the end).
+  `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS portal_link_id UUID`,
+  `ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_portal_link_id_fkey`,
+  `ALTER TABLE tickets ADD CONSTRAINT tickets_portal_link_id_fkey
+     FOREIGN KEY (portal_link_id) REFERENCES portal_links(id) ON DELETE SET NULL`,
+
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`
   // no es idempotente para el constraint: saltea la columna pero agrega el
@@ -939,6 +973,7 @@ async function migrate() {
   }
   await seedTemplates(db);
   await backfillOrganizations(db);
+  await backfillLegacyPortalLinks(db);
   console.log('✅ Migrations complete');
   process.exit(0);
 }

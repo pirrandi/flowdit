@@ -7,6 +7,7 @@ const { requireProjectAccess, requireLead, requireOwner, isLeadRole, portalRequi
 const { vulnBelongsToProject } = require('../services/ownership');
 const { decrypt } = require('../utils/crypto');
 const github    = require('../services/github');
+const portalLinks = require('../services/portalLinks');
 
 // Portal clients may read and open tickets, but only when the owner enabled the
 // tickets channel for this project. Internal users are unaffected.
@@ -54,6 +55,41 @@ function portalReply(r, project) {
     is_team:     !!r.author_id,
     created_at:  portalTime(project, r.created_at),
   };
+}
+
+// Who a portal message is from. A per-contact link IS the identity: its label
+// (and email, when the client didn't give one) wins over whatever the body
+// claims. The shared legacy link has no contact behind it, so it keeps the
+// self-declared name, as before.
+function portalAuthor(req) {
+  const link = req.portalLink;
+  if (link && !link.is_legacy) {
+    return {
+      clientName:  link.label,
+      clientEmail: req.body.client_email?.trim() || link.email || null,
+      linkId:      link.id,
+    };
+  }
+  return {
+    clientName:  req.body.client_name?.trim()  || 'Client',
+    clientEmail: req.body.client_email?.trim() || null,
+    linkId:      link?.id || null,
+  };
+}
+
+// Link for a reply email: the ticket's own contact link while it is still
+// active, else the project's active legacy shared link (clients who came in
+// through it), else none — never a revoked or expired link.
+async function replyPortalUrl(ticket) {
+  const { rows } = await db.query(
+    `SELECT pl.token_enc FROM portal_links pl
+     WHERE pl.project_id = $1 AND ${portalLinks.ACTIVE_SQL}
+       AND (pl.id = $2 OR pl.is_legacy)
+     ORDER BY (pl.id = $2) DESC NULLS LAST
+     LIMIT 1`,
+    [ticket.project_id, ticket.portal_link_id]
+  );
+  return rows.length ? portalLinks.portalUrl(portalLinks.tokenOf(rows[0])) : null;
 }
 
 // ── TICKETS ───────────────────────────────────────────────────────
@@ -153,13 +189,12 @@ router.post('/', [
       vulnName = pub[0].name;
     }
     // Portal user — no user account, store client_name/email instead
-    const clientName  = req.body.client_name?.trim()  || 'Client';
-    const clientEmail = req.body.client_email?.trim()  || null;
+    const { clientName, clientEmail, linkId } = portalAuthor(req);
     try {
       const { rows } = await db.query(
-        `INSERT INTO tickets (project_id, vuln_id, title, description, client_name, client_email)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [req.params.projectId, validVulnId, title, description, clientName, clientEmail]
+        `INSERT INTO tickets (project_id, vuln_id, title, description, client_name, client_email, portal_link_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [req.params.projectId, validVulnId, title, description, clientName, clientEmail, linkId]
       );
       return res.status(201).json(portalTicket({ ...rows[0], vuln_name: vulnName }, req.project));
     } catch (err) { return next(err); }
@@ -298,7 +333,7 @@ router.post('/:ticketId/replies', [
 
   try {
     const { rows: ticket } = await db.query(
-      `SELECT id, title, status, client_email, client_name, project_id FROM tickets WHERE id=$1 AND project_id=$2`,
+      `SELECT id, title, status, client_email, client_name, project_id, portal_link_id FROM tickets WHERE id=$1 AND project_id=$2`,
       [req.params.ticketId, req.params.projectId]
     );
     if (!ticket.length) return res.status(404).json({ error: 'Ticket not found' });
@@ -310,7 +345,7 @@ router.post('/:ticketId/replies', [
     let newReply;
 
     if (req.isPortal) {
-      const clientName = req.body.client_name?.trim() || 'Client';
+      const { clientName } = portalAuthor(req);
       const { rows } = await db.query(
         `INSERT INTO ticket_replies (ticket_id, body, client_name) VALUES ($1,$2,$3) RETURNING *`,
         [req.params.ticketId, req.body.body, clientName]
@@ -335,12 +370,10 @@ router.post('/:ticketId/replies', [
       // Email notification to client if ticket has client_email
       if (ticket[0].client_email) {
         const { rows: projRows } = await db.query(
-          `SELECT name, portal_token FROM projects WHERE id=$1`, [req.params.projectId]
+          `SELECT name FROM projects WHERE id=$1`, [req.params.projectId]
         );
-        const proj       = projRows[0];
-        const portalUrl  = proj?.portal_token
-          ? `${process.env.FRONTEND_URL || ''}/client-login#token=${proj.portal_token}`
-          : null;
+        const proj      = projRows[0];
+        const portalUrl = await replyPortalUrl(ticket[0]);
         mailer.sendTicketReplyNotification({
           toEmail:     ticket[0].client_email,
           toName:      ticket[0].client_name,

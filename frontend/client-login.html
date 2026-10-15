@@ -175,8 +175,10 @@ async function boot() {
 
     // No password needed — show enter button
     document.getElementById('cl-proj-name').textContent = data.projectName;
+    // A per-contact link already knows who this is: prefill (still editable).
+    prefillContact('cl-name', 'cl-email', data);
     // Store the token immediately — enter just redirects
-    api.portal.session.set(data.accessToken, data.projectId);
+    api.portal.session.set(data.accessToken, data.projectId, data.contactName || '', data.contactEmail || '');
     show('cl-ready');
 
   } catch (e) {
@@ -221,13 +223,20 @@ async function clEnterWithPassword() {
   btn.disabled = true; btn.textContent = 'Verifying...';
   try {
     const data = await api.portal.auth(_portalToken, pw);
-    api.portal.session.set(data.accessToken, data.projectId, name, email);
+    // The contact is only known after the password check, so fill blanks from it.
+    api.portal.session.set(data.accessToken, data.projectId,
+      name || data.contactName || '', email || data.contactEmail || '');
     window.location.href = 'client';
   } catch (e) {
     err.textContent = e.message || 'Incorrect password';
     err.style.display = 'block';
     btn.disabled = false; btn.textContent = 'Access Portal';
   }
+}
+
+function prefillContact(nameId, emailId, data) {
+  if (data.contactName)  document.getElementById(nameId).value  = data.contactName;
+  if (data.contactEmail) document.getElementById(emailId).value = data.contactEmail;
 }
 
 function show(id) { document.getElementById(id).style.display = ''; }

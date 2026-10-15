@@ -196,7 +196,7 @@ pm2 save && pm2 startup
 | `JWT_SECRET`        | Secret for JWT signing (min 64 chars)                             | Yes      |
 | `CORS_ORIGIN`       | Allowed frontend origin(s)                                        | Yes      |
 | `FRONTEND_URL`      | Frontend URL, used in email links                                 | Yes      |
-| `SSO_ENCRYPTION_KEY`| Encrypts per-org OIDC client secrets and 2FA secrets at rest      | Only if using SSO/2FA |
+| `SSO_ENCRYPTION_KEY`| Encrypts per-org OIDC client secrets, 2FA secrets and client portal link tokens at rest | Only if using SSO/2FA or the client portal |
 | `PUBLIC_API_URL`    | This backend's externally-reachable origin, for the SSO redirect URI | Only if using SSO |
 | `INTERNAL_APP_URL`  | Internal URL Puppeteer uses to reach the frontend for PDF export  | Yes (falls back to `FRONTEND_URL`) |
 | `DEMO_MODE`         | Blocks a few destructive actions on a shared demo account         | No       |

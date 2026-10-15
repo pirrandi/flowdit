@@ -305,7 +305,11 @@ const api = {
       if (!r.ok) { const e = new ApiError(r.status, d.error || 'Auth failed'); e.data = d; throw e; }
       return d;
     }),
-    regenerate:  (pid) => request('POST',  `/projects/${pid}/portal/token`),
+    links: {
+      list:   (pid)       => request('GET',  `/projects/${pid}/portal/links`),
+      create: (pid, data) => request('POST', `/projects/${pid}/portal/links`, data),
+      revoke: (pid, id)   => request('POST', `/projects/${pid}/portal/links/${id}/revoke`),
+    },
     setPassword: (pid, password, require_password) =>
                    request('PATCH', `/projects/${pid}`, { portal_password: password, portal_require_password: require_password }),
     session: portalSession,
