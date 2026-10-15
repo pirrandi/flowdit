@@ -156,12 +156,14 @@ async function seedDemo() {
            project_id, name, category, description, remediation, severity, cwe, status,
            target_id, remediation_status, remediated_at, retest_date, retest_notes,
            verified_at, verified_by, cvss_score, cvss_vector, created_by, updated_by,
-           created_at, updated_at
+           created_at, updated_at, client_visible
          ) VALUES (
            $1,$2,$3,$4,$5,$6,$7,'done',
            $8,$9,$10,$11,$12,
            $13,$14,$15,$16,$17,$17,
-           NOW() - $18::interval, NOW() - ($18::interval / 2)
+           NOW() - $18::interval, NOW() - ($18::interval / 2),
+           -- Published, so the demo's client portal shows them (drafts stay hidden).
+           true
          )`,
         [
           project.id, t.name, t.category, t.description, t.remediation, t.severity, t.cwe,
