@@ -60,7 +60,17 @@ async function recordOpenPorts(targetId, openPorts, userId) {
   }
 }
 
-async function recordEndpoint(targetId, path, method, statusCode, userId) {
+// Un endpoint es el path, no cada combinación de parámetros: el query string
+// y el fragmento se descartan antes de guardar. Visto en vivo: 764 "endpoints"
+// guardados en un proyecto, 737 de ellos el mismo /api/... con un
+// cache-buster (`?_=...`) distinto en cada request — 26 paths reales.
+function normalizeEndpointPath(path) {
+  const bare = String(path).split('#')[0].split('?')[0];
+  return bare.startsWith('/') ? bare : `/${bare}`;
+}
+
+async function recordEndpoint(targetId, rawPath, method, statusCode, userId) {
+  const path = normalizeEndpointPath(rawPath);
   const { rows: existing } = await db.query(
     `SELECT id FROM target_endpoints WHERE target_id=$1 AND path=$2 AND method=$3`,
     [targetId, path, method]
@@ -356,4 +366,4 @@ const scanToolsLevel1 = [
   },
 ];
 
-module.exports = { scanToolsLevel1 };
+module.exports = { scanToolsLevel1, normalizeEndpointPath };

@@ -18,7 +18,7 @@ const db = require('../../db');
 const ai = require('./index');
 const ws = require('../ws');
 const { scanTools }        = require('./scanTools');
-const { scanToolsLevel1 }  = require('./scanToolsLevel1');
+const { scanToolsLevel1, normalizeEndpointPath } = require('./scanToolsLevel1');
 const { scanToolsLevel2 }  = require('./scanToolsLevel2');
 const { scanToolsLevel3 }  = require('./scanToolsLevel3');
 const { targetBelongsToProject } = require('../ownership');
@@ -82,16 +82,36 @@ function toolCallSignature(name, input) {
   return `${name}:${stableStringify(input)}`;
 }
 
-// Cuenta cuántas llamadas con esta firma exacta ya hubo en el turno actual
-// (desde `turnStart`, no desde el principio del thread) — en cualquier
-// posición, no solo las inmediatamente anteriores.
-function countDuplicatesInTurn(eventRows, turnStart, signature) {
+// Cuenta cuántas llamadas con esta firma ya hubo desde `start` — en
+// cualquier posición, no solo las inmediatamente anteriores. `signatureOf`
+// devuelve null para las llamadas que no aplican.
+function countMatchingCalls(eventRows, start, signature, signatureOf = toolCallSignature) {
   let count = 0;
-  for (let i = turnStart; i < eventRows.length; i++) {
+  for (let i = start; i < eventRows.length; i++) {
     if (eventRows[i].type !== 'tool.called') continue;
-    if (toolCallSignature(eventRows[i].payload.name, eventRows[i].payload.input) === signature) count++;
+    if (signatureOf(eventRows[i].payload.name, eventRows[i].payload.input) === signature) count++;
   }
   return count;
+}
+
+// Freno anti-loop por RUTA, encontrado en vivo (2026-10-13, 1.935 tool calls
+// en 3,5 h sin que el modelo concluyera nunca): el freno de firma exacta de
+// arriba no lo ve porque ninguna llamada repite exactamente a otra —
+// - 874 fetch_endpoint al mismo /api/... cambiando solo el cache-buster
+//   `?_=` y el pageSize;
+// - 512 fetch_page_source paginando un main.js.map de varios MB de a 20.000
+//   caracteres (cada página con un `offset` distinto).
+// Agrupa las lecturas por target + path, ignorando query string, fragmento y
+// paginación, y corta pasado el tope dentro de la corrida autónoma.
+// search_page_source queda afuera a propósito: buscar distintos patrones
+// en un mismo bundle es justamente el uso correcto, y es la salida que se le
+// sugiere al modelo cuando lo frena este tope.
+const PATH_READ_TOOLS = new Set(['fetch_endpoint', 'fetch_page_source']);
+const MAX_PATH_READS_PER_RUN = 15;
+
+function pathReadSignature(name, input) {
+  if (!PATH_READ_TOOLS.has(name) || typeof input?.path !== 'string') return null;
+  return `${input.target_id}:${normalizeEndpointPath(input.path)}`;
 }
 
 // Tools de Nivel 0-3 (sin gate hasta tier 2). delegate_to_subagent (abajo)
@@ -523,6 +543,19 @@ async function advance(sessionId, threadId) {
   }
   const iterationsThisTurn = eventRows.slice(turnStart).filter(e => e.type === 'tool.called').length;
 
+  // "Corrida" = igual que el turno pero SIN cortar en los checkpoints: en modo
+  // autónomo los checkpoints se auto-continúan, así que si los frenos
+  // anti-loop se reiniciaran en cada uno, la misma llamada podía repetirse
+  // 3 veces cada 80 — hasta 18 veces seguidas antes de que alguien se entere.
+  let runStart = 0;
+  for (let i = eventRows.length - 1; i >= 0; i--) {
+    const t = eventRows[i].type;
+    if (t === 'chat.message' || t === 'thread.started' || t === 'subagent.reported') {
+      runStart = i + 1;
+      break;
+    }
+  }
+
   if (iterationsThisTurn >= MAX_ITERATIONS_PER_TURN) {
     // Pedido explícito: "eso de decirle continuá también me parece
     // ridículo... la idea es que trabaje de manera autónoma mientras el
@@ -696,14 +729,24 @@ async function advance(sessionId, threadId) {
     const calledEv = await persistEvent(sessionId, threadId, 'tool.called', { name: tool.name, input: call.input, tier: tool.tier });
     eventRows.push(calledEv);
 
-    const duplicateCount = countDuplicatesInTurn(eventRows, turnStart, toolCallSignature(tool.name, call.input));
+    // `calledEv` ya está en eventRows, así que los conteos incluyen esta
+    // llamada: la firma exacta se bloquea en la 3ra, la ruta en la 16ta.
+    const duplicateCount = countMatchingCalls(eventRows, runStart, toolCallSignature(tool.name, call.input));
+    const pathSig = pathReadSignature(tool.name, call.input);
+    const pathReads = pathSig ? countMatchingCalls(eventRows, runStart, pathSig, pathReadSignature) : 0;
+    let blockedReason = null;
     if (duplicateCount >= MAX_DUPLICATE_CALLS_PER_TURN) {
+      blockedReason = `Blocked: you already called ${tool.name} with these exact same arguments ${duplicateCount} times in this run (not necessarily back to back — alternating with other calls does not reset this), always with the same result. Repeating it again will not produce new information — try a materially different approach (a different path, parameter, or technique), or if you've exhausted what this avenue has to offer, move on to something else or conclude with a summary of what you found.`;
+    } else if (pathReads > MAX_PATH_READS_PER_RUN) {
+      blockedReason = `Blocked: you already read ${normalizeEndpointPath(call.input.path)} on this target ${pathReads - 1} times in this run (query-string variants and pagination offsets count as the same path). Changing cache-busters, page sizes or offsets is not new attack surface. To look for something specific in a large file (JS bundle, source map), use search_page_source with a regex instead of paging through it. Otherwise move on to other paths, or conclude with a summary of what you found.`;
+    }
+    if (blockedReason) {
       // Bloqueado antes de ejecutar — ni gasta el request real ni espera
       // aprobación de un gate para algo que ya sabemos que es un loop.
       broadcast(session.project_id, sessionId, session.status, calledEv);
       const resultEv = await persistEvent(sessionId, threadId, 'tool.result', {
         call_id: calledEv.id, name: tool.name,
-        result: { error: `Blocked: you already called ${tool.name} with these exact same arguments ${duplicateCount} times this turn (not necessarily back to back — alternating with other calls does not reset this), always with the same result. Repeating it again will not produce new information — try a materially different approach (a different path, parameter, or technique), or if you've exhausted what this avenue has to offer, move on to something else or conclude with a summary of what you found.` },
+        result: { error: blockedReason },
       });
       eventRows.push(resultEv);
       broadcast(session.project_id, sessionId, session.status, resultEv);
