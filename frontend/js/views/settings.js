@@ -155,6 +155,25 @@ async function renderSettings() {
         </div>
 
         <div class="members-card">
+          <div class="members-card-title">Claude Code</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:2px">Permitir acceso desde Claude Code</div>
+              <div style="font-family:var(--mono);font-size:11px;color:var(--t3)">
+                Los miembros pueden conectar su Claude Code (token personal, ver Edit Profile) para leer este proyecto y proponer hallazgos/notas, que quedan pendientes hasta que alguien los apruebe. Apagado, el proyecto es invisible para Claude Code.
+              </div>
+            </div>
+            <button class="setting-toggle ${p.claude_code_enabled?'on':''}"
+              onclick="toggleProjectFlag('claude_code_enabled',${!p.claude_code_enabled})">
+              <span class="setting-toggle-knob"></span>
+            </button>
+          </div>
+          <p style="font-family:var(--mono);font-size:10px;color:var(--c-high);margin:10px 0 0;line-height:1.5">
+            ${icon('triangle-alert', { size: 11 })} Los datos del cliente (targets, hallazgos, notas) salen de Flowdit hacia el proveedor del modelo que use cada Claude Code. Activalo solo si el NDA del engagement lo permite.
+          </p>
+        </div>
+
+        <div class="members-card">
           <div class="members-card-title">AI Usage</div>
           <p style="font-family:var(--mono);font-size:11px;color:var(--t3);margin:0 0 14px">
             Consumo estimado de IA en este proyecto, calculado localmente a partir de los tokens que reporta cada respuesta. No es el saldo de tu cuenta — para eso, mirá el dashboard del proveedor.

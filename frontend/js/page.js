@@ -526,6 +526,11 @@ function _injectProfileModal() {
         <div id="profile-mfa-section"></div>
       </div>
 
+      <div style="border-top:1px solid var(--b1);margin:18px 0 4px;padding-top:16px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Claude Code</div>
+        <div id="profile-cc-section"></div>
+      </div>
+
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeProfileModal()">Cancel</button>
         <button class="btn-save" id="profile-save-btn" onclick="saveProfile()">Save changes</button>
@@ -554,6 +559,7 @@ function openProfileModal() {
   _refreshAvatarPreview(u.avatar_url || null);
   document.getElementById('profile-modal').classList.add('open');
   _loadMfaStatus();
+  _loadApiTokens();
 }
 
 function closeProfileModal() {
@@ -793,6 +799,134 @@ async function mfaConfirmDisable() {
     errEl.style.display = 'block';
     btn.disabled = false;
   }
+}
+
+// ── PROFILE MODAL — tokens de Claude Code (MCP) ──────────────────────
+// Tokens personales para conectar Claude Code al servidor MCP (/mcp). El
+// token en claro llega una sola vez (respuesta del create): se muestra con
+// el comando listo para pegar y, al cerrar ese aviso, ya no se puede
+// recuperar — solo revocarlo y crear otro.
+let _newApiToken = null; // { token, name } mientras se muestra el aviso
+
+// /mcp cuelga del mismo host que /api: en prod es el mismo origen (nginx),
+// en dev el backend está en :4000 (ver config.js).
+function _mcpUrl() {
+  const base = window.FLOWDIT_API || '/api';
+  const origin = /^https?:\/\//.test(base) ? new URL(base).origin : window.location.origin;
+  return `${origin}/mcp`;
+}
+
+function _mcpAddCommand(token) {
+  return `claude mcp add --transport http flowdit ${_mcpUrl()} --header "Authorization: Bearer ${token}"`;
+}
+
+async function _loadApiTokens() {
+  const el = document.getElementById('profile-cc-section');
+  if (!el) return;
+  if (_newApiToken) { _renderNewApiToken(); return; }
+  el.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--t3)">Cargando...</div>`;
+  try {
+    _renderApiTokens(await api.me.apiTokens.list());
+  } catch (e) {
+    el.innerHTML = `<div class="form-error" style="display:block">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderApiTokens(list) {
+  const el = document.getElementById('profile-cc-section');
+  if (!el) return;
+  const scopeLabel = s => s === 'read_propose' ? 'lectura + propuestas' : 'solo lectura';
+  const statusLabel = { active: 'activo', revoked: 'revocado', expired: 'vencido' };
+  const rows = list.map(t => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1);${t.status === 'active' ? '' : 'opacity:.5'}">
+      <div style="min-width:0">
+        <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">
+          ${esc(t.token_prefix)}… · ${scopeLabel(t.scopes)} · ${statusLabel[t.status] || t.status}
+          · ${t.last_used_at ? 'usado ' + esc(timeAgo(t.last_used_at)) : 'sin usar'}
+          ${t.expires_at && t.status === 'active' ? ` · vence ${esc(new Date(t.expires_at).toLocaleDateString())}` : ''}
+        </div>
+      </div>
+      ${t.status === 'active' ? `<button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--c-crit);flex-shrink:0" onclick="revokeApiToken('${t.id}')">Revocar</button>` : ''}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:10px;line-height:1.5">
+      Tokens para conectar Claude Code a Flowdit (MCP). Claude Code puede leer los proyectos que tengan habilitado el acceso y proponer hallazgos/notas, que quedan pendientes de revisión. No sirven para la API web.
+    </div>
+    ${rows || `<div style="font-family:var(--mono);font-size:11px;color:var(--t3);margin-bottom:8px">Todavía no creaste ningún token.</div>`}
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+      <input type="text" class="form-input" id="cc-token-name" maxlength="100" placeholder="Nombre (ej. laptop trabajo)" style="font-size:12px">
+      <div style="display:flex;gap:6px">
+        <select class="form-input" id="cc-token-scope" style="font-size:12px;flex:1">
+          <option value="read_propose">Lectura + propuestas</option>
+          <option value="read">Solo lectura</option>
+        </select>
+        <select class="form-input" id="cc-token-expiry" style="font-size:12px;flex:1">
+          <option value="30">Vence en 30 días</option>
+          <option value="90" selected>Vence en 90 días</option>
+          <option value="365">Vence en 1 año</option>
+          <option value="">Sin vencimiento</option>
+        </select>
+      </div>
+      <div class="form-error" id="cc-token-error" style="display:none"></div>
+      <button class="btn btn-prim" id="cc-token-create-btn" onclick="createApiToken()">Crear token</button>
+    </div>`;
+}
+
+function _renderNewApiToken() {
+  const el = document.getElementById('profile-cc-section');
+  if (!el || !_newApiToken) return;
+  const cmd = _mcpAddCommand(_newApiToken.token);
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:13px;font-weight:600;color:var(--green)">${icon('check', { size: 13 })} Token "${esc(_newApiToken.name)}" creado</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">Copialo ahora: no se va a volver a mostrar.</div>
+      <div style="display:flex;gap:6px;align-items:flex-start">
+        <div style="flex:1;font-family:var(--mono);font-size:11px;word-break:break-all;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;padding:6px 10px">${esc(_newApiToken.token)}</div>
+        <button class="copy-btn" onclick="copyText(this,'${btoa(encodeURIComponent(_newApiToken.token))}')">copy</button>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">Comando para Claude Code:</div>
+      <div style="display:flex;gap:6px;align-items:flex-start">
+        <div style="flex:1;font-family:var(--mono);font-size:11px;word-break:break-all;background:var(--bg3);border:1px solid var(--b1);border-radius:6px;padding:6px 10px">${esc(cmd)}</div>
+        <button class="copy-btn" onclick="copyText(this,'${btoa(encodeURIComponent(cmd))}')">copy</button>
+      </div>
+      <button class="btn btn-prim" onclick="ackNewApiToken()">Listo, ya lo copié</button>
+    </div>`;
+}
+
+async function createApiToken() {
+  const name   = document.getElementById('cc-token-name').value.trim();
+  const scopes = document.getElementById('cc-token-scope').value;
+  const expiry = document.getElementById('cc-token-expiry').value;
+  const errEl  = document.getElementById('cc-token-error');
+  const btn    = document.getElementById('cc-token-create-btn');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'Poné un nombre para reconocer el token'; errEl.style.display = 'block'; return; }
+  btn.disabled = true;
+  try {
+    const created = await api.me.apiTokens.create({ name, scopes, expires_in_days: expiry ? Number(expiry) : null });
+    _newApiToken = { token: created.token, name: created.name };
+    _renderNewApiToken();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+}
+
+function ackNewApiToken() {
+  _newApiToken = null;
+  _loadApiTokens();
+}
+
+async function revokeApiToken(id) {
+  if (!confirm('¿Revocar este token? Claude Code va a perder el acceso de inmediato.')) return;
+  try {
+    await api.me.apiTokens.revoke(id);
+    showToast('Token revocado', 'success');
+    _loadApiTokens();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ── SEARCH ────────────────────────────────────────────────────────
@@ -1060,6 +1194,9 @@ window.mfaAcknowledgeBackupCodes = mfaAcknowledgeBackupCodes;
 window.mfaPromptDisable         = mfaPromptDisable;
 window.mfaConfirmDisable        = mfaConfirmDisable;
 window._loadMfaStatus           = _loadMfaStatus;
+window.createApiToken           = createApiToken;
+window.ackNewApiToken           = ackNewApiToken;
+window.revokeApiToken           = revokeApiToken;
 window.saveProject          = saveProject;
 window.mountAiChat          = mountAiChat;
 window.toggleAiPanel        = toggleAiPanel;

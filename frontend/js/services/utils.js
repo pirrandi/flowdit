@@ -103,6 +103,11 @@ function actionLabel(action, entityType, entityName, meta) {
       // badge distingue que lo encontró el AI Agent (dvalencia solo
       // aprobó), sin sacarle el crédito de la aprobación al actor. Mismo
       // estilo que el badge "AI" ya usado en la lista de Findings (vulns.js).
+      // Mismo badge, pero rotulado "Claude Code" cuando la propuesta llegó por
+      // el servidor MCP en vez del AI Agent integrado.
+      if (meta?.via === 'claude-code') {
+        return `added custom vuln ${name}<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;margin-left:6px;display:inline-flex;align-items:center;gap:3px" title="Propuesto desde Claude Code">${icon('sparkles',{size:10})}Claude Code</span>`;
+      }
       return `added custom vuln ${name}` + (meta?.ai_generated
         ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;margin-left:6px;display:inline-flex;align-items:center;gap:3px" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>`
         : '');
@@ -124,6 +129,11 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'portal_link_created':
       return `created a client portal link for ${name}` + (meta?.expires_at ? ` (expires ${esc(new Date(meta.expires_at).toLocaleDateString())})` : '');
     case 'portal_link_revoked': return `revoked the client portal link for ${name}`;
+    // Propuestas que llegan por el servidor MCP (Claude Code del pentester).
+    case 'claude_code_proposed':
+      return meta?.kind === 'note' ? `proposed a note on ${name} via Claude Code` : `proposed finding ${name} via Claude Code`;
+    case 'claude_code_proposal_approved': return `approved a Claude Code note on ${name}`;
+    case 'claude_code_proposal_rejected': return `rejected the Claude Code proposal ${name}`;
     case 'ai_scan_started':  return `started an AI Agent scan`;
     case 'ai_scan_deleted':  return `deleted an AI Agent scan session`;
     // El único aviso real que dispara el modo autónomo del agente (ver

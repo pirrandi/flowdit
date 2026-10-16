@@ -1042,3 +1042,103 @@ window.complianceBadge        = complianceBadge;
 window.renderCompliancePicker = renderCompliancePicker;
 window.toggleComplianceTag    = toggleComplianceTag;
 window.collectComplianceTags  = collectComplianceTags;
+// ── PROPUESTAS DE CLAUDE CODE ─────────────────────────────────────────
+// Hallazgos y notas que Claude Code propuso vía MCP. Viven aparte
+// (mcp_proposals), no en custom_vulns: no cuentan en el dashboard ni llegan
+// al reporte/portal hasta que un writer los aprueba acá. Aprobar un hallazgo
+// lo crea como cualquier otro, sin publicar al cliente.
+let _ccProposals = [];
+
+async function renderClaudeProposals() {
+  const el = document.getElementById('cc-proposals');
+  const p  = state.currentProject;
+  if (!el || !p) return;
+  try {
+    _ccProposals = await api.mcpProposals.list(p.id);
+  } catch {
+    _ccProposals = [];
+  }
+  if (!_ccProposals.length) { el.innerHTML = ''; return; }
+
+  const canReview = ['owner', 'editor', 'pentester'].includes(p.member_role);
+  const block = (label, text) => text ? `
+    <div class="items-section"><div class="items-label">${label}</div>
+      <div class="payload-code" style="color:var(--t2);white-space:pre-wrap">${esc(text)}</div></div>` : '';
+
+  el.innerHTML = `
+    <div class="vuln-severity-section">
+      <div class="vuln-severity-header">
+        <span style="font-weight:700;font-size:13px">${icon('sparkles', { size: 13 })} Propuestas de Claude Code</span>
+        <span class="vuln-severity-count">${_ccProposals.length} pendiente${_ccProposals.length > 1 ? 's' : ''} de revisión</span>
+      </div>
+      ${_ccProposals.map(pr => {
+        const pl = pr.payload || {};
+        const isFinding = pr.kind === 'finding';
+        const title = isFinding ? esc(pl.title) : `Nota en ${esc(pl.entity_name || pr.entity_type)}`;
+        const meta = [
+          isFinding ? 'Hallazgo' : `Nota (${esc(pr.entity_type)})`,
+          pr.target_host ? esc(pr.target_host) : '',
+          `por ${esc(displayName(pr, 'proposed_by_'))}`,
+          esc(timeAgo(pr.created_at)),
+        ].filter(Boolean).join(' · ');
+        const details = isFinding
+          ? block('Descripción', pl.description) + block('Remediación', pl.remediation) +
+            block('Evidencia', pl.evidence) +
+            ((pl.cvss_vector || pl.cwe) ? block('CVSS / CWE', [pl.cvss_score != null ? `${pl.cvss_score} ${pl.cvss_vector || ''}` : pl.cvss_vector, pl.cwe].filter(Boolean).join(' · ')) : '') +
+            ((pl.http_proofs || []).length ? block('HTTP proofs', `${pl.http_proofs.length} request(s) — se adjuntan al aprobar`) : '')
+          : block('Nota', pl.text);
+        return `
+        <div class="vuln-card" id="ccp-${pr.id}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px">
+            <div style="min-width:0;display:flex;align-items:center;gap:8px">
+              ${isFinding ? severityBadge(pl.severity) : ''}
+              <div style="min-width:0">
+                <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${meta}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="toggleClaudeProposal('${pr.id}')">Ver</button>
+              ${canReview ? `
+              <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="reviewClaudeProposal('${pr.id}','reject')">Rechazar</button>
+              <button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="reviewClaudeProposal('${pr.id}','approve')">Aprobar</button>` : ''}
+            </div>
+          </div>
+          <div id="ccp-body-${pr.id}" style="display:none;padding:0 14px 12px">${details}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function toggleClaudeProposal(id) {
+  const body = document.getElementById(`ccp-body-${id}`);
+  if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
+}
+
+async function reviewClaudeProposal(id, action) {
+  const pr = _ccProposals.find(x => x.id === id);
+  if (!pr) return;
+  if (action === 'reject' && !confirm('¿Rechazar esta propuesta?')) return;
+  const pid = state.currentProject.id;
+  try {
+    if (action === 'approve') {
+      await api.mcpProposals.approve(pid, id);
+      if (pr.kind === 'finding') {
+        const fresh = await api.vulns.list(pid);
+        state.customVulns = fresh.vulns || fresh;
+        renderCustomVulns();
+      }
+      showToast(pr.kind === 'finding' ? 'Hallazgo creado (sin publicar al cliente)' : 'Nota agregada', 'success');
+    } else {
+      await api.mcpProposals.reject(pid, id);
+      showToast('Propuesta rechazada', 'success');
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+  // Aun si falló (ej. otro la aprobó primero, 409) se recarga: el inbox
+  // tiene que reflejar el estado real, no lo que se veía al cargar la página.
+  renderClaudeProposals();
+}
+
+window.renderClaudeProposals = renderClaudeProposals;
+window.toggleClaudeProposal  = toggleClaudeProposal;
+window.reviewClaudeProposal  = reviewClaudeProposal;

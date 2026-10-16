@@ -248,6 +248,19 @@ const api = {
   },
   me: {
     tasks: (includeDone = false) => request('GET', `/me/tasks${includeDone ? '?include_done=1' : ''}`),
+    // Tokens personales para Claude Code (MCP). El token en claro solo viene
+    // en la respuesta de create().
+    apiTokens: {
+      list:   ()   => request('GET',  '/me/api-tokens'),
+      create: (d)  => request('POST', '/me/api-tokens', d),
+      revoke: (id) => request('POST', `/me/api-tokens/${id}/revoke`),
+    },
+  },
+  // Inbox de propuestas de Claude Code (hallazgos/notas pendientes de revisión).
+  mcpProposals: {
+    list:    (pid, status = 'pending') => request('GET',  `/projects/${pid}/mcp-proposals?status=${status}`),
+    approve: (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/approve`),
+    reject:  (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/reject`),
   },
   notifications: {
     list:        (q = {}) => request('GET',  `/notifications?${new URLSearchParams(q)}`),

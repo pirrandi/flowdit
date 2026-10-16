@@ -30,6 +30,7 @@
         <button class="btn btn-prim" onclick="openAddVulnModal()">+ Add Vulnerability</button>
       </div>
     </div>
+    <div id="cc-proposals"></div>
     <div id="custom-content"></div>
   </main>
 
@@ -282,6 +283,7 @@
 <script>
   function pageInit() {
     renderCustomVulns();
+    renderClaudeProposals();
   }
   bootPage('custom');
 </script>
