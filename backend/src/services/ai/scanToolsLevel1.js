@@ -64,20 +64,24 @@ async function recordOpenPorts(targetId, openPorts, userId) {
 // y el fragmento se descartan antes de guardar. Visto en vivo: 764 "endpoints"
 // guardados en un proyecto, 737 de ellos el mismo /api/... con un
 // cache-buster (`?_=...`) distinto en cada request — 26 paths reales.
+// También `//api//x/` y `/api/x` son el mismo endpoint. No se pasa a
+// minúsculas: los paths distinguen mayúsculas. La migración del índice único
+// (migrate.js) replica esta misma normalización en SQL — mantenerlas iguales.
+const MAX_ENDPOINT_PATH_LENGTH = 1000; // VARCHAR(1000) de target_endpoints.path
+
 function normalizeEndpointPath(path) {
   const bare = String(path).split('#')[0].split('?')[0];
-  return bare.startsWith('/') ? bare : `/${bare}`;
+  const collapsed = (bare.startsWith('/') ? bare : `/${bare}`).replace(/\/{2,}/g, '/');
+  return collapsed.length > 1 ? collapsed.replace(/\/$/, '') : collapsed;
 }
 
 async function recordEndpoint(targetId, rawPath, method, statusCode, userId) {
-  const path = normalizeEndpointPath(rawPath);
-  const { rows: existing } = await db.query(
-    `SELECT id FROM target_endpoints WHERE target_id=$1 AND path=$2 AND method=$3`,
-    [targetId, path, method]
-  );
-  if (existing.length) return;
+  // Truncar en vez de dejar que el INSERT tire: el request ya se hizo y su
+  // resultado tiene que llegarle al modelo igual.
+  const path = normalizeEndpointPath(rawPath).slice(0, MAX_ENDPOINT_PATH_LENGTH);
   await db.query(
-    `INSERT INTO target_endpoints (target_id, path, method, status_code, added_by) VALUES ($1,$2,$3,$4,$5)`,
+    `INSERT INTO target_endpoints (target_id, path, method, status_code, added_by) VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (target_id, path, method) DO NOTHING`,
     [targetId, path, method, statusCode, userId || null]
   );
 }

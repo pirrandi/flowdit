@@ -4,10 +4,16 @@ const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
 const { requireProjectAccess, requireWriter, requireTargetAccess, portalRequiresFlag } = require('../middleware/project');
+const { normalizeEndpointPath } = require('../services/ai/scanToolsLevel1');
 
 router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_targets'), requireTargetAccess);
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'];
+
+// Mismo criterio que los endpoints que registra el agente (índice único
+// sobre target_id+path+method, ver migrate.js): "/api//x/" y "/api/x" son
+// el mismo endpoint. Un duplicado responde 409 en vez de un 500.
+const DUPLICATE_ENDPOINT = { error: 'This endpoint already exists for this target' };
 
 // GET all endpoints for a target
 router.get('/', async (req, res, next) => {
@@ -34,7 +40,8 @@ router.post('/', requireWriter, [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { path, method = 'GET', status_code = null, interesting = false, notes = '' } = req.body;
+  const { method = 'GET', status_code = null, interesting = false, notes = '' } = req.body;
+  const path = normalizeEndpointPath(req.body.path);
   try {
     const { rows } = await db.query(
       `INSERT INTO target_endpoints (target_id, path, method, status_code, interesting, notes, added_by)
@@ -52,7 +59,10 @@ router.post('/', requireWriter, [
       meta:       { interesting, status_code },
     });
     res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json(DUPLICATE_ENDPOINT);
+    next(err);
+  }
 });
 
 // PATCH update endpoint
@@ -62,7 +72,7 @@ router.patch('/:endpointId', requireWriter, async (req, res, next) => {
   allowed.forEach(f => {
     if (req.body[f] !== undefined) {
       updates.push(`${f}=$${values.length + 1}`);
-      values.push(req.body[f]);
+      values.push(f === 'path' ? normalizeEndpointPath(req.body[f]).slice(0, 1000) : req.body[f]);
     }
   });
   if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
@@ -75,7 +85,10 @@ router.patch('/:endpointId', requireWriter, async (req, res, next) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Endpoint not found' });
     res.json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json(DUPLICATE_ENDPOINT);
+    next(err);
+  }
 });
 
 // DELETE endpoint

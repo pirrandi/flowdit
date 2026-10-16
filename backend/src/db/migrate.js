@@ -892,6 +892,48 @@ const migrations = [
   `ALTER TABLE tickets ADD CONSTRAINT tickets_portal_link_id_fkey
      FOREIGN KEY (portal_link_id) REFERENCES portal_links(id) ON DELETE SET NULL`,
 
+  // ── target_endpoints: un endpoint por (target, path, method) ─────────────
+  // Sin índice único, recordEndpoint (scanToolsLevel1.js) deduplicaba con
+  // SELECT-y-después-INSERT, que con sub-agentes en paralelo duplicaba filas,
+  // y paths como `/api//x/` vs `/api/x` contaban como distintos. Antes de
+  // crear el índice se normalizan los paths existentes con la MISMA regla que
+  // normalizeEndpointPath() (sin query/fragmento, `/` inicial, `//` → `/`,
+  // sin `/` final salvo la raíz; sin tocar mayúsculas) y se fusionan los
+  // duplicados: queda la fila más vieja, con interesting = OR de todas, las
+  // notas distintas unidas y el created_at más temprano. Todo en un solo DO
+  // (una transacción) y solo mientras el índice no existe: idempotente.
+  `DO $$
+    BEGIN
+      IF to_regclass('public.uq_target_endpoints_target_path_method') IS NOT NULL THEN RETURN; END IF;
+
+      CREATE TEMP TABLE _ep_norm ON COMMIT DROP AS
+        SELECT e.id, e.target_id, e.method, e.created_at, e.interesting, e.notes, s3.npath,
+               ROW_NUMBER() OVER (PARTITION BY e.target_id, s3.npath, e.method ORDER BY e.created_at, e.id) AS rn
+        FROM target_endpoints e
+        CROSS JOIN LATERAL (SELECT split_part(split_part(e.path, '#', 1), '?', 1) AS b) s1
+        CROSS JOIN LATERAL (SELECT regexp_replace(CASE WHEN left(s1.b, 1) = '/' THEN s1.b ELSE '/' || s1.b END, '/{2,}', '/', 'g') AS c) s2
+        CROSS JOIN LATERAL (SELECT CASE WHEN length(s2.c) > 1 THEN regexp_replace(s2.c, '/$', '') ELSE s2.c END AS npath) s3;
+
+      UPDATE target_endpoints e
+      SET interesting = a.interesting, notes = a.notes, created_at = a.created_at
+      FROM _ep_norm k
+      JOIN (
+        SELECT target_id, npath, method,
+               bool_or(interesting) AS interesting,
+               MIN(created_at) AS created_at,
+               string_agg(DISTINCT notes, E'\\n') FILTER (WHERE notes IS NOT NULL AND btrim(notes) <> '') AS notes,
+               COUNT(*) AS cnt
+        FROM _ep_norm GROUP BY target_id, npath, method
+      ) a ON a.target_id = k.target_id AND a.npath = k.npath AND a.method = k.method
+      WHERE e.id = k.id AND k.rn = 1 AND a.cnt > 1;
+
+      DELETE FROM target_endpoints e USING _ep_norm k WHERE e.id = k.id AND k.rn > 1;
+
+      UPDATE target_endpoints e SET path = k.npath FROM _ep_norm k WHERE e.id = k.id AND e.path <> k.npath;
+
+      CREATE UNIQUE INDEX uq_target_endpoints_target_path_method ON target_endpoints(target_id, path, method);
+    END $$`,
+
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`
   // no es idempotente para el constraint: saltea la columna pero agrega el
