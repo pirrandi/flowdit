@@ -9,10 +9,17 @@
 // ejecuta y reporta. Intentar mantener una biblioteca de exploits reales
 // sería una tarea sin fin y un riesgo de seguridad en sí mismo.
 
-const { assertTargetInScope, describeFetchError } = require('./targetScope');
+const { assertTargetInScope, describeFetchError, buildTargetUrl, readBodyCapped } = require('./targetScope');
 
-async function sendRequest(target, { method = 'GET', path, scheme = 'https', headers = {}, body = null }) {
-  const url = `${scheme}://${target.host}${path.startsWith('/') ? '' : '/'}${path}`;
+async function sendRequest(target, { method = 'GET', path, scheme, headers = {}, body = null }) {
+  let url;
+  try {
+    url = buildTargetUrl(target, scheme, path);
+  } catch (err) {
+    // Error por paso, no excepción: en run_exploit_poc no debe tirar abajo
+    // el resto de la secuencia.
+    return { method, path, error: err.message };
+  }
   let response;
   try {
     response = await fetch(url, {
@@ -25,7 +32,7 @@ async function sendRequest(target, { method = 'GET', path, scheme = 'https', hea
   } catch (err) {
     return { url, method, error: `request failed: ${describeFetchError(err)}` };
   }
-  const text = await response.text();
+  const { text } = await readBodyCapped(response);
   return {
     url, method, status: response.status,
     headers: Object.fromEntries(response.headers.entries()),
@@ -56,7 +63,7 @@ const scanToolsLevel2 = [
       required: ['target_id', 'method', 'path'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
       return sendRequest(target, input);
     },
   },
@@ -86,7 +93,7 @@ const scanToolsLevel2 = [
       required: ['target_id', 'path', 'method', 'param_location', 'param_name', 'payload'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
 
       let path = input.path;
       let headers = {};
@@ -144,7 +151,7 @@ const scanToolsLevel2 = [
       required: ['target_id', 'technique', 'request_sequence'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
       const results = [];
       for (const req of input.request_sequence) {
         results.push(await sendRequest(target, req)); // secuencial, a propósito — ver nota sobre no encadenar variables entre pasos

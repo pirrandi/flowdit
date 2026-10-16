@@ -135,4 +135,4 @@ function requireOwner(req, res, next) {
   next();
 }
 
-module.exports = { requireProjectAccess, findProjectForUser, requireWriter, requireLead, isLeadRole, requireOwner, requireTargetAccess, portalRequiresFlag };
+module.exports = { requireProjectAccess, findProjectForUser, WRITER_ROLES, requireWriter, requireLead, isLeadRole, requireOwner, requireTargetAccess, portalRequiresFlag };

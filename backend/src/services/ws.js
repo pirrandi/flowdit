@@ -2,7 +2,17 @@ const { WebSocketServer, WebSocket } = require('ws');
 const jwt = require('jsonwebtoken');
 const url  = require('url');
 const { userBelongsToProject } = require('./ownership');
+const { findProjectForUser, WRITER_ROLES } = require('../middleware/project');
 const db = require('../db');
+
+// Unirse a la sala solo exige membership (un viewer puede MIRAR el agente),
+// pero operar el agente es escribir: mismos roles que requireWriter en REST.
+// Se consulta en cada mensaje, no al conectar, para que un cambio de rol (o
+// quitarlo del proyecto) aplique sin esperar a que se reconecte el socket.
+async function canOperateAiScan(userId, projectId) {
+  const project = await findProjectForUser(projectId, userId);
+  return !!project && WRITER_ROLES.includes(project.member_role);
+}
 
 // projectId → Set<ws>
 const rooms = new Map();
@@ -104,6 +114,7 @@ function setup(server) {
                 // OTRO proyecto con solo conocer su UUID (encontrado en
                 // revisión, ver AI_PENTEST_AGENT.md § Seguridad).
                 if (!msg.session_id || !(await agentLoop.sessionBelongsToProject(msg.session_id, projectId))) return;
+                if (!(await canOperateAiScan(user.id, projectId))) return;
                 switch (msg.type) {
                   case 'ai_scan:send_message':  await agentLoop.sendMessage(msg.session_id, user.id, msg.text); break;
                   case 'ai_scan:approve_action': await agentLoop.resolveGatedCall(msg.session_id, msg.call_id, 'accepted', user.id); break;
@@ -206,4 +217,4 @@ function broadcastPresence(projectId) {
   });
 }
 
-module.exports = { setup, broadcastActivity, broadcastScanEvent, disconnectUser, sendToUser };
+module.exports = { setup, broadcastActivity, broadcastScanEvent, disconnectUser, sendToUser, canOperateAiScan };

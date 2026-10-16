@@ -12,8 +12,40 @@
 
 const net = require('net');
 const dns = require('dns').promises;
+const vm  = require('vm');
 const db  = require('../../db');
-const { assertTargetInScope, describeFetchError } = require('./targetScope');
+const { assertTargetInScope, describeFetchError, buildTargetUrl, readBodyCapped } = require('./targetScope');
+
+// fetch_page_source: tope de caracteres por página aunque el modelo pida más.
+const MAX_PAGE_LIMIT = 50000;
+
+// search_page_source corre una regex elegida por el modelo sobre varios MB:
+// un patrón catastrófico (p.ej. `(a+)+$`) bloqueaba el event loop de TODO el
+// backend. Corre dentro de vm con timeout, que sí interrumpe la regex.
+const MAX_PATTERN_LENGTH = 500;
+const REGEX_TIMEOUT_MS = 2000;
+const SEARCH_SCRIPT = new vm.Script(`(() => {
+  const re = new RegExp(pattern, flags);
+  const out = [];
+  let m;
+  while ((m = re.exec(text)) !== null && out.length < maxMatches) {
+    const start = Math.max(0, m.index - win);
+    const end = Math.min(text.length, m.index + m[0].length + win);
+    out.push({ position: m.index, match: m[0].slice(0, 300), context: text.slice(start, end) });
+    if (m[0].length === 0) re.lastIndex++; // evita loop infinito con patrones que matchean string vacío
+  }
+  return JSON.stringify(out);
+})()`);
+
+// Devuelve los matches, o null si la regex pasó el timeout.
+function searchWithTimeout(text, pattern, flags) {
+  try {
+    return JSON.parse(SEARCH_SCRIPT.runInNewContext({ text, pattern, flags, win: 150, maxMatches: 50 }, { timeout: REGEX_TIMEOUT_MS }));
+  } catch (err) {
+    if (err.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') return null;
+    throw err;
+  }
+}
 
 const DEFAULT_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 3306, 3389, 5432, 6379, 8000, 8080, 8443, 9200, 27017];
 const DEFAULT_SUBDOMAIN_WORDLIST = ['www', 'mail', 'api', 'admin', 'dev', 'staging', 'test', 'ftp', 'vpn', 'remote', 'portal', 'app', 'beta'];
@@ -105,7 +137,7 @@ const scanToolsLevel1 = [
       required: ['target_id'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
       const ports = (input.ports && input.ports.length) ? input.ports : DEFAULT_PORTS;
       const open = await scanPorts(target.host, ports);
       await recordOpenPorts(input.target_id, open, ctx.startedBy);
@@ -140,7 +172,7 @@ const scanToolsLevel1 = [
       required: ['target_id'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
       if (target.type !== 'domain') {
         return { error: `target "${target.host}" is type "${target.type}", not "domain" — subdomain_enum only applies to domain targets` };
       }
@@ -195,7 +227,8 @@ const scanToolsLevel1 = [
       // dejar que se vea como N hallazgos genuinos e independientes.
       const uniqueIps = new Set(found.flatMap(f => f.addresses));
       if (found.length > 1 && uniqueIps.size === 1) {
-        result.wildcard_warning = `Los ${found.length} subdominios resueltos comparten la misma IP (${[...uniqueIps][0]}) — probablemente wildcard DNS o un proxy catch-all, no subdominios reales independientes. Mirá el campo "reachable"/"status"/"error" de cada uno antes de reportarlos como hallazgos distintos.`;
+        // En inglés: lo lee el modelo, no el pentester.
+        result.wildcard_warning = `All ${found.length} resolved subdomains share the same IP (${[...uniqueIps][0]}) — most likely wildcard DNS or a catch-all proxy, not real independent subdomains. Check each one's "reachable"/"status"/"error" fields before reporting them as separate findings.`;
       }
 
       return result;
@@ -222,13 +255,12 @@ const scanToolsLevel1 = [
       required: ['target_id', 'path'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
       const method = input.method || 'GET';
       if (method !== 'GET' && method !== 'HEAD') {
-        return { error: `method "${method}" not allowed here — use send_http_request (Nivel 2, requiere aprobación) for anything beyond GET/HEAD` };
+        return { error: `method "${method}" not allowed here — use send_http_request (Level 2, requires approval) for anything beyond GET/HEAD` };
       }
-      const scheme = input.scheme || 'https';
-      const url = `${scheme}://${target.host}${input.path.startsWith('/') ? '' : '/'}${input.path}`;
+      const url = buildTargetUrl(target, input.scheme, input.path);
 
       let response;
       try {
@@ -237,7 +269,7 @@ const scanToolsLevel1 = [
         return { error: `request failed: ${describeFetchError(err)}` };
       }
 
-      const body = method === 'GET' ? (await response.text()).slice(0, 2000) : null;
+      const body = method === 'GET' ? (await readBodyCapped(response)).text.slice(0, 2000) : null;
       await recordEndpoint(input.target_id, input.path, method, response.status, ctx.startedBy);
 
       return {
@@ -273,9 +305,8 @@ const scanToolsLevel1 = [
       required: ['target_id', 'path'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
-      const scheme = input.scheme || 'https';
-      const url = `${scheme}://${target.host}${input.path.startsWith('/') ? '' : '/'}${input.path}`;
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
+      const url = buildTargetUrl(target, input.scheme, input.path);
 
       let response;
       try {
@@ -284,9 +315,9 @@ const scanToolsLevel1 = [
         return { error: `request failed: ${describeFetchError(err)}` };
       }
 
-      const fullText = await response.text();
-      const offset = input.offset || 0;
-      const limit  = input.limit  || 20000;
+      const { text: fullText, truncated: bodyTruncated } = await readBodyCapped(response);
+      const offset = Math.max(0, Math.floor(Number(input.offset) || 0));
+      const limit  = Math.min(Math.max(1, Math.floor(Number(input.limit) || 20000)), MAX_PAGE_LIMIT);
       const slice  = fullText.slice(offset, offset + limit);
 
       const result = {
@@ -297,6 +328,10 @@ const scanToolsLevel1 = [
         truncated: fullText.length > offset + limit, // si true, volver a llamar con offset += returned_length para seguir leyendo
         content: slice,
       };
+      // Pasó el tope de bytes: lo que sigue del archivo no se puede leer.
+      if (bodyTruncated) result.body_truncated = true;
+      // redirect:'manual' — un 3xx no se sigue solo, se reporta adónde iba.
+      if (response.headers.get('location')) result.location = response.headers.get('location');
 
       if ((response.headers.get('content-type') || '').includes('html')) {
         const scriptSrcs = [...fullText.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
@@ -334,9 +369,20 @@ const scanToolsLevel1 = [
       required: ['target_id', 'path', 'pattern'],
     },
     async execute(input, ctx) {
-      const target = await assertTargetInScope(input.target_id, ctx.projectId);
-      const scheme = input.scheme || 'https';
-      const url = `${scheme}://${target.host}${input.path.startsWith('/') ? '' : '/'}${input.path}`;
+      const target = await assertTargetInScope(input.target_id, ctx.projectId, ctx.scopedTargetId);
+      const url = buildTargetUrl(target, input.scheme, input.path);
+
+      // Validar el patrón ANTES del request: uno inválido no gasta red.
+      const pattern = String(input.pattern ?? '');
+      if (pattern.length > MAX_PATTERN_LENGTH) {
+        return { error: `regex pattern too long (${pattern.length} chars, max ${MAX_PATTERN_LENGTH}) — use a shorter, more specific pattern` };
+      }
+      const flags = String(input.flags || 'i').replace(/g/g, '') + 'g'; // forzar global una sola vez
+      try {
+        new RegExp(pattern, flags);
+      } catch (err) {
+        return { error: `invalid regex: ${err.message}` };
+      }
 
       let response;
       try {
@@ -344,28 +390,17 @@ const scanToolsLevel1 = [
       } catch (err) {
         return { error: `request failed: ${describeFetchError(err)}` };
       }
-      const text = await response.text();
+      const { text, truncated: bodyTruncated } = await readBodyCapped(response);
 
-      let re;
-      try {
-        const flags = (input.flags || 'i').replace(/g/g, '') + 'g'; // forzar global una sola vez
-        re = new RegExp(input.pattern, flags);
-      } catch (err) {
-        return { error: `invalid regex: ${err.message}` };
-      }
-
-      const WINDOW = 150;
-      const matches = [];
-      let m;
-      while ((m = re.exec(text)) !== null && matches.length < 50) {
-        const start = Math.max(0, m.index - WINDOW);
-        const end   = Math.min(text.length, m.index + m[0].length + WINDOW);
-        matches.push({ position: m.index, match: m[0].slice(0, 300), context: text.slice(start, end) });
-        if (m[0].length === 0) re.lastIndex++; // evita loop infinito con patrones que matchean string vacío
-      }
-
+      const matches = searchWithTimeout(text, pattern, flags);
       await recordEndpoint(input.target_id, input.path, 'GET', response.status, ctx.startedBy);
-      return { url, total_length: text.length, match_count: matches.length, matches };
+      if (!matches) {
+        return { error: `regex search timed out after ${REGEX_TIMEOUT_MS} ms (likely catastrophic backtracking) — use a simpler pattern without nested quantifiers` };
+      }
+      const result = { url, status: response.status, total_length: text.length, match_count: matches.length, matches };
+      if (bodyTruncated) result.body_truncated = true;
+      if (response.headers.get('location')) result.location = response.headers.get('location');
+      return result;
     },
   },
 ];

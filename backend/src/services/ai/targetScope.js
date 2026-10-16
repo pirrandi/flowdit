@@ -26,8 +26,13 @@ function normalizeHost(host) {
 // no pertenece al proyecto, está fuera de scope, o no está activo. El
 // mensaje de error es lo que el modelo va a leer en el tool.result — tiene
 // que ser claro para que entienda por qué falló y no insista.
-async function assertTargetInScope(targetId, projectId) {
+// `scopedTargetId`: si la sesión (o el sub-agente) se arrancó acotada a un
+// target, cualquier otro se rechaza aunque esté en scope del proyecto.
+async function assertTargetInScope(targetId, projectId, scopedTargetId = null) {
   if (!targetId) throw new Error('target_id is required for this tool');
+  if (scopedTargetId && targetId !== scopedTargetId) {
+    throw new Error(`this session is scoped to target_id "${scopedTargetId}" — refusing to act against another target`);
+  }
 
   const { rows } = await db.query(
     `SELECT id, host, type, scope, status FROM targets WHERE id=$1 AND project_id=$2`,
@@ -54,4 +59,54 @@ function describeFetchError(err) {
   return detail ? `${err.message} (${detail})` : err.message;
 }
 
-module.exports = { assertTargetInScope, describeFetchError };
+// `scheme` y `path` los elige el modelo — concatenarlos a mano permitía
+// salir del target: un scheme "file"/"ftp" (u otro arbitrario), o un path
+// tipo "@evil.com/" que convierte al host del target en userinfo. Se arma
+// con new URL() y se exige que el host resultante (con puerto) sea
+// exactamente el del target. Los fetch usan redirect:'manual', así que un
+// 3xx nunca salta solo a otro host — se le reporta el Location al modelo.
+const ALLOWED_SCHEMES = new Set(['http', 'https']);
+
+function buildTargetUrl(target, scheme, path) {
+  const s = scheme || 'https';
+  if (!ALLOWED_SCHEMES.has(s)) throw new Error(`scheme "${s}" not allowed — only "http" or "https"`);
+  const p = String(path ?? '');
+  let base, url;
+  try {
+    base = new URL(`${s}://${target.host}`);
+    url  = new URL(`${s}://${target.host}${p.startsWith('/') ? '' : '/'}${p}`);
+  } catch {
+    throw new Error(`could not build a valid URL from target "${target.host}" and path "${p}"`);
+  }
+  if (url.host !== base.host || url.username || url.password) {
+    throw new Error(`refusing to request "${url.href}": it does not point at target "${target.host}"`);
+  }
+  return url.href;
+}
+
+// response.text() lee el cuerpo entero a memoria sin tope — un target (o un
+// archivo enorme) podía meterle cientos de MB al proceso. Se lee de a chunks
+// y se corta al pasar `maxBytes`, avisando con `truncated`.
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+
+async function readBodyCapped(response, maxBytes = MAX_RESPONSE_BYTES) {
+  if (!response.body) return { text: '', truncated: false };
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0, truncated = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (size + value.byteLength > maxBytes) {
+      chunks.push(value.subarray(0, maxBytes - size));
+      truncated = true;
+      await reader.cancel().catch(() => {});
+      break;
+    }
+    chunks.push(value);
+    size += value.byteLength;
+  }
+  return { text: new TextDecoder().decode(Buffer.concat(chunks)), truncated };
+}
+
+module.exports = { assertTargetInScope, describeFetchError, buildTargetUrl, readBodyCapped, MAX_RESPONSE_BYTES };

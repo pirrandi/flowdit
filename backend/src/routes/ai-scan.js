@@ -72,11 +72,9 @@ router.post('/sessions', requireWriter, [
 
     res.status(201).json({ session });
 
-    // Fire-and-forget: advance() ya maneja sus propios errores de proveedor
-    // internamente (persiste session.error, no relanza), pero un fallo de DB
-    // antes de ese try/catch interno igual podría quedar como una promesa
-    // sin atrapar si no ponemos este .catch() acá.
-    agentLoop.advance(session.id, primaryThread.id).catch(err => console.error('agentLoop.advance failed:', err.message));
+    // Fire-and-forget: launchAdvance() atrapa cualquier error (incluido un
+    // fallo de DB fuera del try/catch del proveedor) y marca el thread en error.
+    agentLoop.launchAdvance(session.id, primaryThread.id);
   } catch (err) { next(err); }
 });
 
@@ -140,7 +138,13 @@ router.delete('/sessions/:sessionId', requireWriter, async (req, res, next) => {
       [req.params.sessionId, req.params.projectId]
     );
     if (!existing.length) return res.status(404).json({ error: 'Session not found' });
-    if (existing[0].status === 'running') {
+    // El agregado de sesión no alcanza: un sub-agente puede estar corriendo
+    // con la sesión en `waiting_approval` (gate en otro thread) o `idle`.
+    const { rows: running } = await db.query(
+      `SELECT 1 FROM ai_scan_threads WHERE session_id=$1 AND status='running' LIMIT 1`,
+      [req.params.sessionId]
+    );
+    if (existing[0].status === 'running' || running.length) {
       return res.status(409).json({ error: 'La sesión está corriendo — pausala o esperá a que termine antes de borrarla' });
     }
 

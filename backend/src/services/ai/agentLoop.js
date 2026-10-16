@@ -136,10 +136,31 @@ const PROFILE_GUIDANCE = {
 // su propia llamada en vuelo al mismo tiempo).
 const activeAborts = new Map(); // threadId → AbortController
 
+// Generación de corrida por thread. interrupt/pause/retomar con mensaje la
+// incrementan; cada advance() captura la suya al arrancar y abandona (sin
+// persistir ni recursar) si cambió. Sin esto, un interrupt durante la
+// ejecución de una tool dejaba dos loops vivos sobre el mismo thread: el
+// viejo terminaba la tool y seguía recursando junto al nuevo. En memoria
+// alcanza: hay un solo proceso, y tras un reinicio no queda ningún loop viejo.
+const runGenerations = new Map(); // threadId → número
+function currentGeneration(threadId) { return runGenerations.get(threadId) || 0; }
+function bumpGeneration(threadId) { runGenerations.set(threadId, currentGeneration(threadId) + 1); }
+
+// Cuántas cadenas de advance() lanzadas por advanceSafely() siguen vivas por
+// thread — retry() lo usa para relanzar solo los threads `running` que no
+// tienen ningún loop (los que quedaron trabados), sin duplicar uno sano.
+const activeLoops = new Map(); // threadId → cantidad
+
+// Solo para resolveGatedCall: busca en el registro completo porque la tool
+// ya pasó por el filtro de `tools` ofrecidas cuando advance() la persistió.
 function findTool(name) {
   if (name === 'delegate_to_subagent') return DELEGATE_TOOL;
   return BASE_TOOL_REGISTRY.find(t => t.name === name);
 }
+
+// Topes de fan-out de delegate_to_subagent, por sesión.
+const MAX_ACTIVE_SUBAGENTS = 5;
+const MAX_TOTAL_SUBAGENTS = 20;
 
 // tier 2 (acción activa contra el target) y tier 3 (propose_finding,
 // escribe al reporte) están gated por defecto, pero un proyecto puede optar
@@ -184,6 +205,25 @@ async function getPrimaryThread(sessionId) {
 async function getUserRow(userId) {
   const { rows } = await db.query(`SELECT id, username, display_name, avatar_color, email FROM users WHERE id=$1`, [userId]);
   return rows[0];
+}
+
+// Estos avisos los lee el pentester (Activity + email), así que van en el
+// idioma que eligió para la sesión, no siempre en español.
+const ATTENTION_MESSAGES = {
+  es: {
+    budget: p => `El AI Agent llegó al límite de trabajo autónomo continuo (~${p.calls} tool calls) y necesita que revises la sesión.`,
+    cost: p => `El AI Agent paró: se alcanzó el tope de gasto de la sesión ($${p.cap}, gastado $${p.spent}).`,
+    approval: p => `El AI Agent quiere ejecutar "${p.tool}" y necesita tu aprobación.`,
+  },
+  en: {
+    budget: p => `The AI Agent reached its continuous autonomous work limit (~${p.calls} tool calls) and needs you to review the session.`,
+    cost: p => `The AI Agent stopped: the session's cost cap was reached ($${p.cap}, spent $${p.spent}).`,
+    approval: p => `The AI Agent wants to run "${p.tool}" and needs your approval.`,
+  },
+};
+
+function attentionMessage(session, key, params) {
+  return (ATTENTION_MESSAGES[session.response_language] || ATTENTION_MESSAGES.es)[key](params);
 }
 
 // El único momento del modo autónomo que amerita sacar al pentester de lo
@@ -282,19 +322,26 @@ async function setSessionStatus(sessionId, status) {
 
 // Recalcula ai_scan_sessions.status a partir de TODOS los threads de la
 // sesión — se llama después de cualquier transición de estado de un
-// thread. No pisa un `paused` (override explícito del pentester) ni un
-// `error` a nivel sesión.
+// thread. No pisa un `paused` (override explícito del pentester).
+//
+// `error` ya no es pegajoso, y solo lo produce el coordinador: antes un
+// sub-agente en error dejaba la sesión en `error` con el primario idle, y
+// como advance() no corría sesiones en `error`, el primario despertado por
+// el reporte de otro sub-agente quedaba `running` sin loop para siempre. El
+// error de un sub-agente ahora le llega al coordinador como reporte (ver
+// failThread), que decide qué hacer.
 async function recomputeSessionStatus(sessionId) {
   const session = await getSession(sessionId);
-  if (!session || session.status === 'paused' || session.status === 'error') return;
+  if (!session || session.status === 'paused') return;
 
-  const { rows: threads } = await db.query(`SELECT status FROM ai_scan_threads WHERE session_id=$1`, [sessionId]);
+  const { rows: threads } = await db.query(`SELECT status, parent_thread_id FROM ai_scan_threads WHERE session_id=$1`, [sessionId]);
   if (!threads.length) return;
+  const primary = threads.find(t => !t.parent_thread_id);
 
   let next;
   if (threads.some(t => t.status === 'waiting_approval')) next = 'waiting_approval';
   else if (threads.some(t => t.status === 'running'))      next = 'running';
-  else if (threads.some(t => t.status === 'error'))        next = 'error';
+  else if (primary?.status === 'error')                    next = 'error';
   else if (threads.every(t => t.status === 'completed'))   next = 'completed';
   else next = 'idle';
 
@@ -374,16 +421,47 @@ function eventsToMessages(events) {
   let assistantSeen = 0;
   let omittedNoted = false;
 
+  // Ambos proveedores exigen que cada tool_use vaya seguido INMEDIATAMENTE
+  // de su tool_result (400 si no). Pero un chat.message o subagent.reported
+  // puede persistirse mientras una tool está ejecutando, quedando entre la
+  // llamada y su resultado — esos mensajes se difieren hasta después del
+  // resultado. Y una llamada sin resultado (crash o interrupt a mitad de la
+  // tool) recibe un resultado sintético de error, en vez de dejar un
+  // tool_use huérfano que rompe el historial para siempre. Solo advance()
+  // arma mensajes, y solo con el thread `running` — una llamada que espera
+  // aprobación (thread `waiting_approval`) nunca pasa por acá, así que toda
+  // llamada pendiente que se ve acá es realmente huérfana.
   const messages = [];
+  let pending = null;   // call_id (string) del tool_use emitido que espera su resultado
+  let pendingName = null;
+  let deferred = [];
+
+  const emit = msg => (pending ? deferred.push(msg) : messages.push(msg));
+  const closePending = () => {
+    if (!pending) return;
+    messages.push({ role: 'tool', toolCallId: pending, name: pendingName, result: { error: 'interrupted, no result — this call did not complete (it may or may not have reached the target). Re-run it if you still need it.' } });
+    pending = null;
+    messages.push(...deferred);
+    deferred = [];
+  };
+
   for (const ev of events) {
     if (ev.type === 'chat.message') {
       let text = ev.payload.text;
       if (ev.payload.role === 'assistant') {
         assistantSeen++;
         if (assistantTotal - assistantSeen >= KEEP_FULL_ASSISTANT_MESSAGES) text = clip(text || '', OLD_ASSISTANT_MESSAGE_CHARS);
+        // El asistente no habla con una tool a medio responder: la llamada
+        // pendiente quedó huérfana.
+        closePending();
+        messages.push({ role: 'assistant', content: text });
+      } else {
+        emit({ role: ev.payload.role, content: text });
       }
-      messages.push({ role: ev.payload.role, content: text });
     } else if (ev.type === 'tool.called') {
+      // Las llamadas son secuenciales dentro de un loop: si llega otra con
+      // una pendiente, la anterior nunca va a tener resultado.
+      closePending();
       const tier = tierOf(ev.id);
       if (tier === 'omitted') {
         if (!omittedNoted) {
@@ -392,22 +470,38 @@ function eventsToMessages(events) {
         }
         continue;
       }
-      messages.push({ role: 'assistant', toolCalls: [{ id: String(ev.id), name: ev.payload.name, input: tier === 'full' ? ev.payload.input : compactToolInput(ev.payload.input) }] });
+      const msg = { role: 'assistant', toolCalls: [{ id: String(ev.id), name: ev.payload.name, input: tier === 'full' ? ev.payload.input : compactToolInput(ev.payload.input) }] };
+      // Modelos con "thinking" (DeepSeek, Kimi...) exigen recibir de vuelta
+      // el reasoning_content de sus turnos con tool calls.
+      if (typeof ev.payload.reasoning_content === 'string') {
+        msg.reasoningContent = tier === 'full' ? ev.payload.reasoning_content : clip(ev.payload.reasoning_content, SUMMARY_PREVIEW_CHARS);
+      }
+      messages.push(msg);
+      pending = String(ev.id);
+      pendingName = ev.payload.name;
     } else if (ev.type === 'tool.result') {
-      const tier = tierOf(ev.payload.call_id);
+      const callId = String(ev.payload.call_id);
+      const tier = tierOf(callId);
       if (tier === 'omitted') continue;
+      // Un resultado que no responde a la llamada pendiente (ya respondida con
+      // el sintético, o de otro thread) sería un tool_result sin tool_use.
+      if (callId !== pending) continue;
       const result = compactToolResult(ev.payload, tier === 'full' ? MAX_TOOL_RESULT_CHARS : SUMMARY_PREVIEW_CHARS);
-      messages.push({ role: 'tool', toolCallId: String(ev.payload.call_id), name: ev.payload.name, result });
+      messages.push({ role: 'tool', toolCallId: callId, name: ev.payload.name, result });
+      pending = null;
+      messages.push(...deferred);
+      deferred = [];
     } else if (ev.type === 'thread.started') {
-      messages.push({ role: 'user', content: `[task assigned by lead]: ${ev.payload.task}` });
+      emit({ role: 'user', content: `[task assigned by lead]: ${ev.payload.task}` });
     } else if (ev.type === 'subagent.reported') {
-      messages.push({ role: 'user', content: `[sub-agent "${ev.payload.label}" reported back]: ${ev.payload.summary}` });
+      emit({ role: 'user', content: `[sub-agent "${ev.payload.label}" reported back]: ${ev.payload.summary}` });
     } else if (ev.type === 'turn.checkpoint') {
-      messages.push({ role: 'user', content: ev.payload.auto
+      emit({ role: 'user', content: ev.payload.auto
         ? `[system checkpoint]: ${ev.payload.calls} tool calls in a row — continuing automatically, no need to acknowledge this, just keep working.`
         : `[system checkpoint]: you were automatically paused after ${ev.payload.calls} tool calls in a row, to avoid an unbounded loop — not because anything went wrong. If asked to continue, pick up exactly where you left off.` });
     }
   }
+  closePending();
 
   // Bug real encontrado en vivo: una sesión arrancada SIN instrucción
   // inicial (campo vacío al hacer "Iniciar scan") deja `session.started`
@@ -435,10 +529,13 @@ function eventsToMessages(events) {
 // pentester — nombres de tool y JSON quedan como están siempre.
 const RESPONSE_LANGUAGE_NAMES = { es: 'Spanish (Español)', en: 'English' };
 
-function buildSystemPrompt(project, thread, session) {
+function buildSystemPrompt(project, thread, session, scopedTargetId = null) {
   const base = [
     'You are a senior penetration testing assistant working inside Flowdit, a pentest reporting tool.',
     `Current project: "${project.name}".`,
+    // Sin esto el modelo no sabía que la sesión/sub-agente tenía un target
+    // asignado — las tools ahora rechazan cualquier otro (ver assertTargetInScope).
+    ...(scopedTargetId ? [`This ${thread.parent_thread_id ? 'sub-agent' : 'session'} is scoped to a single target: target_id "${scopedTargetId}". Only act against that target — tools refuse any other target_id.`] : []),
     `Always write your responses — chat messages, sub-agent reports, and every text field inside a proposed finding (name, description, remediation) — in ${RESPONSE_LANGUAGE_NAMES[session?.response_language] || RESPONSE_LANGUAGE_NAMES.es}. Tool names and JSON keys are never translated.`,
     'Always call get_targets_in_scope before proposing or attempting any action against a target — never act outside the authorized engagement scope. This is a hard boundary, not a matter of judgment, and it applies in every mode below.',
     'Call get_existing_findings and search_vuln_templates before writing up a new finding, to avoid duplicating existing work and to reuse standard descriptions/remediation text.',
@@ -498,8 +595,13 @@ function buildSystemPrompt(project, thread, session) {
 // resolveGatedCall(). Opera sobre UN thread; sesión y thread son guards
 // independientes (ver el chequeo doble al principio).
 async function advance(sessionId, threadId) {
+  const gen = currentGeneration(threadId);
+  const stale = () => currentGeneration(threadId) !== gen;
+
+  // `error` de sesión ya no frena: lo que manda es el status del propio
+  // thread (ver recomputeSessionStatus).
   const session = await getSession(sessionId);
-  if (!session || session.status === 'paused' || session.status === 'error' || session.status === 'completed') return;
+  if (!session || session.status === 'paused' || session.status === 'completed') return;
 
   const thread = await getThread(threadId);
   if (!thread || thread.status !== 'running') return;
@@ -547,14 +649,18 @@ async function advance(sessionId, threadId) {
   // autónomo los checkpoints se auto-continúan, así que si los frenos
   // anti-loop se reiniciaran en cada uno, la misma llamada podía repetirse
   // 3 veces cada 80 — hasta 18 veces seguidas antes de que alguien se entere.
+  // Solo un mensaje del PENTESTER (o el inicio del sub-thread) abre corrida
+  // nueva: un reporte de sub-agente o una respuesta del propio agente no,
+  // si no el coordinador reiniciaba los topes con cada reporte que recibía.
   let runStart = 0;
   for (let i = eventRows.length - 1; i >= 0; i--) {
-    const t = eventRows[i].type;
-    if (t === 'chat.message' || t === 'thread.started' || t === 'subagent.reported') {
+    const ev = eventRows[i];
+    if ((ev.type === 'chat.message' && ev.payload.role === 'user') || ev.type === 'thread.started') {
       runStart = i + 1;
       break;
     }
   }
+  const snapshotMaxId = eventRows.reduce((max, e) => Math.max(max, Number(e.id)), 0);
 
   if (iterationsThisTurn >= MAX_ITERATIONS_PER_TURN) {
     // Pedido explícito: "eso de decirle continuá también me parece
@@ -578,6 +684,7 @@ async function advance(sessionId, threadId) {
     }
 
     const willAutoContinue = effective.ai_autonomous_requests && consecutiveCheckpoints < MAX_AUTO_CHECKPOINTS;
+    if (stale()) return;
     const ev = await persistEvent(sessionId, threadId, 'turn.checkpoint', { calls: iterationsThisTurn, auto: willAutoContinue });
 
     if (willAutoContinue) {
@@ -586,6 +693,7 @@ async function advance(sessionId, threadId) {
       // es el agente pausando un instante para no acumular un turno
       // interminable en el historial.
       broadcast(session.project_id, sessionId, session.status, ev);
+      if (stale()) return;
       return advance(sessionId, threadId);
     }
 
@@ -605,7 +713,7 @@ async function advance(sessionId, threadId) {
       // mismo mecanismo que ya existe para un final normal.
       await reportToParent(session, thread, `[ran out of autonomous budget after ${consecutiveCheckpoints + 1} checkpoints (~${(consecutiveCheckpoints + 1) * MAX_ITERATIONS_PER_TURN} tool calls) before finishing — report what was found/attempted so far, the lead should review and decide whether to delegate more work]`);
     } else {
-      await notifyNeedsAttention(session, project, `El AI Agent llegó al límite de trabajo autónomo continuo (~${(consecutiveCheckpoints + 1) * MAX_ITERATIONS_PER_TURN} tool calls) y necesita que revises la sesión.`);
+      await notifyNeedsAttention(session, project, attentionMessage(session, 'budget', { calls: (consecutiveCheckpoints + 1) * MAX_ITERATIONS_PER_TURN }));
     }
     return;
   }
@@ -627,6 +735,7 @@ async function advance(sessionId, threadId) {
     const spent = Number(costRows[0].spent) || 0;
     const cap = Number(session.ai_max_cost_usd);
     if (spent >= cap) {
+      if (stale()) return;
       const ev = await persistEvent(sessionId, threadId, 'session.cost_cap_reached', { cap, spent });
       await setThreadStatus(threadId, 'idle');
       await recomputeSessionStatus(sessionId);
@@ -635,7 +744,7 @@ async function advance(sessionId, threadId) {
       if (thread.parent_thread_id) {
         await reportToParent(session, thread, `[stopped: this session's $${cap.toFixed(2)} cost cap was reached (spent $${spent.toFixed(4)}) — report what was found/attempted so far, the lead should review]`);
       } else {
-        await notifyNeedsAttention(session, project, `El AI Agent paró: se alcanzó el tope de gasto de la sesión ($${cap.toFixed(2)}, gastado $${spent.toFixed(4)}).`);
+        await notifyNeedsAttention(session, project, attentionMessage(session, 'cost', { cap: cap.toFixed(2), spent: spent.toFixed(4) }));
       }
       return;
     }
@@ -652,13 +761,15 @@ async function advance(sessionId, threadId) {
   const allowDelegation = !thread.parent_thread_id && !effective.ai_single_agent;
   const tools = allowDelegation ? [...BASE_TOOL_REGISTRY, DELEGATE_TOOL] : BASE_TOOL_REGISTRY;
 
+  const scopedTargetId = scopedTargetIdFor(session, eventRows);
+
   const controller = new AbortController();
   activeAborts.set(threadId, controller);
 
   let result;
   try {
     result = await ai.chatWithTools(effective.ai_provider, {
-      systemPrompt: buildSystemPrompt(effective, thread, session),
+      systemPrompt: buildSystemPrompt(effective, thread, session, scopedTargetId),
       messages: eventsToMessages(eventRows),
       tools,
       model: effective.ai_model || undefined,
@@ -671,19 +782,18 @@ async function advance(sessionId, threadId) {
     // SDK de Anthropic, no verificado) — cancelación intencional vía
     // interrupt(), que ya hizo la transición de estado; no tocar nada más.
     if (err.name === 'AbortError' || err.name === 'APIUserAbortError') return;
+    // Otro loop ya tomó este thread — este error no es de él.
+    if (stale()) return;
     console.error('agentLoop error:', err.message);
     // anthropic.js encadena el error real vía `{ cause: err }` — antes esto
     // solo leía err.message y lo perdía. openaiCompatible.js ya mete el
     // detalle directo en el mensaje, pero leer .cause acá también cubre
     // cualquier otro adaptador que use el patrón "correcto" de Node.
     const reason = err.cause?.message ? `${err.message}: ${err.cause.message}` : err.message;
-    const ev = await persistEvent(sessionId, threadId, 'session.error', { reason });
-    await setThreadStatus(threadId, 'error');
-    await recomputeSessionStatus(sessionId);
-    broadcast(session.project_id, sessionId, 'error', ev);
+    await failThread(session, thread, reason);
     return;
   } finally {
-    activeAborts.delete(threadId);
+    if (activeAborts.get(threadId) === controller) activeAborts.delete(threadId);
   }
 
   // El scanner nunca logueaba su consumo — solo /ai/generate y /ai/chat lo
@@ -699,6 +809,10 @@ async function advance(sessionId, threadId) {
     sessionId,
   });
 
+  // Interrumpido/pausado mientras esperaba al proveedor: la respuesta ya no
+  // corresponde a este loop.
+  if (stale()) return;
+
   if (result.type === 'text') {
     const ev = await persistEvent(sessionId, threadId, 'chat.message', { role: 'assistant', text: result.text });
     if (thread.parent_thread_id) {
@@ -712,40 +826,76 @@ async function advance(sessionId, threadId) {
       await setThreadStatus(threadId, 'idle');
       await recomputeSessionStatus(sessionId);
       broadcast(session.project_id, sessionId, 'idle', ev);
+      // Un reporte de sub-agente (o un mensaje del pentester) que llegó
+      // mientras el proveedor respondía no despertó a nadie — el thread
+      // estaba `running` — y esta respuesta no lo vio. Si quedó alguno
+      // posterior al historial que se mandó, se sigue. El claim atómico evita
+      // duplicar el loop si reportToParent/sendMessage también lo despiertan.
+      const { rows: unseen } = await db.query(
+        `SELECT 1 FROM ai_scan_events
+         WHERE thread_id=$1 AND id > $2
+           AND (type='subagent.reported' OR (type='chat.message' AND payload->>'role'='user'))
+         LIMIT 1`,
+        [threadId, snapshotMaxId]
+      );
+      if (unseen.length && await claimIdleThread(threadId)) {
+        await recomputeSessionStatus(sessionId);
+        if (stale()) return;
+        return advance(sessionId, threadId);
+      }
     }
     return;
   }
 
-  for (const call of result.toolCalls) {
-    const tool = findTool(call.name);
-    if (!tool) {
-      const ev = await persistEvent(sessionId, threadId, 'session.error', { reason: `unknown tool: ${call.name}` });
-      await setThreadStatus(threadId, 'error');
-      await recomputeSessionStatus(sessionId);
-      broadcast(session.project_id, sessionId, 'error', ev);
-      return;
-    }
+  const ctx = { projectId: session.project_id, startedBy: session.started_by, sessionId, threadId, scopedTargetId };
+  const toolNames = tools.map(t => t.name).join(', ');
 
-    const calledEv = await persistEvent(sessionId, threadId, 'tool.called', { name: tool.name, input: call.input, tier: tool.tier });
+  for (const [callIndex, call] of result.toolCalls.entries()) {
+    if (stale()) return;
+    // Solo las tools OFRECIDAS en esta llamada: delegate_to_subagent no
+    // existe para un sub-agente ni en modo single-agent aunque el modelo la
+    // nombre igual (en modo texto lo puede escribir sin que se la ofrezcan).
+    const tool = tools.find(t => t.name === call.name);
+    const input = call.invalidArguments !== undefined
+      ? { _invalid_arguments: clip(String(call.invalidArguments), 500) }
+      : (call.input ?? {});
+
+    const calledPayload = { name: call.name, input, tier: tool ? tool.tier : null };
+    // reasoning_content va una sola vez por respuesta (en la primera
+    // llamada); las demás llevan '' para que el campo siga presente.
+    if (typeof result.reasoningContent === 'string') calledPayload.reasoning_content = callIndex === 0 ? result.reasoningContent : '';
+    const calledEv = await persistEvent(sessionId, threadId, 'tool.called', calledPayload);
     eventRows.push(calledEv);
 
     // `calledEv` ya está en eventRows, así que los conteos incluyen esta
     // llamada: la firma exacta se bloquea en la 3ra, la ruta en la 16ta.
-    const duplicateCount = countMatchingCalls(eventRows, runStart, toolCallSignature(tool.name, call.input));
-    const pathSig = pathReadSignature(tool.name, call.input);
+    // También aplica a tools desconocidas y argumentos inválidos: si no,
+    // un modelo trabado repitiendo la misma llamada rota no frenaría nunca.
+    const duplicateCount = countMatchingCalls(eventRows, runStart, toolCallSignature(call.name, input));
+    const pathSig = pathReadSignature(call.name, input);
     const pathReads = pathSig ? countMatchingCalls(eventRows, runStart, pathSig, pathReadSignature) : 0;
     let blockedReason = null;
     if (duplicateCount >= MAX_DUPLICATE_CALLS_PER_TURN) {
-      blockedReason = `Blocked: you already called ${tool.name} with these exact same arguments ${duplicateCount} times in this run (not necessarily back to back — alternating with other calls does not reset this), always with the same result. Repeating it again will not produce new information — try a materially different approach (a different path, parameter, or technique), or if you've exhausted what this avenue has to offer, move on to something else or conclude with a summary of what you found.`;
+      blockedReason = `Blocked: you already called ${call.name} with these exact same arguments ${duplicateCount} times in this run (not necessarily back to back — alternating with other calls does not reset this), always with the same result. Repeating it again will not produce new information — try a materially different approach (a different path, parameter, or technique), or if you've exhausted what this avenue has to offer, move on to something else or conclude with a summary of what you found.`;
     } else if (pathReads > MAX_PATH_READS_PER_RUN) {
-      blockedReason = `Blocked: you already read ${normalizeEndpointPath(call.input.path)} on this target ${pathReads - 1} times in this run (query-string variants and pagination offsets count as the same path). Changing cache-busters, page sizes or offsets is not new attack surface. To look for something specific in a large file (JS bundle, source map), use search_page_source with a regex instead of paging through it. Otherwise move on to other paths, or conclude with a summary of what you found.`;
+      blockedReason = `Blocked: you already read ${normalizeEndpointPath(input.path)} on this target ${pathReads - 1} times in this run (query-string variants and pagination offsets count as the same path). Changing cache-busters, page sizes or offsets is not new attack surface. To look for something specific in a large file (JS bundle, source map), use search_page_source with a regex instead of paging through it. Otherwise move on to other paths, or conclude with a summary of what you found.`;
+    } else if (!tool) {
+      // Antes era un session.error fatal: un solo nombre mal escrito mataba
+      // el thread. Como resultado de error, el modelo se corrige solo.
+      blockedReason = `unknown tool "${call.name}" — it is not available to you here. Available tools: ${toolNames}`;
+    } else if (call.invalidArguments !== undefined) {
+      blockedReason = `invalid JSON arguments for ${call.name} — the arguments must be a single valid JSON object matching the tool's input schema. Call it again with valid JSON.`;
+    } else if (tool.name === 'propose_finding') {
+      // Antes de pedir aprobación: un duplicado no debería ni llegar al gate.
+      const dup = await findDuplicateFinding(session.project_id, input);
+      if (dup) blockedReason = `A finding named "${dup.name}" already exists for this target (id ${dup.id}) — it was not created again. Use update_finding with finding_id "${dup.id}" to add evidence or refine it.`;
     }
     if (blockedReason) {
       // Bloqueado antes de ejecutar — ni gasta el request real ni espera
       // aprobación de un gate para algo que ya sabemos que es un loop.
       broadcast(session.project_id, sessionId, session.status, calledEv);
       const resultEv = await persistEvent(sessionId, threadId, 'tool.result', {
-        call_id: calledEv.id, name: tool.name,
+        call_id: calledEv.id, name: call.name,
         result: { error: blockedReason },
       });
       eventRows.push(resultEv);
@@ -762,7 +912,7 @@ async function advance(sessionId, threadId) {
       // literalmente se frenó a pedir permiso. No hace falta await, no
       // debe demorar el frenado real (ya pasó arriba).
       if (!thread.parent_thread_id) {
-        notifyNeedsAttention(session, project, `El AI Agent quiere ejecutar "${tool.name}" y necesita tu aprobación.`)
+        notifyNeedsAttention(session, project, attentionMessage(session, 'approval', { tool: tool.name }))
           .catch(err => console.error('notifyNeedsAttention failed:', err.message));
       }
       return; // frena este thread — se retoma vía resolveGatedCall()
@@ -780,31 +930,106 @@ async function advance(sessionId, threadId) {
       // evento (o vos leyéndolo) lo entienda igual sea gated o autónomo.
       try {
         const vulnId = tool.name === 'propose_finding'
-          ? await createFindingFromProposal(session.project_id, call.input, session.started_by, session.id)
-          : await updateFindingFromProposal(session.project_id, call.input, session.started_by);
+          ? await createFindingFromProposal(session.project_id, input, session.started_by, session.id)
+          : await updateFindingFromProposal(session.project_id, input, session.started_by);
         output = { decision: 'accepted', created_vuln_id: vulnId };
       } catch (err) {
         output = { decision: 'accepted', error: `failed to ${tool.name === 'propose_finding' ? 'create' : 'update'} finding: ${err.message}` };
       }
     } else {
       try {
-        output = await tool.execute(call.input, { projectId: session.project_id, startedBy: session.started_by, sessionId, threadId });
+        output = await tool.execute(input, ctx);
       } catch (err) {
         output = { error: err.message };
       }
     }
+    // El resultado se persiste aunque este loop haya quedado viejo: la tool
+    // YA corrió (el request llegó al target) y el log es también auditoría.
+    // Si otro loop ya tomó el thread, eventsToMessages ubica o descarta este
+    // resultado sin romper el pareo; lo que no se hace es seguir el loop.
     const resultEv = await persistEvent(sessionId, threadId, 'tool.result', { call_id: calledEv.id, name: tool.name, result: output });
     broadcast(session.project_id, sessionId, session.status, resultEv);
+    if (stale()) return;
   }
 
+  if (stale()) return;
   return advance(sessionId, threadId);
+}
+
+// Thread idle → running de forma atómica; true si este caller lo despertó.
+// Varios disparadores (reporte de sub-agente, mensaje del pentester, el
+// propio loop al terminar) pueden intentar despertarlo a la vez.
+async function claimIdleThread(threadId) {
+  const { rows } = await db.query(
+    `UPDATE ai_scan_threads SET status='running' WHERE id=$1 AND status='idle' RETURNING id`,
+    [threadId]
+  );
+  return rows.length > 0;
+}
+
+// Target al que está acotado un thread: el del sub-agente (thread.started)
+// o, si no tiene, el de la sesión. null = todo el scope del proyecto.
+function scopedTargetIdFor(session, eventRows) {
+  const started = eventRows.find(e => e.type === 'thread.started');
+  return started?.payload?.target_id || session.target_id || null;
+}
+
+async function loadScopedTargetId(session, threadId) {
+  const { rows } = await db.query(
+    `SELECT * FROM ai_scan_events WHERE thread_id=$1 AND type='thread.started' ORDER BY id LIMIT 1`,
+    [threadId]
+  );
+  return scopedTargetIdFor(session, rows);
+}
+
+// Un thread que muere en error. Si es un sub-agente, el coordinador se
+// entera por un reporte (si no, lo esperaba para siempre) y decide.
+async function failThread(session, thread, reason) {
+  const ev = await persistEvent(session.id, thread.id, 'session.error', { reason });
+  await setThreadStatus(thread.id, 'error');
+  await recomputeSessionStatus(session.id);
+  const after = await getSession(session.id);
+  broadcast(session.project_id, session.id, after?.status || 'error', ev);
+  if (thread.parent_thread_id) {
+    await reportToParent(session, thread, `[failed: this sub-agent stopped with an error before finishing — ${reason}. Whatever it did before the error is still recorded (findings, recon); decide whether to delegate the task again or move on]`);
+  }
+}
+
+// Todo advance() que no se awaitea pasa por acá: un throw fuera del
+// try/catch del proveedor (DB caída, bug) antes era una promesa rechazada
+// sin atrapar, que puede tumbar el proceso. Marca el thread en error, salvo
+// que otro loop ya lo haya tomado.
+function advanceSafely(sessionId, threadId) {
+  const gen = currentGeneration(threadId);
+  activeLoops.set(threadId, (activeLoops.get(threadId) || 0) + 1);
+  return advance(sessionId, threadId)
+    .catch(async err => {
+      console.error('agentLoop.advance failed:', err.message);
+      try {
+        if (currentGeneration(threadId) !== gen) return;
+        const [session, thread] = await Promise.all([getSession(sessionId), getThread(threadId)]);
+        if (session && thread && thread.status === 'running') await failThread(session, thread, `internal error: ${err.message}`);
+      } catch (e) {
+        console.error('agentLoop: could not mark thread as error:', e.message);
+      }
+    })
+    .finally(() => {
+      const n = (activeLoops.get(threadId) || 1) - 1;
+      if (n > 0) activeLoops.set(threadId, n); else activeLoops.delete(threadId);
+    });
+}
+
+function launchAdvance(sessionId, threadId) {
+  advanceSafely(sessionId, threadId); // no await — corre en background, errores ya atrapados
 }
 
 // Cuando un sub-agente termina, deja un evento en el thread PADRE contando
 // qué encontró (no comparten historial completo — el padre solo ve este
 // resumen, igual que un lead que recibe el reporte de un pentester del
 // equipo, no la transcripción entera de su trabajo). Si el padre estaba
-// `idle` esperando, lo despierta.
+// `idle` esperando, lo despierta. Persiste ANTES de mirar el status del
+// padre: si el padre está terminando su turno justo ahora, o ve este
+// reporte al pasar a idle (ver advance()), o lo ve idle acá.
 async function reportToParent(session, thread, summary) {
   const parent = await getThread(thread.parent_thread_id);
   if (!parent) return;
@@ -812,10 +1037,9 @@ async function reportToParent(session, thread, summary) {
   const after = await getSession(session.id);
   broadcast(session.project_id, session.id, after.status, ev);
 
-  if (parent.status === 'idle') {
-    await setThreadStatus(parent.id, 'running');
+  if (await claimIdleThread(parent.id)) {
     await recomputeSessionStatus(session.id);
-    advance(session.id, parent.id);
+    launchAdvance(session.id, parent.id);
   }
 }
 
@@ -851,15 +1075,44 @@ const DELEGATE_TOOL = {
     if (caller.parent_thread_id) {
       return { error: 'sub-agent threads cannot delegate further (one level of delegation only)' };
     }
+    if (typeof input.task !== 'string' || !input.task.trim()) {
+      return { error: 'task is required' };
+    }
+    // Un sub-agente no puede salirse del target de la sesión, y su target
+    // tiene que existir en el proyecto (si no, quedaba "acotado" a nada).
+    let targetId = input.target_id || null;
+    if (targetId) {
+      if (ctx.scopedTargetId && targetId !== ctx.scopedTargetId) {
+        return { error: `this session is scoped to target_id "${ctx.scopedTargetId}" — a sub-agent cannot be assigned another target` };
+      }
+      if (!(await targetBelongsToProject(targetId, ctx.projectId))) {
+        return { error: 'target_id does not belong to this project' };
+      }
+    } else {
+      targetId = ctx.scopedTargetId || null;
+    }
+    // Tope de fan-out: sin esto un modelo podía crear sub-agentes sin límite,
+    // cada uno con su propio loop pagando llamadas al proveedor en paralelo.
+    const { rows: counts } = await db.query(
+      `SELECT COUNT(*) FILTER (WHERE status IN ('running','waiting_approval'))::int AS active, COUNT(*)::int AS total
+       FROM ai_scan_threads WHERE session_id=$1 AND parent_thread_id IS NOT NULL`,
+      [ctx.sessionId]
+    );
+    if (counts[0].active >= MAX_ACTIVE_SUBAGENTS) {
+      return { error: `too many active sub-agents (${counts[0].active}, max ${MAX_ACTIVE_SUBAGENTS}) — wait for some to report back before delegating more, or do this task yourself` };
+    }
+    if (counts[0].total >= MAX_TOTAL_SUBAGENTS) {
+      return { error: `sub-agent limit reached for this session (${MAX_TOTAL_SUBAGENTS} in total) — do the remaining work yourself` };
+    }
     const { rows } = await db.query(
       `INSERT INTO ai_scan_threads (session_id, parent_thread_id, label, status) VALUES ($1,$2,$3,'running') RETURNING *`,
       [ctx.sessionId, ctx.threadId, input.task.slice(0, 200)]
     );
     const newThread = rows[0];
     const session = await getSession(ctx.sessionId);
-    const ev = await persistEvent(ctx.sessionId, newThread.id, 'thread.started', { task: input.task, target_id: input.target_id || null });
+    const ev = await persistEvent(ctx.sessionId, newThread.id, 'thread.started', { task: input.task, target_id: targetId });
     broadcast(session.project_id, ctx.sessionId, session.status, ev);
-    advance(ctx.sessionId, newThread.id); // no await — corre en paralelo al caller
+    launchAdvance(ctx.sessionId, newThread.id); // corre en paralelo al caller
     return { thread_id: newThread.id, status: 'started' };
   },
 };
@@ -872,6 +1125,22 @@ const DELEGATE_TOOL = {
 // updateFindingFromProposal): publishing to the client portal is a lead-only
 // action (owner/editor) done by a human, so an agent run by a pentester — or by
 // anyone — can never publish a finding. New rows get the column default (false).
+// Encontrado en vivo: el agente proponía el mismo hallazgo varias veces (en
+// turnos distintos, o desde sub-agentes en paralelo). Mismo nombre ignorando
+// mayúsculas y espacios, mismo proyecto y mismo target = el mismo hallazgo.
+async function findDuplicateFinding(projectId, input) {
+  if (typeof input?.name !== 'string' || !input.name.trim()) return null;
+  const targetId = await targetBelongsToProject(input.target_id || null, projectId);
+  const { rows } = await db.query(
+    `SELECT id, name FROM custom_vulns
+     WHERE project_id=$1 AND target_id IS NOT DISTINCT FROM $2
+       AND lower(btrim(regexp_replace(name, '\\s+', ' ', 'g'))) = lower(btrim(regexp_replace($3, '\\s+', ' ', 'g')))
+     ORDER BY created_at LIMIT 1`,
+    [projectId, targetId, input.name]
+  );
+  return rows[0] || null;
+}
+
 async function createFindingFromProposal(projectId, input, approvedBy, sessionId = null) {
   const validTargetId = await targetBelongsToProject(input.target_id || null, projectId);
   const { rows } = await db.query(
@@ -988,7 +1257,8 @@ async function updateFindingFromProposal(projectId, input, approvedBy) {
 // Se llama cuando el pentester aprueba/rechaza una tool call en gate. El
 // thread se deriva del propio evento tool.called (calledEv.thread_id) — el
 // caller (ws.js) no necesita saber a qué thread pertenece un call_id.
-// Idempotente: ignora si ese call_id ya tiene un tool.result.
+// Idempotente: ignora si ese call_id ya tiene un tool.result, o si no es la
+// llamada que el thread está esperando.
 async function resolveGatedCall(sessionId, callId, decision, userId, extra = {}) {
   const { rows: callRows } = await db.query(
     `SELECT * FROM ai_scan_events WHERE id=$1 AND session_id=$2 AND type='tool.called'`,
@@ -998,14 +1268,29 @@ async function resolveGatedCall(sessionId, callId, decision, userId, extra = {})
   if (!calledEv) return;
 
   const threadId = calledEv.thread_id;
-  const thread = await getThread(threadId);
-  if (!thread || thread.status !== 'waiting_approval') return;
-
   const { rows: existingResult } = await db.query(
     `SELECT 1 FROM ai_scan_events WHERE session_id=$1 AND type='tool.result' AND payload->>'call_id'=$2`,
     [sessionId, String(callId)]
   );
   if (existingResult.length) return;
+  // Solo la ÚLTIMA llamada del thread puede ser la que espera aprobación —
+  // una más vieja sin resultado quedó huérfana, aprobarla no corresponde.
+  const { rows: laterCalls } = await db.query(
+    `SELECT 1 FROM ai_scan_events WHERE thread_id=$1 AND type='tool.called' AND id > $2 LIMIT 1`,
+    [threadId, calledEv.id]
+  );
+  if (laterCalls.length) return;
+
+  // Claim atómico: antes era chequear-y-después-actuar, y dos aprobaciones
+  // casi simultáneas (doble click, dos pestañas, dos pentesters) ejecutaban
+  // la tool dos veces. Solo quien pasa el thread de waiting_approval a
+  // running sigue; el thread ya queda `running` mientras la tool corre.
+  const { rows: claimed } = await db.query(
+    `UPDATE ai_scan_threads SET status='running' WHERE id=$1 AND status='waiting_approval' RETURNING id`,
+    [threadId]
+  );
+  if (!claimed.length) return;
+  await recomputeSessionStatus(sessionId);
 
   const session = await getSession(sessionId);
   const tool = findTool(calledEv.payload.name);
@@ -1019,29 +1304,34 @@ async function resolveGatedCall(sessionId, callId, decision, userId, extra = {})
       // de edición previa propio, se acepta o se rechaza tal cual.)
       output = { decision: 'accepted', created_vuln_id: extra.created_vuln_id };
     } else {
-      try {
-        const vulnId = calledEv.payload.name === 'propose_finding'
-          ? await createFindingFromProposal(session.project_id, calledEv.payload.input, userId, session.id)
-          : await updateFindingFromProposal(session.project_id, calledEv.payload.input, userId);
-        output = { decision: 'accepted', created_vuln_id: vulnId };
-      } catch (err) {
-        output = { decision: 'accepted', error: `failed to ${calledEv.payload.name === 'propose_finding' ? 'create' : 'update'} finding: ${err.message}` };
+      // Pudo crearse uno igual mientras esperaba aprobación.
+      const dup = calledEv.payload.name === 'propose_finding' ? await findDuplicateFinding(session.project_id, calledEv.payload.input) : null;
+      if (dup) {
+        output = { decision: 'accepted', error: `A finding named "${dup.name}" already exists for this target (id ${dup.id}) — it was not created again. Use update_finding with finding_id "${dup.id}" to add evidence or refine it.` };
+      } else {
+        try {
+          const vulnId = calledEv.payload.name === 'propose_finding'
+            ? await createFindingFromProposal(session.project_id, calledEv.payload.input, userId, session.id)
+            : await updateFindingFromProposal(session.project_id, calledEv.payload.input, userId);
+          output = { decision: 'accepted', created_vuln_id: vulnId };
+        } catch (err) {
+          output = { decision: 'accepted', error: `failed to ${calledEv.payload.name === 'propose_finding' ? 'create' : 'update'} finding: ${err.message}` };
+        }
       }
     }
   } else {
     try {
-      output = { decision: 'accepted', result: await tool.execute(calledEv.payload.input, { projectId: session.project_id, startedBy: session.started_by, sessionId, threadId }) };
+      const scopedTargetId = await loadScopedTargetId(session, threadId);
+      output = { decision: 'accepted', result: await tool.execute(calledEv.payload.input, { projectId: session.project_id, startedBy: session.started_by, sessionId, threadId, scopedTargetId }) };
     } catch (err) {
       output = { decision: 'accepted', error: err.message };
     }
   }
 
   const resultEv = await persistEvent(sessionId, threadId, 'tool.result', { call_id: callId, name: calledEv.payload.name, ...output }, userId || null);
-  await setThreadStatus(threadId, 'running');
-  await recomputeSessionStatus(sessionId);
   const after = await getSession(sessionId);
   broadcast(session.project_id, sessionId, after.status, resultEv);
-  return advance(sessionId, threadId);
+  return advanceSafely(sessionId, threadId);
 }
 
 // ── Pause / resume / interrupt / chat ───────────────────────────────────
@@ -1053,6 +1343,9 @@ async function resolveGatedCall(sessionId, callId, decision, userId, extra = {})
 async function interrupt(sessionId) {
   const primary = await getPrimaryThread(sessionId);
   if (!primary) return;
+  // Bump antes de abortar: el loop en curso (esperando al proveedor o
+  // ejecutando una tool) abandona en su próximo chequeo.
+  bumpGeneration(primary.id);
   const controller = activeAborts.get(primary.id);
   if (controller) controller.abort();
   // Transición atómica — mismo motivo que en la versión de un solo thread:
@@ -1077,7 +1370,7 @@ async function pause(sessionId) {
   // tal cual estaba (típicamente `running`) — abortar no lo cambia, así
   // que `resume()` lo retoma solo, leyendo el historial ya persistido.
   const { rows: threads } = await db.query(`SELECT id FROM ai_scan_threads WHERE session_id=$1`, [sessionId]);
-  threads.forEach(t => activeAborts.get(t.id)?.abort());
+  threads.forEach(t => { bumpGeneration(t.id); activeAborts.get(t.id)?.abort(); });
   broadcast(session.project_id, sessionId, 'paused', { type: 'session.paused', payload: {}, created_at: new Date().toISOString() });
 }
 
@@ -1097,7 +1390,7 @@ async function resume(sessionId) {
   const after = await getSession(sessionId);
   broadcast(session.project_id, sessionId, after.status, { type: 'session.resumed', payload: {}, created_at: new Date().toISOString() });
   const { rows: runningThreads } = await db.query(`SELECT id FROM ai_scan_threads WHERE session_id=$1 AND status='running'`, [sessionId]);
-  runningThreads.forEach(t => advance(sessionId, t.id));
+  runningThreads.forEach(t => launchAdvance(sessionId, t.id));
 }
 
 // Bug real (retest de EncuestaQR): la API se quedó sin fondos, la llamada
@@ -1107,7 +1400,7 @@ async function resume(sessionId) {
 // advance() es una función pura del historial persistido: reintentar es
 // simplemente volver a llamarla. Revive TODOS los threads en `error`: el
 // primario pasa a `primaryStatus`, los sub-agentes directo a `running`.
-// Relanza advance() en todo thread que quede `running`. Devuelve cuántos
+// No lanza nada — cada caller relanza lo que corresponde. Devuelve cuántos
 // threads revivió.
 async function reviveErroredThreads(session, primaryId, primaryStatus) {
   const { rows: revived } = await db.query(
@@ -1116,23 +1409,31 @@ async function reviveErroredThreads(session, primaryId, primaryStatus) {
     [session.id, primaryId, primaryStatus]
   );
   if (!revived.length) return 0;
-  // Mismo truco que resume(): recomputeSessionStatus() no toca una sesión
-  // en `error`, así que hay que sacarla de ahí antes de recalcular.
-  if (session.status === 'error') await setSessionStatus(session.id, 'idle');
   await recomputeSessionStatus(session.id);
-  revived.filter(t => t.status === 'running').forEach(t => advance(session.id, t.id));
   return revived.length;
+}
+
+// Threads `running` sin ningún loop vivo — los revividos recién, o los que
+// quedaron trabados (p.ej. despertados mientras la sesión estaba en error).
+async function relaunchStalledThreads(sessionId) {
+  const { rows } = await db.query(`SELECT id FROM ai_scan_threads WHERE session_id=$1 AND status='running'`, [sessionId]);
+  const stalled = rows.filter(t => !activeLoops.has(t.id));
+  stalled.forEach(t => launchAdvance(sessionId, t.id));
+  return stalled.length;
 }
 
 // Botón "Reintentar" — mismo revive que un mensaje de chat, pero sin
 // mensaje nuevo: el primario vuelve directo a `running` y retoma el turno
-// que falló, leyendo el historial ya persistido.
+// que falló, leyendo el historial ya persistido. Relanza TODO thread que
+// debería estar corriendo, el primario incluido, no solo los revividos.
 async function retry(sessionId) {
   const session = await getSession(sessionId);
   if (!session || session.status === 'paused') return;
   const primary = await getPrimaryThread(sessionId);
   if (!primary) return;
-  if (!(await reviveErroredThreads(session, primary.id, 'running'))) return;
+  const revived = await reviveErroredThreads(session, primary.id, 'running');
+  const relaunched = await relaunchStalledThreads(sessionId);
+  if (!revived && !relaunched) return;
   const after = await getSession(sessionId);
   broadcast(session.project_id, sessionId, after.status, { type: 'session.resumed', payload: {}, created_at: new Date().toISOString() });
 }
@@ -1164,9 +1465,12 @@ async function sendMessage(sessionId, userId, text) {
 
   const ev = await persistEvent(sessionId, primary.id, 'chat.message', { role: 'user', text }, userId);
 
-  const wakesPrimary = primary.status === 'idle';
+  // Persistir ANTES de despertar, con claim atómico: si el primario está
+  // terminando su turno justo ahora, o ve este mensaje al pasar a idle (ver
+  // advance()) o lo despierta este claim — el mensaje nunca se pierde.
+  const wakesPrimary = await claimIdleThread(primary.id);
   if (wakesPrimary) {
-    await setThreadStatus(primary.id, 'running');
+    bumpGeneration(primary.id);
     await recomputeSessionStatus(sessionId);
   }
   // Broadcast DESPUÉS de pasar a `running` — antes salía con el status viejo
@@ -1174,7 +1478,9 @@ async function sendMessage(sessionId, userId, text) {
   // con el primer evento del agente, no al mandar el mensaje.
   const after = await getSession(sessionId);
   broadcast(session.project_id, sessionId, after.status, ev);
-  if (wakesPrimary) advance(sessionId, primary.id); // no await — corre en background
+  if (wakesPrimary) launchAdvance(sessionId, primary.id);
+  // Sub-agentes revividos arriba (o trabados) — el primario ya se lanzó.
+  await relaunchStalledThreads(sessionId);
   return true;
 }
 
@@ -1195,16 +1501,14 @@ async function resumeOrphanedThreads() {
     `SELECT t.id AS thread_id, t.session_id
      FROM ai_scan_threads t
      JOIN ai_scan_sessions s ON s.id = t.session_id
-     WHERE t.status = 'running' AND s.status NOT IN ('paused', 'error', 'completed')`
+     WHERE t.status = 'running' AND s.status NOT IN ('paused', 'completed')`
   );
-  for (const row of rows) {
-    advance(row.session_id, row.thread_id).catch(err => console.error('resumeOrphanedThreads: advance failed:', err.message));
-  }
+  for (const row of rows) launchAdvance(row.session_id, row.thread_id);
   return rows.length;
 }
 
 module.exports = {
-  eventsToMessages,
+  eventsToMessages, launchAdvance,
   advance, resolveGatedCall, pause, resume, retry, sendMessage, interrupt,
   createSessionWithPrimaryThread, getPrimaryThread, sessionBelongsToProject,
   resumeOrphanedThreads,

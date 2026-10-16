@@ -60,13 +60,17 @@ function toOpenAIMessages(messages) {
       return { role: 'tool', tool_call_id: m.toolCallId, content: JSON.stringify(m.result) };
     }
     if (m.toolCalls) {
-      return {
+      const msg = {
         role: 'assistant',
         tool_calls: m.toolCalls.map(tc => ({
           id: tc.id, type: 'function',
           function: { name: tc.name, arguments: JSON.stringify(tc.input) },
         })),
       };
+      // Solo si el proveedor lo devolvió (modelos "thinking"): DeepSeek
+      // rechaza con 400 un historial con tool calls sin su reasoning_content.
+      if (typeof m.reasoningContent === 'string') msg.reasoning_content = m.reasoningContent;
+      return msg;
     }
     return { role: m.role, content: m.content };
   });
@@ -123,15 +127,17 @@ async function chatCompletionAt({ apiUrl, apiKey, systemPrompt, messages, temper
 // camino nativo de arriba queda intacto sea cual sea este modo.
 function buildToolInstructions(tools) {
   const list = tools.map(t =>
-    `- ${t.name}: ${t.description}\n  parámetros (JSON Schema): ${JSON.stringify(t.input_schema)}`
+    `- ${t.name}: ${t.description}\n  parameters (JSON Schema): ${JSON.stringify(t.input_schema)}`
   ).join('\n');
+  // En inglés, igual que el resto del system prompt (más confiable con
+  // modelos chicos/locales, que son justo los que usan este modo).
   return [
-    'No tenés tool-calling nativo disponible. Para llamar una tool, tu respuesta debe ser EXACTAMENTE esta línea y nada más:',
-    'ACTION: nombre_tool({"clave": "valor"})',
-    'El argumento debe ser JSON válido, en la misma línea, entre paréntesis. Un solo tool call por respuesta — nunca dos ACTION en la misma respuesta.',
-    'Si no necesitás llamar ninguna tool, respondé normalmente en texto plano — no uses el formato ACTION para eso.',
+    'You do not have native tool-calling available. To call a tool, your response must be EXACTLY this line and nothing else:',
+    'ACTION: tool_name({"key": "value"})',
+    'The argument must be valid JSON, on the same line, inside the parentheses. Only one tool call per response — never two ACTION lines in the same response.',
+    'If you do not need to call any tool, answer normally in plain text — do not use the ACTION format for that.',
     '',
-    'Tools disponibles:',
+    'Available tools:',
     list,
   ].join('\n');
 }
@@ -147,7 +153,7 @@ function toTextModeMessages(messages) {
       return { role: 'assistant', content: `ACTION: ${tc.name}(${JSON.stringify(tc.input)})` };
     }
     if (m.role === 'tool') {
-      return { role: 'user', content: `[resultado de ${m.name}]: ${JSON.stringify(m.result)}` };
+      return { role: 'user', content: `[result of ${m.name}]: ${JSON.stringify(m.result)}` };
     }
     return { role: m.role, content: m.content };
   });
@@ -251,11 +257,22 @@ async function chatWithToolsAt({ apiUrl, apiKey, systemPrompt, messages, tools, 
 
   const toolCalls = choice?.message?.tool_calls;
   if (toolCalls?.length) {
-    return {
+    const result = {
       type: 'tool_use',
-      toolCalls: toolCalls.map(tc => ({ id: tc.id, name: tc.function.name, input: JSON.parse(tc.function.arguments || '{}') })),
+      toolCalls: toolCalls.map(tc => {
+        // Un JSON roto en los argumentos antes tiraba acá y mataba el thread
+        // entero; ahora viaja marcado y agentLoop.js le devuelve al modelo un
+        // tool.result de error para que lo corrija.
+        try {
+          const input = JSON.parse(tc.function?.arguments || '{}');
+          if (input && typeof input === 'object' && !Array.isArray(input)) return { id: tc.id, name: tc.function?.name, input };
+        } catch { /* cae abajo */ }
+        return { id: tc.id, name: tc.function?.name, input: {}, invalidArguments: tc.function?.arguments ?? '' };
+      }),
       usage, model,
     };
+    if (typeof choice.message.reasoning_content === 'string') result.reasoningContent = choice.message.reasoning_content;
+    return result;
   }
 
   return { type: 'text', text: choice?.message?.content || '', usage, model };

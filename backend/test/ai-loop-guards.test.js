@@ -109,3 +109,28 @@ test('distinct paths are not throttled by the per-path cap', async () => {
   assert.ok(results.length >= 20);
   assert.ok(results.every(r => !r.error), 'no call should be blocked');
 });
+
+// Found in review: a sub-agent report counted as the start of a new run, so
+// the coordinator got a fresh per-path budget every time a sub-agent reported.
+test('the coordinator still hits the per-path cap across a sub-agent report', async () => {
+  const { session, threadId, targetId } = await setupSession();
+  let n = 0;
+  const model = mock.method(ai, 'chatWithTools', async () => {
+    n++;
+    if (n === 8) {
+      await db.query(
+        `INSERT INTO ai_scan_events (session_id, thread_id, type, payload) VALUES ($1,$2,'subagent.reported',$3)`,
+        [session.id, threadId, JSON.stringify({ label: 'sub', summary: 'nothing new' })]
+      );
+    }
+    return { text: '', toolCalls: [{ id: `call_${n}`, name: 'fetch_endpoint', input: { target_id: targetId, path: `/api/news?_=${n}` } }], usage: {}, model: 'mock' };
+  });
+  const http = mockTargetHttp();
+  try {
+    await agentLoop.advance(session.id, threadId);
+  } finally {
+    model.mock.restore();
+    http.mock.restore();
+  }
+  assert.equal(http.mock.callCount(), 15);
+});
