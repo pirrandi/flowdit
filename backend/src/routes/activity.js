@@ -8,8 +8,10 @@ router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_activity'
 // Internal-only work items that are logged to the team feed but must never
 // reach the client portal (even with show_activity on): task assignment and
 // progress are the team's internal coordination, not engagement progress.
+// Las propuestas de Claude Code (mcp_proposal) tampoco: son borradores sin
+// revisar, el cliente solo ve el hallazgo si alguien lo aprueba y publica.
 // Code-defined constants, never user input.
-const PORTAL_HIDDEN_ENTITIES = ['task', 'organization', 'portal'];
+const PORTAL_HIDDEN_ENTITIES = ['task', 'organization', 'portal', 'mcp_proposal'];
 
 // GET /projects/:projectId/activity?limit=50&offset=0
 router.get('/', async (req, res, next) => {

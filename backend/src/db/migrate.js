@@ -934,6 +934,56 @@ const migrations = [
       CREATE UNIQUE INDEX uq_target_endpoints_target_path_method ON target_endpoints(target_id, path, method);
     END $$`,
 
+  // ── Integración con Claude Code (servidor MCP en /mcp) ──────────────────
+  // Tokens personales para que Claude Code del pentester lea el proyecto y
+  // proponga hallazgos/notas. Solo se guarda el SHA-256 (lookup) y un prefijo
+  // para mostrar en la UI: el token en claro se ve una sola vez al crearlo.
+  // Estos tokens autentican ÚNICAMENTE /mcp, nunca las rutas /api (ver
+  // middleware/apiToken.js).
+  `CREATE TABLE IF NOT EXISTS api_tokens (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name         VARCHAR(100) NOT NULL,
+    token_prefix VARCHAR(16) NOT NULL,
+    token_hash   CHAR(64) UNIQUE NOT NULL,
+    scopes       TEXT NOT NULL DEFAULT 'read' CHECK (scopes IN ('read','read_propose')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    expires_at   TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id)`,
+  // Opt-in por proyecto: los datos del cliente salen por el Claude Code del
+  // usuario (y de ahí al proveedor del modelo), algo que el NDA del
+  // engagement puede no permitir. Apagado = el proyecto no existe para MCP.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS claude_code_enabled BOOLEAN NOT NULL DEFAULT false`,
+  // De dónde salió el hallazgo ('manual', 'ai_agent', 'claude_code'...). Sin
+  // backfill: NULL = creado antes de que existiera la columna.
+  `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS origin TEXT`,
+  // Propuestas de Claude Code pendientes de revisión humana. Tabla APARTE a
+  // propósito, no un estado "borrador" en custom_vulns: reportes, portal,
+  // exports y contadores leen custom_vulns, y un borrador ahí terminaría
+  // filtrándose en alguno. Una propuesta recién se vuelve hallazgo (o nota)
+  // cuando un writer la aprueba (services/mcp/proposals.js).
+  `CREATE TABLE IF NOT EXISTS mcp_proposals (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id        UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind              TEXT NOT NULL CHECK (kind IN ('finding','note')),
+    payload           JSONB NOT NULL,
+    target_id         UUID REFERENCES targets(id) ON DELETE SET NULL,
+    entity_type       TEXT CHECK (entity_type IN ('target','port','endpoint','finding')),
+    entity_id         UUID,
+    status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+    proposed_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+    token_id          UUID REFERENCES api_tokens(id) ON DELETE SET NULL,
+    reviewed_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at       TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resulting_vuln_id UUID REFERENCES custom_vulns(id) ON DELETE SET NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_mcp_proposals_project_status ON mcp_proposals(project_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_mcp_proposals_proposed_by ON mcp_proposals(proposed_by)`,
+
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`
   // no es idempotente para el constraint: saltea la columna pero agrega el

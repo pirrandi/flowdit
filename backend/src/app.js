@@ -35,7 +35,14 @@ if (process.env.NODE_ENV === 'production') {
   // fixed on purpose — they guard credential stuffing, not general throughput,
   // and shouldn't loosen when an operator raises the app-wide ceiling.
   const globalMax = Number(process.env.RATE_LIMIT_MAX) || 500;
-  app.use(rateLimit({ windowMs:15*60*1000, max:globalMax, standardHeaders:true, legacyHeaders:false }));
+  // /mcp queda afuera: Claude Code y el navegador del pentester suelen salir
+  // por la misma IP, y una sesión de tool calls agotaba esta bolsa y dejaba
+  // la UI en 429. /mcp tiene sus propios límites (por IP y por token) en
+  // routes/mcp.js.
+  app.use(rateLimit({
+    windowMs:15*60*1000, max:globalMax, standardHeaders:true, legacyHeaders:false,
+    skip: req => /^\/mcp(\/|$)/.test(req.path),
+  }));
   app.use('/api/auth/login',    rateLimit({ windowMs:15*60*1000, max:20, message:{ error:'Too many attempts' } }));
   app.use('/api/auth/register', rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
   app.use('/api/portal/auth',   rateLimit({ windowMs:15*60*1000, max:10, message:{ error:'Too many attempts' } }));
@@ -74,6 +81,7 @@ projectRouter.use('/report-config', require('./routes/report-config'));
 projectRouter.use('/import',    require('./routes/import'));
 projectRouter.use('/ai',        require('./routes/ai'));
 projectRouter.use('/ai-scan',   require('./routes/ai-scan'));
+projectRouter.use('/mcp-proposals', require('./routes/mcp-proposals'));
 
 // Ports & endpoints nested under a specific target
 const targetRouter = express.Router({ mergeParams: true });
@@ -84,6 +92,10 @@ projectRouter.use('/targets/:targetId', targetRouter);
 app.use('/api/methodologies', require('./routes/methodologies'));
 app.use('/api/export',       require('./routes/export'));
 app.use('/api/projects/:projectId', projectRouter);
+
+// Servidor MCP para Claude Code — fuera de /api a propósito: se autentica con
+// tokens personales (fdt_...) que las rutas /api no aceptan.
+app.use('/mcp', require('./routes/mcp'));
 
 // 404
 app.use((req, res) => res.status(404).json({ error: `Not found: ${req.method} ${req.path}` }));

@@ -188,6 +188,23 @@ server {
         proxy_read_timeout   120s;
     }
 
+    # Proxy MCP server (Claude Code integration, Streamable HTTP).
+    # Buffering off so streamed responses reach the client as they are written;
+    # Authorization (the fdt_ token) is forwarded by default.
+    location /mcp {
+        proxy_pass         http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection "";
+        proxy_buffering    off;
+        proxy_cache        off;
+        client_max_body_size 5M;
+        proxy_read_timeout   300s;
+    }
+
     # Proxy WebSocket
     location /ws {
         proxy_pass         http://localhost:4000;
