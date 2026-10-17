@@ -1,10 +1,12 @@
 const http = require('http');
 
-// Fail before anything listens: a server signing tokens with a public
-// placeholder secret must never come up in production.
-require('./utils/secrets').assertSafeSecrets();
-
 const app  = require('./app');
+
+// Fail before anything listens: a server signing tokens with a public
+// placeholder secret must never come up in production. Runs after app.js
+// because that is where .env is loaded (pm2 deployments get their env only
+// from there); checking earlier sees an empty env and only warns.
+require('./utils/secrets').assertSafeSecrets();
 
 const wsService  = require('./services/ws');
 const agentLoop  = require('./services/ai/agentLoop');
