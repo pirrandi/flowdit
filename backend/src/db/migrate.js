@@ -983,6 +983,41 @@ const migrations = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mcp_proposals_project_status ON mcp_proposals(project_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_mcp_proposals_proposed_by ON mcp_proposals(proposed_by)`,
+  // + 'withdrawn': quien propuso puede retirar su propuesta pendiente
+  // (withdraw_proposal). Nunca se borra la fila, queda para auditoría. Mismo
+  // patrón DROP + ADD con nombre explícito que el CHECK de roles: el CREATE
+  // TABLE de arriba crea el inline con este mismo nombre autogenerado, así
+  // que esto lo reemplaza tanto en bases nuevas como existentes.
+  `ALTER TABLE mcp_proposals DROP CONSTRAINT IF EXISTS mcp_proposals_status_check`,
+  `ALTER TABLE mcp_proposals ADD CONSTRAINT mcp_proposals_status_check
+     CHECK (status IN ('pending','approved','rejected','withdrawn'))`,
+  // Última edición (update_proposal) o retiro: el inbox muestra la versión
+  // vigente y conviene saber que cambió después de proponerse.
+  `ALTER TABLE mcp_proposals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`,
+  // Capturas subidas por Claude Code (POST /mcp/uploads) para adjuntar a una
+  // propuesta de hallazgo. Van por fuera de las tools porque el modelo no
+  // puede transcribir los bytes de un archivo a un argumento. Sin vincular
+  // vencen a las 24 h (limpieza oportunista en cada subida, sin cron). Al
+  // vincularse a una propuesta quedan con ella (auditoría) y se borran si se
+  // borra la propuesta. Al aprobarla se COPIAN a custom_vulns.evidence.
+  `CREATE TABLE IF NOT EXISTS mcp_uploads (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_id            UUID REFERENCES api_tokens(id) ON DELETE SET NULL,
+    mime                TEXT NOT NULL,
+    name                VARCHAR(120) NOT NULL,
+    size                INTEGER NOT NULL,
+    data                BYTEA NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    used_by_proposal_id UUID REFERENCES mcp_proposals(id) ON DELETE CASCADE
+  )`,
+  // Sin CHECK inline en mime a propósito (ver la limpieza de abajo): nombre
+  // explícito para poder cambiar la lista sin dejar copias viejas.
+  `ALTER TABLE mcp_uploads DROP CONSTRAINT IF EXISTS mcp_uploads_mime_check`,
+  `ALTER TABLE mcp_uploads ADD CONSTRAINT mcp_uploads_mime_check
+     CHECK (mime IN ('image/png','image/jpeg','image/webp'))`,
+  `CREATE INDEX IF NOT EXISTS idx_mcp_uploads_user_unused ON mcp_uploads(user_id, created_at) WHERE used_by_proposal_id IS NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_mcp_uploads_proposal ON mcp_uploads(used_by_proposal_id)`,
 
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`

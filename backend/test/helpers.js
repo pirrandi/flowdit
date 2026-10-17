@@ -20,7 +20,7 @@ const db  = require('../src/db');
 const { seedTemplates } = require('../src/db/vuln-templates');
 
 const TABLES = [
-  'mcp_proposals', 'api_tokens',
+  'mcp_uploads', 'mcp_proposals', 'api_tokens',
   'organization_sso_configs', 'organization_invites', 'organization_members',
   'ai_usage', 'whiteboard_state', 'report_config', 'report_templates',
   'ticket_replies', 'tickets', 'portal_links',

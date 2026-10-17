@@ -261,6 +261,8 @@ const api = {
     list:    (pid, status = 'pending') => request('GET',  `/projects/${pid}/mcp-proposals?status=${status}`),
     approve: (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/approve`),
     reject:  (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/reject`),
+    // Capturas adjuntas como data URLs; el listado solo trae metadatos.
+    evidence: (pid, id)                => request('GET',  `/projects/${pid}/mcp-proposals/${id}/evidence`),
   },
   notifications: {
     list:        (q = {}) => request('GET',  `/notifications?${new URLSearchParams(q)}`),

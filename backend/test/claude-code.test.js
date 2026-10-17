@@ -109,8 +109,9 @@ test('valid token authenticates /mcp and initialize works', async () => {
   const tools = await mcp(ownerToken.token, 'tools/list');
   const names = tools.body.result.tools.map(t => t.name).sort();
   assert.deepEqual(names, [
-    'get_finding', 'get_project', 'list_endpoints', 'list_findings', 'list_my_proposals',
-    'list_ports', 'list_projects', 'list_targets', 'propose_finding', 'propose_note',
+    'get_finding', 'get_project', 'get_upload_instructions', 'list_endpoints', 'list_findings',
+    'list_my_proposals', 'list_ports', 'list_projects', 'list_targets', 'propose_finding',
+    'propose_note', 'update_proposal', 'withdraw_proposal',
   ]);
 });
 
@@ -385,4 +386,302 @@ test('Claude Code proposals and approved drafts stay out of the client portal', 
   assert.equal(vulns.body.length, 0);
   const inbox = await request(app).get(`/api/projects/${project.id}/mcp-proposals`).set(portal);
   assert.equal(inbox.status, 403);
+});
+
+// ── Editar y retirar propuestas ─────────────────────────────────────────
+
+async function propose(tok, project, target, extra = {}) {
+  const r = await callTool(tok, 'propose_finding', { project_id: project.id, target_id: target.id, ...FINDING, ...extra });
+  assert.equal(r.isError, false, r.text);
+  return r.data.proposal_id;
+}
+
+test('update_proposal edits only provided fields of your own pending proposal', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const id = await propose(ownerToken.token, project, target);
+  const upd = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, severity: 'critical', title: 'Stored XSS in search' });
+  assert.equal(upd.isError, false, upd.text);
+  assert.deepEqual(upd.data.updated_fields.sort(), ['severity', 'title']);
+
+  const { rows: [p] } = await db.query('SELECT payload, status, updated_at FROM mcp_proposals WHERE id=$1', [id]);
+  assert.equal(p.status, 'pending');
+  assert.equal(p.payload.severity, 'critical');
+  assert.equal(p.payload.title, 'Stored XSS in search');
+  assert.equal(p.payload.description, FINDING.description);
+  assert.ok(p.updated_at);
+
+  const act = await db.query(`SELECT meta FROM activity_log WHERE action='claude_code_proposal_updated'`);
+  assert.equal(act.rows.length, 1);
+  assert.equal(act.rows[0].meta.via, 'claude-code');
+
+  // Campos de nota en una propuesta de hallazgo: rechazado.
+  const bad = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, text: 'x' });
+  assert.equal(bad.isError, true);
+  assert.match(bad.text, /cannot be set on a finding proposal/);
+
+  // Moverla a un target fuera de scope: rechazado.
+  const out = await createTarget(owner.accessToken, project.id, { host: 'thirdparty.example.net', scope: 'out' });
+  const moved = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, target_id: out.id });
+  assert.equal(moved.isError, true);
+  assert.match(moved.text, /out of scope/);
+});
+
+test('update_proposal applies the duplicate rule against other proposals, not itself', async () => {
+  const { project, target, ownerToken } = await setup();
+  const a = await propose(ownerToken.token, project, target);
+  await propose(ownerToken.token, project, target, { title: 'Open redirect' });
+  const self = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: a, title: ' reflected XSS in SEARCH' });
+  assert.equal(self.isError, false, self.text);
+  const dup = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: a, title: 'open redirect' });
+  assert.equal(dup.isError, true);
+  assert.match(dup.text, /already pending/);
+});
+
+test('update_proposal re-validates note entities', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const n = await callTool(ownerToken.token, 'propose_note', { project_id: project.id, entity_type: 'target', entity_id: target.id, text: 'a' });
+  const other = await createProject(owner.accessToken, { name: 'Other' });
+  const foreign = await createTarget(owner.accessToken, other.id);
+  const bad = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: n.data.proposal_id, entity_id: foreign.id });
+  assert.equal(bad.isError, true);
+  assert.match(bad.text, /does not belong to this project/);
+  const ok = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: n.data.proposal_id, text: 'b' });
+  assert.equal(ok.isError, false, ok.text);
+  const { rows: [p] } = await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [n.data.proposal_id]);
+  assert.equal(p.payload.text, 'b');
+});
+
+test('editing and withdrawing are refused for others\' proposals and for non-pending ones', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const pTok = await createToken(pentester.accessToken);
+  const id = await propose(ownerToken.token, project, target);
+
+  for (const tool of ['update_proposal', 'withdraw_proposal']) {
+    const args = { project_id: project.id, proposal_id: id, ...(tool === 'update_proposal' ? { severity: 'low' } : {}) };
+    const r = await callTool(pTok.token, tool, args);
+    assert.equal(r.isError, true, tool);
+    assert.match(r.text, /not one of your proposals/);
+  }
+
+  // Aprobada: ya no se edita ni se retira.
+  const approved = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${id}/approve`).set(auth(owner.accessToken));
+  assert.equal(approved.status, 200);
+  const e1 = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, severity: 'low' });
+  assert.equal(e1.isError, true);
+  assert.match(e1.text, /already approved/);
+  const w1 = await callTool(ownerToken.token, 'withdraw_proposal', { project_id: project.id, proposal_id: id });
+  assert.equal(w1.isError, true);
+  assert.match(w1.text, /already approved/);
+
+  // Retirada: tampoco se edita ni se vuelve a retirar.
+  const id2 = await propose(ownerToken.token, project, target, { title: 'Open redirect' });
+  const w2 = await callTool(ownerToken.token, 'withdraw_proposal', { project_id: project.id, proposal_id: id2 });
+  assert.equal(w2.isError, false, w2.text);
+  assert.equal(w2.data.status, 'withdrawn');
+  const e2 = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id2, severity: 'low' });
+  assert.equal(e2.isError, true);
+  assert.match(e2.text, /already withdrawn/);
+  const w3 = await callTool(ownerToken.token, 'withdraw_proposal', { project_id: project.id, proposal_id: id2 });
+  assert.equal(w3.isError, true);
+  assert.match(w3.text, /already withdrawn/);
+
+  // Un token read-only no edita aunque la propuesta sea suya.
+  const ro = await createToken(owner.accessToken, { scopes: 'read' });
+  const id3 = await propose(ownerToken.token, project, target, { title: 'Clickjacking' });
+  const r3 = await callTool(ro.token, 'withdraw_proposal', { project_id: project.id, proposal_id: id3 });
+  assert.equal(r3.isError, true);
+  assert.match(r3.text, /read-only/);
+});
+
+test('withdrawn proposals are kept, leave the inbox, show in list_my_proposals and cannot be approved', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const id = await propose(ownerToken.token, project, target);
+  const w = await callTool(ownerToken.token, 'withdraw_proposal', { project_id: project.id, proposal_id: id });
+  assert.equal(w.isError, false, w.text);
+
+  const { rows } = await db.query('SELECT status FROM mcp_proposals WHERE id=$1', [id]);
+  assert.equal(rows[0].status, 'withdrawn');
+
+  const inbox = await request(app).get(`/api/projects/${project.id}/mcp-proposals`).set(auth(owner.accessToken));
+  assert.equal(inbox.body.length, 0);
+  const withdrawnList = await request(app).get(`/api/projects/${project.id}/mcp-proposals?status=withdrawn`).set(auth(owner.accessToken));
+  assert.equal(withdrawnList.status, 200);
+  assert.equal(withdrawnList.body.length, 1);
+
+  const mine = await callTool(ownerToken.token, 'list_my_proposals', { project_id: project.id });
+  assert.equal(mine.data.proposals[0].status, 'withdrawn');
+  const onlyW = await callTool(ownerToken.token, 'list_my_proposals', { status: 'withdrawn' });
+  assert.equal(onlyW.data.proposals.length, 1);
+
+  const ap = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${id}/approve`).set(auth(owner.accessToken));
+  assert.equal(ap.status, 409);
+  assert.match(ap.body.error, /withdrawn/);
+  const { rows: v } = await db.query('SELECT COUNT(*)::int AS n FROM custom_vulns');
+  assert.equal(v[0].n, 0);
+
+  const act = await db.query(`SELECT meta FROM activity_log WHERE action='claude_code_proposal_withdrawn'`);
+  assert.equal(act.rows.length, 1);
+  assert.equal(act.rows[0].meta.via, 'claude-code');
+});
+
+// ── Capturas (POST /mcp/uploads) ────────────────────────────────────────
+
+const PNG  = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('fake-png-body-bytes')]);
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('fake-jpeg-body-bytes')]);
+const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBPVP8 fake')]);
+
+function uploadFile(token, buf, name = 'shot.png', contentType = 'image/png') {
+  return request(app).post('/mcp/uploads').set(auth(token)).attach('file', buf, { filename: name, contentType });
+}
+
+async function uploadOk(token, buf = PNG, name) {
+  const res = await uploadFile(token, buf, name);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  return res.body;
+}
+
+test('uploads accept PNG/JPEG/WebP by magic bytes and sanitize the name', async () => {
+  const { ownerToken } = await setup();
+  const png = await uploadOk(ownerToken.token, PNG, '../../etc/<evil>.png');
+  assert.equal(png.mime, 'image/png');
+  assert.equal(png.size, PNG.length);
+  assert.equal(png.name, '_evil_.png');
+  assert.ok(png.upload_id);
+  // El content-type del cliente no importa: manda el contenido.
+  const jpg = await uploadFile(ownerToken.token, JPEG, 'a.png', 'image/png');
+  assert.equal(jpg.body.mime, 'image/jpeg');
+  assert.equal((await uploadOk(ownerToken.token, WEBP, 'x.webp')).mime, 'image/webp');
+});
+
+test('uploads reject wrong magic bytes, oversize files, missing auth and read-only tokens', async () => {
+  const { owner, ownerToken } = await setup();
+  const html = await uploadFile(ownerToken.token, Buffer.from('<html><script>alert(1)</script></html>'), 'shot.png', 'image/png');
+  assert.equal(html.status, 415);
+
+  const big = Buffer.concat([PNG, Buffer.alloc(4 * 1024 * 1024)]);
+  const tooBig = await uploadFile(ownerToken.token, big);
+  assert.equal(tooBig.status, 413);
+
+  const ro = await createToken(owner.accessToken, { scopes: 'read' });
+  const roRes = await uploadFile(ro.token, PNG);
+  assert.equal(roRes.status, 403);
+  assert.match(roRes.body.error, /read-only/);
+
+  const anon = await request(app).post('/mcp/uploads').attach('file', PNG, 'shot.png');
+  assert.equal(anon.status, 401);
+  // Un JWT de sesión tampoco sirve.
+  assert.equal((await uploadFile(owner.accessToken, PNG)).status, 401);
+
+  const noFile = await request(app).post('/mcp/uploads').set(auth(ownerToken.token)).field('x', '1');
+  assert.equal(noFile.status, 400);
+
+  const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM mcp_uploads');
+  assert.equal(rows[0].n, 0);
+});
+
+test('unused uploads per user are capped', async () => {
+  const { owner, ownerToken } = await setup();
+  await db.query(
+    `INSERT INTO mcp_uploads (user_id, mime, name, size, data)
+     SELECT $1, 'image/png', 'x.png', 1, '\\x00'::bytea FROM generate_series(1, 50)`,
+    [owner.user.id]
+  );
+  const res = await uploadFile(ownerToken.token, PNG);
+  assert.equal(res.status, 429);
+});
+
+test('expired unused uploads are rejected and swept on the next upload', async () => {
+  const { project, target, ownerToken } = await setup();
+  const old = await uploadOk(ownerToken.token);
+  await db.query(`UPDATE mcp_uploads SET created_at = NOW() - INTERVAL '25 hours' WHERE id=$1`, [old.upload_id]);
+
+  const r = await callTool(ownerToken.token, 'propose_finding', { project_id: project.id, target_id: target.id, ...FINDING, evidence_upload_ids: [old.upload_id] });
+  assert.equal(r.isError, true);
+  assert.match(r.text, /expired/);
+  // La propuesta no quedó creada a medias.
+  const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM mcp_proposals');
+  assert.equal(rows[0].n, 0);
+
+  await uploadOk(ownerToken.token);
+  const { rows: left } = await db.query('SELECT id FROM mcp_uploads WHERE id=$1', [old.upload_id]);
+  assert.equal(left.length, 0);
+});
+
+test('a foreign upload cannot be attached, and an upload cannot be reused on another proposal', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const pTok = await createToken(pentester.accessToken);
+  const theirs = await uploadOk(pTok.token);
+
+  const foreign = await callTool(ownerToken.token, 'propose_finding', { project_id: project.id, target_id: target.id, ...FINDING, evidence_upload_ids: [theirs.upload_id] });
+  assert.equal(foreign.isError, true);
+  assert.match(foreign.text, /not found/);
+
+  const mine = await uploadOk(ownerToken.token);
+  const a = await propose(ownerToken.token, project, target, { evidence_upload_ids: [mine.upload_id] });
+  const b = await callTool(ownerToken.token, 'propose_finding', { project_id: project.id, target_id: target.id, ...FINDING, title: 'Other', evidence_upload_ids: [mine.upload_id] });
+  assert.equal(b.isError, true);
+  assert.match(b.text, /already attached to another proposal/);
+
+  const second = await propose(ownerToken.token, project, target, { title: 'Second' });
+  const reuse = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: second, evidence_upload_ids: [mine.upload_id] });
+  assert.equal(reuse.isError, true);
+  assert.match(reuse.text, /already attached to another proposal/);
+
+  // La propia propuesta sí puede re-listar la suya, y [] la suelta.
+  const same = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: a, evidence_upload_ids: [mine.upload_id] });
+  assert.equal(same.isError, false, same.text);
+  const cleared = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: a, evidence_upload_ids: [] });
+  assert.equal(cleared.isError, false, cleared.text);
+  const { rows } = await db.query('SELECT used_by_proposal_id FROM mcp_uploads WHERE id=$1', [mine.upload_id]);
+  assert.equal(rows[0].used_by_proposal_id, null);
+});
+
+test('approval copies uploaded screenshots into evidence with phase original', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const u1 = await uploadOk(ownerToken.token, PNG, 'one.png');
+  const u2 = await uploadOk(ownerToken.token, JPEG, 'two.jpg');
+  const id = await propose(ownerToken.token, project, target, { evidence_upload_ids: [u1.upload_id, u2.upload_id] });
+
+  const inbox = await request(app).get(`/api/projects/${project.id}/mcp-proposals`).set(auth(owner.accessToken));
+  assert.equal(inbox.body[0].evidence_uploads.length, 2);
+  assert.equal(inbox.body[0].evidence_uploads[0].data, undefined);
+
+  const ev = await request(app).get(`/api/projects/${project.id}/mcp-proposals/${id}/evidence`).set(auth(owner.accessToken));
+  assert.equal(ev.status, 200);
+  assert.equal(ev.body.length, 2);
+  assert.equal(ev.body[0].data, `data:image/png;base64,${PNG.toString('base64')}`);
+  // Sin acceso al proyecto no se ven.
+  const stranger = await registerUser();
+  const denied = await request(app).get(`/api/projects/${project.id}/mcp-proposals/${id}/evidence`).set(auth(stranger.accessToken));
+  assert.equal(denied.status, 404);
+
+  const res = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${id}/approve`).set(auth(owner.accessToken));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const { rows: [v] } = await db.query('SELECT evidence FROM custom_vulns WHERE id=$1', [res.body.resulting_vuln_id]);
+  assert.deepEqual(v.evidence, [
+    { data: `data:image/png;base64,${PNG.toString('base64')}`, name: 'one.png', phase: 'original' },
+    { data: `data:image/jpeg;base64,${JPEG.toString('base64')}`, name: 'two.jpg', phase: 'original' },
+  ]);
+});
+
+test('get_upload_instructions returns the public URL and never the token', async () => {
+  const { ownerToken } = await setup();
+  const res = await request(app).post('/mcp')
+    .set('Authorization', `Bearer ${ownerToken.token}`)
+    .set('Accept', 'application/json, text/event-stream')
+    .set('X-Forwarded-Proto', 'https')
+    .set('X-Forwarded-Host', 'flowdit.example.com')
+    .send({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name: 'get_upload_instructions', arguments: {} } });
+  assert.equal(res.status, 200, res.text);
+  const text = res.body.result.content[0].text;
+  assert.ok(!text.includes(ownerToken.token));
+  const data = JSON.parse(text);
+  assert.equal(data.upload_url, 'https://flowdit.example.com/mcp/uploads');
+  assert.match(data.command, /\$FLOWDIT_TOKEN/);
+
+  const tools = await mcp(ownerToken.token, 'tools/list');
+  const pf = tools.body.result.tools.find(t => t.name === 'propose_finding');
+  assert.match(pf.description, /mcp\/uploads/);
 });

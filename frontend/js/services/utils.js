@@ -134,6 +134,8 @@ function actionLabel(action, entityType, entityName, meta) {
       return meta?.kind === 'note' ? `proposed a note on ${name} via Claude Code` : `proposed finding ${name} via Claude Code`;
     case 'claude_code_proposal_approved': return `approved a Claude Code note on ${name}`;
     case 'claude_code_proposal_rejected': return `rejected the Claude Code proposal ${name}`;
+    case 'claude_code_proposal_updated':  return `updated the Claude Code proposal ${name}`;
+    case 'claude_code_proposal_withdrawn': return `withdrew the Claude Code proposal ${name}`;
     case 'ai_scan_started':  return `started an AI Agent scan`;
     case 'ai_scan_deleted':  return `deleted an AI Agent scan session`;
     // El único aviso real que dispara el modo autónomo del agente (ver

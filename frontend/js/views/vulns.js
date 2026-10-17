@@ -1085,7 +1085,10 @@ async function renderClaudeProposals() {
           ? block('Descripción', pl.description) + block('Remediación', pl.remediation) +
             block('Evidencia', pl.evidence) +
             ((pl.cvss_vector || pl.cwe) ? block('CVSS / CWE', [pl.cvss_score != null ? `${pl.cvss_score} ${pl.cvss_vector || ''}` : pl.cvss_vector, pl.cwe].filter(Boolean).join(' · ')) : '') +
-            ((pl.http_proofs || []).length ? block('HTTP proofs', `${pl.http_proofs.length} request(s) — se adjuntan al aprobar`) : '')
+            ((pl.http_proofs || []).length ? block('HTTP proofs', `${pl.http_proofs.length} request(s) — se adjuntan al aprobar`) : '') +
+            ((pr.evidence_uploads || []).length ? `
+              <div class="items-section"><div class="items-label">Capturas (${pr.evidence_uploads.length}) — se adjuntan al aprobar</div>
+                <div class="evidence-thumbs" id="ccp-ev-${pr.id}"></div></div>` : '')
           : block('Nota', pl.text);
         return `
         <div class="vuln-card" id="ccp-${pr.id}">
@@ -1112,7 +1115,27 @@ async function renderClaudeProposals() {
 
 function toggleClaudeProposal(id) {
   const body = document.getElementById(`ccp-body-${id}`);
-  if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
+  if (!body) return;
+  body.style.display = body.style.display === 'none' ? '' : 'none';
+  if (body.style.display !== 'none') loadClaudeProposalEvidence(id);
+}
+
+// Las capturas se piden recién al abrir la propuesta: pueden ser varias
+// imágenes de MB y el inbox no tiene por qué bajarlas todas al cargar.
+async function loadClaudeProposalEvidence(id) {
+  const box = document.getElementById(`ccp-ev-${id}`);
+  if (!box || box.dataset.loaded) return;
+  box.dataset.loaded = '1';
+  try {
+    const imgs = await api.mcpProposals.evidence(state.currentProject.id, id);
+    // Solo data URLs de imagen: es lo que guarda el backend, pero el src
+    // termina en el DOM y no se confía en nada que no lo sea.
+    box.innerHTML = imgs.filter(img => /^data:image\/(png|jpeg|webp);base64,/.test(img.data))
+      .map(img => `<img src="${img.data}" class="evidence-thumb" style="cursor:default" alt="${esc(img.name || '')}" title="${esc(img.name || '')}">`).join('');
+  } catch (e) {
+    delete box.dataset.loaded;
+    box.innerHTML = `<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">No se pudieron cargar las capturas</span>`;
+  }
 }
 
 async function reviewClaudeProposal(id, action) {

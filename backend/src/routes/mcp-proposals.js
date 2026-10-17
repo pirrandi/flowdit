@@ -16,12 +16,22 @@ function sendProposalError(err, res, next) {
 
 // GET /projects/:projectId/mcp-proposals?status=pending
 router.get('/', [
-  query('status').optional().isIn(['pending', 'approved', 'rejected']),
+  query('status').optional().isIn(['pending', 'approved', 'rejected', 'withdrawn']),
 ], async (req, res, next) => {
   if (!validationResult(req).isEmpty()) return res.status(400).json({ error: 'Invalid status' });
   try {
     res.json(await proposals.listProposals(req.params.projectId, req.query.status || 'pending'));
   } catch (err) { next(err); }
+});
+
+// GET /projects/:projectId/mcp-proposals/:proposalId/evidence
+// Capturas adjuntas como data URLs (el listado solo trae metadatos). Mismo
+// acceso que el listado: cualquier miembro del proyecto que ve el inbox.
+router.get('/:proposalId/evidence', [param('proposalId').isUUID()], async (req, res, next) => {
+  if (!validationResult(req).isEmpty()) return res.status(404).json({ error: 'Proposal not found' });
+  try {
+    res.json(await proposals.getProposalEvidence(req.params.projectId, req.params.proposalId));
+  } catch (err) { sendProposalError(err, res, next); }
 });
 
 // POST /projects/:projectId/mcp-proposals/:proposalId/approve

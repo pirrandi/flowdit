@@ -5,7 +5,9 @@
 //
 // v1 es SOLO lectura + propuestas: ninguna tool edita, borra, cambia estados
 // ni crea targets. Proponer deja una fila en mcp_proposals que un humano
-// aprueba desde el inbox (services/mcp/proposals.js).
+// aprueba desde el inbox (services/mcp/proposals.js). Lo único que se puede
+// cambiar son las PROPIAS propuestas mientras siguen pendientes
+// (update_proposal / withdraw_proposal).
 //
 // Las descripciones y los errores van en inglés a propósito: los lee el
 // modelo, no el usuario, igual que las tools del AI Agent.
@@ -15,6 +17,7 @@ const db = require('../../db');
 const { findProjectForUser, WRITER_ROLES } = require('../../middleware/project');
 const { projectAccessSql } = require('../ownership');
 const proposals = require('./proposals');
+const { MAX_UPLOADS_PER_PROPOSAL, MAX_UPLOAD_BYTES } = require('./uploads');
 const { version } = require('../../../package.json');
 
 const uuid = z.string().uuid();
@@ -29,7 +32,46 @@ const INSTRUCTIONS =
   'Proposals are drafts: a human must approve them in Flowdit before they become real ' +
   'findings/notes, and nothing here can edit, delete or publish anything. Only propose ' +
   'findings against targets that are in scope (list_targets shows scope/status), and ' +
-  'check list_findings first to avoid duplicates.';
+  'check list_findings first to avoid duplicates. While a proposal is still pending you can ' +
+  'fix it with update_proposal or withdraw it with withdraw_proposal. Screenshots are ' +
+  'uploaded out of band (get_upload_instructions) and attached by id.';
+
+// Campos de un hallazgo, compartidos por propose_finding (obligatorios los
+// básicos) y update_proposal (todos opcionales).
+const FINDING_FIELDS = {
+  title: z.string().trim().min(3).max(300).describe('Short finding title, e.g. "Reflected XSS in search parameter"'),
+  severity: z.enum(SEVERITIES),
+  description: z.string().trim().min(1).max(20000).describe('What the issue is and its impact (markdown)'),
+  remediation: z.string().trim().min(1).max(20000).describe('How to fix it (markdown)'),
+  category: z.string().trim().max(100).optional().describe('e.g. "XSS", "SQL Injection", "IDOR"'),
+  cvss_vector: z.string().trim().regex(/^CVSS:3\.[01]\/[A-Z:/]+$/, 'must be a CVSS v3.x vector, e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H').max(200).optional(),
+  cvss_score: z.number().min(0).max(10).optional(),
+  cwe: z.string().trim().regex(/^CWE-\d{1,6}$/i, 'must look like "CWE-79"').optional(),
+  evidence: z.string().max(50000).optional().describe('Reproduction steps / tool output as plain text. Stored as internal notes of the finding.'),
+  http_proofs: z.array(z.object({
+    method: z.string().max(10).optional(),
+    request: z.string().max(50000).describe('Raw HTTP request text'),
+    response: z.string().max(50000).optional().describe('Raw HTTP response text'),
+    annotation: z.string().max(1000).optional(),
+  })).max(10).optional().describe('Raw HTTP request/response proofs'),
+  evidence_upload_ids: z.array(uuid).max(MAX_UPLOADS_PER_PROPOSAL).optional()
+    .describe(`Screenshots to attach (max ${MAX_UPLOADS_PER_PROPOSAL}): upload_id values returned by POST /mcp/uploads. See get_upload_instructions.`),
+};
+
+// Instrucciones de subida. NUNCA llevan el token: el modelo ya lo tiene en
+// la config de Claude Code y devolverlo acá lo dejaría en el transcript.
+function uploadInstructions(uploadsUrl) {
+  const command = `curl -sS -H "Authorization: Bearer $FLOWDIT_TOKEN" -F "file=@/path/to/screenshot.png" ${uploadsUrl}`;
+  return {
+    upload_url: uploadsUrl,
+    method: 'POST multipart/form-data, one file per request in the field "file"',
+    command,
+    token: 'Use the same fdt_ API token configured for this MCP server (scope "read_propose"). If $FLOWDIT_TOKEN is not set in the shell, ask the user to export it — never print or log the token.',
+    accepted: `PNG, JPEG or WebP (detected from the file content), max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB each`,
+    response: '{ "upload_id": "...", "name": "...", "size": 123, "mime": "image/png" }',
+    next_step: `Pass the upload_id values in evidence_upload_ids of propose_finding or update_proposal (max ${MAX_UPLOADS_PER_PROPOSAL} per proposal). Unattached uploads expire after 24h and each upload can be attached to only one proposal.`,
+  };
+}
 
 function ok(data) {
   return { content: [{ type: 'text', text: JSON.stringify(data) }] };
@@ -57,7 +99,7 @@ function guarded(fn) {
   };
 }
 
-function buildMcpServer({ user, token }) {
+function buildMcpServer({ user, token, uploadsUrl }) {
   const server = new McpServer({ name: 'flowdit', version }, { instructions: INSTRUCTIONS });
 
   // El acceso se re-valida en CADA tool call (membership + opt-in del
@@ -251,10 +293,10 @@ function buildMcpServer({ user, token }) {
   }));
 
   server.registerTool('list_my_proposals', {
-    description: 'List the findings/notes you proposed through Claude Code and their review status (pending, approved, rejected).',
+    description: 'List the findings/notes you proposed through Claude Code and their review status (pending, approved, rejected, withdrawn). Only pending ones can be changed with update_proposal or withdrawn with withdraw_proposal.',
     inputSchema: {
       project_id: uuid.optional().describe('Limit to one project'),
-      status: z.enum(['pending', 'approved', 'rejected']).optional(),
+      status: z.enum(['pending', 'approved', 'rejected', 'withdrawn']).optional(),
     },
     annotations: READ_ONLY,
   }, guarded(async ({ project_id, status }) => {
@@ -269,7 +311,8 @@ function buildMcpServer({ user, token }) {
       `SELECT mp.id, mp.project_id, p.name AS project_name, mp.kind, mp.status,
               mp.payload->>'title' AS title, mp.payload->>'severity' AS severity,
               mp.entity_type, mp.entity_id, mp.payload->>'entity_name' AS entity_name,
-              mp.created_at, mp.reviewed_at, mp.resulting_vuln_id
+              mp.target_id, mp.created_at, mp.updated_at, mp.reviewed_at, mp.resulting_vuln_id,
+              (SELECT COUNT(*)::int FROM mcp_uploads u WHERE u.used_by_proposal_id = mp.id) AS evidence_images
        FROM mcp_proposals mp JOIN projects p ON p.id = mp.project_id
        WHERE ${where}
        ORDER BY mp.created_at DESC LIMIT 100`,
@@ -284,32 +327,21 @@ function buildMcpServer({ user, token }) {
       'Propose a new finding for human review. This does NOT create the finding: it goes to the ' +
       'project\'s "Claude Code proposals" inbox and only becomes a real (unpublished) finding when ' +
       'a team member approves it. The target must be in scope and active. Check list_findings ' +
-      'first — proposing the same title for the same target again is rejected as a duplicate.',
+      'first — proposing the same title for the same target again is rejected as a duplicate. ' +
+      'To attach screenshots, first upload each image out of band with ' +
+      '`curl -sS -H "Authorization: Bearer $FLOWDIT_TOKEN" -F "file=@shot.png" <flowdit>/mcp/uploads` ' +
+      '(call get_upload_instructions for the exact URL) and pass the returned upload_id values in evidence_upload_ids.',
     inputSchema: {
       project_id: uuid,
       target_id: uuid.describe('Target the finding applies to (must be scope "in" and active)'),
-      title: z.string().trim().min(3).max(300).describe('Short finding title, e.g. "Reflected XSS in search parameter"'),
-      severity: z.enum(SEVERITIES),
-      description: z.string().trim().min(1).max(20000).describe('What the issue is and its impact (markdown)'),
-      remediation: z.string().trim().min(1).max(20000).describe('How to fix it (markdown)'),
-      category: z.string().trim().max(100).optional().describe('e.g. "XSS", "SQL Injection", "IDOR"'),
-      cvss_vector: z.string().trim().regex(/^CVSS:3\.[01]\/[A-Z:/]+$/, 'must be a CVSS v3.x vector, e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H').max(200).optional(),
-      cvss_score: z.number().min(0).max(10).optional(),
-      cwe: z.string().trim().regex(/^CWE-\d{1,6}$/i, 'must look like "CWE-79"').optional(),
-      evidence: z.string().max(50000).optional().describe('Reproduction steps / tool output as plain text. Stored as internal notes of the finding.'),
-      http_proofs: z.array(z.object({
-        method: z.string().max(10).optional(),
-        request: z.string().max(50000).describe('Raw HTTP request text'),
-        response: z.string().max(50000).optional().describe('Raw HTTP response text'),
-        annotation: z.string().max(1000).optional(),
-      })).max(10).optional().describe('Raw HTTP request/response proofs'),
+      ...FINDING_FIELDS,
     },
     annotations: PROPOSE,
   }, guarded(async (input) => {
     await projectFor(input.project_id, { propose: true });
     const prop = await proposals.createFindingProposal({ projectId: input.project_id, user, tokenId: token.id, input });
     return ok({
-      proposal_id: prop.id, status: prop.status, target: prop.target_host,
+      proposal_id: prop.id, status: prop.status, target: prop.target_host, evidence_images: prop.evidence_images,
       message: 'Finding proposed. It is pending human review in Flowdit; it is not part of the report until approved.',
     });
   }));
@@ -334,6 +366,50 @@ function buildMcpServer({ user, token }) {
       message: 'Note proposed. It is pending human review in Flowdit.',
     });
   }));
+
+  server.registerTool('update_proposal', {
+    description:
+      'Change one of YOUR proposals while it is still pending review (not yet approved, rejected or ' +
+      'withdrawn). Only the fields you pass change. Finding proposals accept the propose_finding ' +
+      'fields (plus target_id; evidence_upload_ids REPLACES the attached screenshots, [] removes ' +
+      'them); note proposals accept text, entity_type and entity_id. Scope and duplicate checks run ' +
+      'again as when proposing.',
+    inputSchema: {
+      project_id: uuid,
+      proposal_id: uuid.describe('From propose_finding/propose_note or list_my_proposals'),
+      target_id: uuid.optional().describe('Finding proposals only: move it to another in-scope target'),
+      ...Object.fromEntries(Object.entries(FINDING_FIELDS).map(([k, v]) => [k, v.optional()])),
+      entity_type: z.enum(proposals.NOTE_ENTITY_TYPES).optional().describe('Note proposals only'),
+      entity_id: uuid.optional().describe('Note proposals only'),
+      text: z.string().trim().min(1).max(10000).optional().describe('Note proposals only'),
+    },
+    annotations: { ...PROPOSE, idempotentHint: true },
+  }, guarded(async ({ project_id, proposal_id, ...fields }) => {
+    await projectFor(project_id, { propose: true });
+    const r = await proposals.updateProposal({ projectId: project_id, proposalId: proposal_id, user, input: fields });
+    return ok({
+      proposal_id: r.id, kind: r.kind, status: r.status, updated_fields: r.fields,
+      message: 'Proposal updated. It is still pending human review.',
+    });
+  }));
+
+  server.registerTool('withdraw_proposal', {
+    description:
+      'Withdraw one of YOUR proposals that is still pending review, e.g. if it turned out to be a ' +
+      'false positive. It is kept for audit with status "withdrawn" and can no longer be approved.',
+    inputSchema: { project_id: uuid, proposal_id: uuid },
+    annotations: { ...PROPOSE, destructiveHint: true, idempotentHint: true },
+  }, guarded(async ({ project_id, proposal_id }) => {
+    await projectFor(project_id, { propose: true });
+    const r = await proposals.withdrawProposal({ projectId: project_id, proposalId: proposal_id, user });
+    return ok({ proposal_id: r.id, kind: r.kind, status: r.status, message: 'Proposal withdrawn.' });
+  }));
+
+  server.registerTool('get_upload_instructions', {
+    description: 'Get the exact command to upload a screenshot to Flowdit so it can be attached to a finding proposal via evidence_upload_ids.',
+    inputSchema: {},
+    annotations: READ_ONLY,
+  }, guarded(async () => ok({ ...uploadInstructions(uploadsUrl), token_scope: token.scopes })));
 
   return server;
 }
