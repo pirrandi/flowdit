@@ -1,6 +1,6 @@
 // Integración con Claude Code (servidor MCP en /mcp). Lo que se fija acá es la
 // frontera de seguridad: los tokens fdt_ solo abren /mcp (nunca /api), un
-// proyecto sin opt-in es invisible, un viewer lee pero no propone, el scope
+// proyecto sin opt-in es invisible, un viewer (cuenta cliente) no accede, el scope
 // de targets se respeta, y aprobar una propuesta crea el hallazgo como
 // borrador (client_visible=false) una sola vez.
 const { test, before, beforeEach, after } = require('node:test');
@@ -201,20 +201,52 @@ test('non-members cannot read a project through MCP', async () => {
 
 // ── Roles y scopes ──────────────────────────────────────────────────────
 
-test('viewer can read but cannot propose', async () => {
+// Un viewer es la cuenta del cliente (26fe968): por MCP leería borradores,
+// así que el proyecto le resulta inexistente, igual que a un no-miembro.
+test('viewer (client account) cannot read or propose through MCP', async () => {
   const { owner, project, target } = await setup();
   const viewer = await addMember(owner.accessToken, project.id, 'viewer');
   const tok = await createToken(viewer.accessToken);
 
-  const targets = await callTool(tok.token, 'list_targets', { project_id: project.id });
-  assert.equal(targets.isError, false);
-  assert.equal(targets.data.targets[0].id, target.id);
+  const stranger = await registerUser();
+  const strangerTok = await createToken(stranger.accessToken);
+  const strangerRes = await callTool(strangerTok.token, 'list_targets', { project_id: project.id });
+
+  for (const [name, args] of [
+    ['get_project',   { project_id: project.id }],
+    ['list_targets',  { project_id: project.id }],
+    ['list_findings', { project_id: project.id }],
+    ['list_my_proposals', { project_id: project.id }],
+  ]) {
+    const res = await callTool(tok.token, name, args);
+    assert.equal(res.isError, true, name);
+    assert.match(res.text, /not found or Claude Code access is not enabled/, name);
+  }
+  // Mismo mensaje que para un no-miembro: no se filtra que el proyecto existe.
+  const viewerRes = await callTool(tok.token, 'list_targets', { project_id: project.id });
+  assert.equal(viewerRes.text, strangerRes.text);
 
   const prop = await callTool(tok.token, 'propose_finding', { project_id: project.id, target_id: target.id, ...FINDING });
   assert.equal(prop.isError, true);
-  assert.match(prop.text, /role in this project is "viewer"/);
+  assert.match(prop.text, /not found or Claude Code access is not enabled/);
   const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM mcp_proposals');
   assert.equal(rows[0].n, 0);
+});
+
+test('list_projects excludes projects where the user is a viewer', async () => {
+  const { owner, project } = await setup();
+  const viewer = await addMember(owner.accessToken, project.id, 'viewer');
+  const tok = await createToken(viewer.accessToken);
+  const res = await callTool(tok.token, 'list_projects');
+  assert.equal(res.isError, false);
+  assert.deepEqual(res.data.projects.filter(p => p.id === project.id), []);
+  assert.equal(res.data.projects.length, 0);
+
+  // Control: un pentester del mismo proyecto sí lo ve.
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const ptok = await createToken(pentester.accessToken);
+  const pres = await callTool(ptok.token, 'list_projects');
+  assert.deepEqual(pres.data.projects.map(p => p.id), [project.id]);
 });
 
 test('a read-scoped token cannot propose even for a writer', async () => {

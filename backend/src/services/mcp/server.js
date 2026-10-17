@@ -21,6 +21,8 @@ const { MAX_UPLOADS_PER_PROPOSAL, MAX_UPLOAD_BYTES } = require('./uploads');
 const { version } = require('../../../package.json');
 
 const uuid = z.string().uuid();
+// Rol de proyecto de la cuenta del cliente: nunca accede por MCP (ver projectFor).
+const CLIENT_ROLE = 'viewer';
 const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
@@ -106,9 +108,15 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   // proyecto), nunca se confía en lo que devolvió list_projects antes: el
   // owner puede apagar claude_code_enabled o sacar al usuario a mitad de
   // sesión. Un proyecto apagado responde igual que uno inexistente.
+  //
+  // Un rol de proyecto 'viewer' es la cuenta del CLIENTE (page.js lo manda a
+  // la vista cliente y desde 26fe968 solo recibe datos client-safe). Por MCP
+  // leería el proyecto completo, borradores incluidos, así que para Claude
+  // Code ese proyecto no existe: mismo error que para un no-miembro, sin
+  // confirmar siquiera que el proyecto existe.
   async function projectFor(projectId, { propose = false } = {}) {
     const project = await findProjectForUser(projectId, user.id);
-    if (!project || !project.claude_code_enabled) {
+    if (!project || !project.claude_code_enabled || project.member_role === CLIENT_ROLE) {
       throw new Error(`project "${projectId}" not found or Claude Code access is not enabled for it — call list_projects to see the projects you can use`);
     }
     if (propose) {
@@ -143,9 +151,12 @@ function buildMcpServer({ user, token, uploadsUrl }) {
        FROM projects p
        LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1
        LEFT JOIN organization_members om ON om.organization_id = p.organization_id AND om.user_id = $1 AND om.role IN ('owner','admin')
+       -- Mismo rol efectivo que findProjectForUser: los proyectos donde el
+       -- usuario es viewer (cliente) no se listan (ver projectFor).
        WHERE (pm.user_id IS NOT NULL OR om.user_id IS NOT NULL) AND p.claude_code_enabled = true
+         AND COALESCE(pm.role, CASE om.role WHEN 'owner' THEN 'owner' WHEN 'admin' THEN 'editor' END) <> $2
        ORDER BY p.updated_at DESC`,
-      [user.id]
+      [user.id, CLIENT_ROLE]
     );
     return ok({ projects: rows, token_scope: token.scopes });
   }));
@@ -303,8 +314,15 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     if (project_id) await projectFor(project_id);
     const values = [user.id];
     // Solo proyectos a los que el usuario TODAVÍA tiene acceso y con Claude
-    // Code habilitado — mismo criterio que list_projects.
-    let where = `mp.proposed_by = $1 AND p.claude_code_enabled = true AND ${projectAccessSql('mp.project_id', '$1')}`;
+    // Code habilitado — mismo criterio que list_projects (sin los proyectos
+    // donde hoy es viewer: si lo bajaron a cliente, sus propuestas viejas
+    // tampoco se exponen por MCP).
+    values.push(CLIENT_ROLE);
+    let where = `mp.proposed_by = $1 AND p.claude_code_enabled = true AND ${projectAccessSql('mp.project_id', '$1')}
+      AND COALESCE(
+        (SELECT vpm.role FROM project_members vpm WHERE vpm.project_id = mp.project_id AND vpm.user_id = $1),
+        'non-member'
+      ) <> $2`;
     if (project_id) { values.push(project_id); where += ` AND mp.project_id = $${values.length}`; }
     if (status)     { values.push(status);     where += ` AND mp.status = $${values.length}`; }
     const { rows } = await db.query(
