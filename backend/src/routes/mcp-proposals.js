@@ -4,10 +4,12 @@
 const router = require('express').Router({ mergeParams: true });
 const { param, query, validationResult } = require('express-validator');
 const { requireAuth, requireUser } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
 const proposals = require('../services/mcp/proposals');
 
-router.use(requireAuth, requireUser, requireProjectAccess);
+// Las cuentas viewer son el cliente (ver isClientSession): igual que el portal,
+// no ven este material interno aunque no puedan escribirlo.
+router.use(requireAuth, requireUser, requireProjectAccess, denyClientSessions);
 
 function sendProposalError(err, res, next) {
   if (err instanceof proposals.ProposalError) return res.status(err.status).json({ error: err.message });

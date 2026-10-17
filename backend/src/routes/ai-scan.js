@@ -3,12 +3,14 @@ const { body, validationResult } = require('express-validator');
 const db        = require('../db');
 const activity  = require('../services/activity');
 const { requireAuth, requireUser } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 const agentLoop = require('../services/ai/agentLoop');
 const ai = require('../services/ai');
 
-router.use(requireAuth, requireUser, requireProjectAccess); // internal-only: never exposed to client portal sessions
+// Las cuentas viewer son el cliente (ver isClientSession): igual que el portal,
+// no ven este material interno aunque no puedan escribirlo.
+router.use(requireAuth, requireUser, requireProjectAccess, denyClientSessions); // internal-only: never exposed to client portal sessions
 
 // Crea una sesión de scan y arranca el loop del agente. Responde apenas se
 // crea el registro — NO espera a que el agente haga nada (ver

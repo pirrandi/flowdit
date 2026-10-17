@@ -105,6 +105,39 @@ function portalRequiresFlag(flag) {
   };
 }
 
+// Una sesión "de cliente" es tanto un link del portal (JWT tipo portal) como una
+// CUENTA con rol viewer en el proyecto. El viewer es la cuenta del cliente, no
+// un compañero interno de solo lectura: page.js redirige a todo viewer a la
+// vista cliente (client.html), la invitación lo describe como "Read-only access
+// via the client portal" y los tests de roles/tareas lo tratan como "client
+// account". Por eso las rutas que alimentan la vista cliente le aplican la misma
+// proyección y los mismos switches que al portal; si no, una cuenta viewer
+// recibía por la API lo que el portal ya no recibe (borradores, notas, IA...).
+function isClientSession(req) {
+  return !!req.isPortal || req.memberRole === 'viewer';
+}
+
+// Igual que portalRequiresFlag pero también para cuentas viewer. Se usa en las
+// rutas de lectura que la vista cliente consume y que el dueño apaga con un
+// switch: con el switch apagado el cliente no recibe nada, entre por link o por
+// cuenta. Las escrituras siguen protegidas por requireWriter.
+function clientRequiresFlag(flag) {
+  return (req, res, next) => {
+    if (isClientSession(req) && !req.project?.[flag])
+      return res.status(403).json({ error: 'Not available in this client portal' });
+    next();
+  };
+}
+
+// Rutas internas que la vista cliente no muestra (recon de puertos/endpoints,
+// labs): se rechaza a portal y a viewer en vez de proyectar campos, porque no
+// hay ningún dato ahí que sea para el cliente.
+function denyClientSessions(req, res, next) {
+  if (isClientSession(req))
+    return res.status(403).json({ error: 'Not available in this client portal' });
+  next();
+}
+
 // Role tiers: owner > editor (the engagement lead) > pentester > viewer.
 // "Writer" = can do technical work on the project data (findings, WSTG,
 // targets, recon, AI agent...). Pentesters pass; viewers and portal sessions
@@ -135,4 +168,4 @@ function requireOwner(req, res, next) {
   next();
 }
 
-module.exports = { requireProjectAccess, findProjectForUser, WRITER_ROLES, requireWriter, requireLead, isLeadRole, requireOwner, requireTargetAccess, portalRequiresFlag };
+module.exports = { requireProjectAccess, findProjectForUser, WRITER_ROLES, requireWriter, requireLead, isLeadRole, requireOwner, requireTargetAccess, portalRequiresFlag, isClientSession, clientRequiresFlag, denyClientSessions };

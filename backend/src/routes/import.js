@@ -3,12 +3,14 @@ const multer    = require('multer');
 const { XMLParser } = require('fast-xml-parser');
 const db        = require('../db');
 const { requireAuth, requireUser }            = require('../middleware/auth');
-const { requireProjectAccess, requireWriter } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
 
 const router = express.Router({ mergeParams: true });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-router.use(requireAuth, requireUser, requireProjectAccess); // internal-only: never exposed to client portal sessions
+// Las cuentas viewer son el cliente (ver isClientSession): igual que el portal,
+// no ven este material interno aunque no puedan escribirlo.
+router.use(requireAuth, requireUser, requireProjectAccess, denyClientSessions); // internal-only: never exposed to client portal sessions
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 function stripHtml(val) {

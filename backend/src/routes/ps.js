@@ -2,9 +2,12 @@ const router   = require('express').Router({ mergeParams: true });
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_wstg_progress'));
+// Progreso y notas de los labs de PortSwigger: entrenamiento interno del equipo
+// que la vista cliente no muestra. Antes el portal lo leía (con las notas) solo
+// con show_wstg_progress prendido; ahora portal y viewer reciben 403.
+router.use(requireAuth, requireProjectAccess, denyClientSessions);
 
 // GET all progress + notes
 router.get('/', async (req, res, next) => {

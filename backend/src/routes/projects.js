@@ -4,7 +4,7 @@ const bcrypt   = require('bcryptjs');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth, requireUser, blockDemoDestructive } = require('../middleware/auth');
-const { requireProjectAccess, requireOwner } = require('../middleware/project');
+const { requireProjectAccess, requireOwner, isClientSession } = require('../middleware/project');
 const { encrypt } = require('../utils/crypto');
 const portalLinks = require('../services/portalLinks');
 const { PROVIDERS: ALL_AI_PROVIDERS } = require('../services/ai');
@@ -52,6 +52,26 @@ function sanitizeProjectForPortal(p) {
   return out;
 }
 
+// Una cuenta viewer es el cliente (ver isClientSession): recibe la misma
+// proyección que el portal más su rol, que el frontend usa para mandarla a la
+// vista cliente. Antes recibía sanitizeProject (config de IA, repo de GitHub,
+// descripción interna, owner...). En el listado, los contadores crit/high
+// cuentan solo hallazgos publicados y solo si show_findings está prendido:
+// contar borradores le anticipaba al cliente hallazgos no publicados.
+function sanitizeProjectForViewer(p) {
+  const out = sanitizeProjectForPortal(p);
+  out.member_role = p.member_role;
+  if ('crit_count' in p) {
+    out.crit_count = p.show_findings ? p.pub_crit_count : 0;
+    out.high_count = p.show_findings ? p.pub_high_count : 0;
+  }
+  return out;
+}
+
+function projectFor(p) {
+  return p.member_role === 'viewer' ? sanitizeProjectForViewer(p) : sanitizeProject(p);
+}
+
 // GET /projects — direct membership OR implicit access via being an
 // owner/admin of the project's organization (same fallback shape as
 // requireProjectAccess). Without the org-fallback join here, an org
@@ -66,7 +86,8 @@ router.get('/', async (req, res, next) => {
               u.username AS owner_username, u.display_name AS owner_display_name, o.name AS organization_name,
               (pm.user_id IS NULL) AS via_org,
               (SELECT COUNT(*) FROM project_members pm2 WHERE pm2.project_id = p.id) AS member_count,
-              COALESCE(v.crit,0)::int AS crit_count, COALESCE(v.high,0)::int AS high_count
+              COALESCE(v.crit,0)::int AS crit_count, COALESCE(v.high,0)::int AS high_count,
+              COALESCE(v.pub_crit,0)::int AS pub_crit_count, COALESCE(v.pub_high,0)::int AS pub_high_count
        FROM projects p
        LEFT JOIN project_members pm ON pm.project_id=p.id AND pm.user_id=$1
        LEFT JOIN organization_members om ON om.organization_id=p.organization_id AND om.user_id=$1 AND om.role IN ('owner','admin')
@@ -75,14 +96,16 @@ router.get('/', async (req, res, next) => {
        LEFT JOIN (
          SELECT project_id,
            COUNT(*) FILTER (WHERE severity='critical') AS crit,
-           COUNT(*) FILTER (WHERE severity='high')     AS high
+           COUNT(*) FILTER (WHERE severity='high')     AS high,
+           COUNT(*) FILTER (WHERE severity='critical' AND client_visible) AS pub_crit,
+           COUNT(*) FILTER (WHERE severity='high'     AND client_visible) AS pub_high
          FROM custom_vulns GROUP BY project_id
        ) v ON v.project_id = p.id
        WHERE pm.user_id IS NOT NULL OR om.user_id IS NOT NULL
        ORDER BY p.updated_at DESC`,
       [req.user.id]
     );
-    res.json(rows.map(r => sanitizeProject(r)));
+    res.json(rows.map(projectFor));
   } catch (err) { next(err); }
 });
 
@@ -121,7 +144,7 @@ router.post('/', [
 
 // GET /projects/:projectId
 router.get('/:projectId', requireProjectAccess, (req, res) =>
-  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : sanitizeProject(req.project)));
+  res.json(req.isPortal ? sanitizeProjectForPortal(req.project) : projectFor(req.project)));
 
 // PATCH /projects/:projectId
 router.patch('/:projectId', requireProjectAccess, requireOwner, async (req, res, next) => {
@@ -341,6 +364,21 @@ const ASSIGNABLE_ROLES = ['editor', 'pentester', 'viewer'];
 
 router.get('/:projectId/members', requireProjectAccess, requireUser, async (req, res, next) => {
   try {
+    // La vista cliente pide los miembros solo para color de rol y avatar en el
+    // feed. A una cuenta viewer (el cliente) no le van emails, ids, etiquetas
+    // internas ni quién invitó a quién; el avatar respeta
+    // portal_hide_team_avatars igual que el feed.
+    if (isClientSession(req)) {
+      const { rows } = await db.query(
+        `SELECT u.username, u.display_name, u.avatar_color, u.avatar_url, pm.role
+         FROM project_members pm
+         JOIN users u ON u.id=pm.user_id
+         WHERE pm.project_id=$1 ORDER BY pm.joined_at`,
+        [req.params.projectId]
+      );
+      const hideAvatars = req.project.portal_hide_team_avatars;
+      return res.json(rows.map(r => ({ ...r, avatar_url: hideAvatars ? null : r.avatar_url })));
+    }
     const { rows } = await db.query(
       `SELECT u.id, u.username, u.display_name, u.email, u.avatar_color, u.avatar_url, pm.role, pm.joined_at,
               pm.label, inv.username AS invited_by_username, inv.display_name AS invited_by_display_name

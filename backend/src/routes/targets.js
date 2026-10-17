@@ -3,13 +3,28 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, isClientSession, clientRequiresFlag } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_targets'));
+// Portal y cuentas viewer (el cliente) solo ven el scope con show_targets.
+router.use(requireAuth, requireProjectAccess, clientRequiresFlag('show_targets'));
 
 // GET all targets for a project
 router.get('/', async (req, res, next) => {
   try {
+    // El cliente recibe una proyección FIJA: lo que la sección "Scope" de la
+    // vista cliente dibuja (host, tipo, scope, estado) más el id, que usa para
+    // contar los hallazgos publicados de cada target. Antes iba t.* con las
+    // notas internas del pentester y added_by / quién lo agregó.
+    if (isClientSession(req)) {
+      const { rows } = await db.query(
+        `SELECT t.id, t.host, t.type, t.scope, t.status
+         FROM targets t
+         WHERE t.project_id = $1
+         ORDER BY t.created_at`,
+        [req.params.projectId]
+      );
+      return res.json(rows);
+    }
     const { rows } = await db.query(
       `SELECT t.*, u.username AS added_by_username, u.display_name AS added_by_display_name
        FROM targets t

@@ -2,7 +2,7 @@ const router = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const { requireAuth, requireUser } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 
 // Methodologies are internal working material (test status, pentester notes,
@@ -83,7 +83,8 @@ router.delete('/:methodId', async (req, res, next) => {
 // ── PROGRESS (project-scoped) ─────────────────────────────────────
 
 // GET progress for a methodology in a project
-router.get('/:methodId/progress/:projectId', requireProjectAccess, async (req, res, next) => {
+// Progreso y notas por proyecto: tampoco para cuentas viewer (el cliente).
+router.get('/:methodId/progress/:projectId', requireProjectAccess, denyClientSessions, async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `SELECT mp.*, t.host AS target_host
@@ -136,7 +137,7 @@ router.patch('/:methodId/progress/:projectId/:testIdx', requireProjectAccess, re
 
 // ── PROJECT ACTIVATION ───────────────────────────────────────────
 // GET all-progress for project: returns { [methodId]: { done, fail, total, tests:[{status,target_id}] } }
-router.get('/project-progress/:projectId', requireProjectAccess, async (req, res, next) => {
+router.get('/project-progress/:projectId', requireProjectAccess, denyClientSessions, async (req, res, next) => {
   try {
     // Get active methodology ids for this project
     const { rows: projRows } = await db.query(

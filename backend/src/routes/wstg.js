@@ -2,14 +2,58 @@ const router   = require('express').Router({ mergeParams: true });
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, isClientSession, clientRequiresFlag } = require('../middleware/project');
 const { targetBelongsToProject, vulnBelongsToProject } = require('../services/ownership');
+const { WSTG_NAMES, wstgCategory } = require('../services/wstgCatalog');
 
-router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_wstg_progress'));
+// Portal y cuentas viewer (el cliente) solo ven el progreso WSTG si el dueño
+// prendió show_wstg_progress.
+router.use(requireAuth, requireProjectAccess, clientRequiresFlag('show_wstg_progress'));
+
+// Lo que el cliente ve de la metodología: proyección FIJA armada desde cero,
+// no un SELECT * con campos borrados. Antes el portal recibía la nota interna
+// aunque show_wstg_notes estuviera apagado, la descripción/remediación de
+// trabajo, el target, quién editó (id, usuario, avatar) y el id del hallazgo
+// vinculado aunque fuera un borrador. Ahora: id, nombre, categoría y estado;
+// la nota solo con show_wstg_notes; el hallazgo vinculado solo si HOY está
+// publicado (mismo criterio que GET /vulns del portal). Solo tests del
+// catálogo: un test_id arbitrario guardado por PATCH no llega al cliente.
+async function clientProgress(req, res) {
+  const showNotes = !!req.project.show_wstg_notes;
+  const { rows } = await db.query(
+    `SELECT wp.test_id, wp.status, wp.note,
+            cv.id AS finding_id, cv.name AS finding_name
+     FROM wstg_progress wp
+     LEFT JOIN custom_vulns cv
+            ON cv.id = wp.linked_vuln_id
+           AND cv.project_id = wp.project_id
+           AND cv.client_visible = true
+     WHERE wp.project_id = $1`,
+    [req.params.projectId]
+  );
+  const progress = {};
+  for (const r of rows) {
+    if (!WSTG_NAMES[r.test_id]) continue;
+    const note = showNotes && r.note ? r.note : null;
+    // Una fila sin estado y sin nota visible no le dice nada al cliente.
+    if (!r.status && !note && !r.finding_id) continue;
+    const entry = {
+      test_id:  r.test_id,
+      name:     WSTG_NAMES[r.test_id],
+      category: wstgCategory(r.test_id),
+      status:   r.status || null,
+    };
+    if (showNotes) entry.note = note;
+    entry.linked_finding = r.finding_id ? { id: r.finding_id, name: r.finding_name } : null;
+    progress[r.test_id] = entry;
+  }
+  res.json(progress);
+}
 
 // GET all progress + last-editor info
 router.get('/', async (req, res, next) => {
   try {
+    if (isClientSession(req)) return await clientProgress(req, res);
     const [progressRes, checksRes] = await Promise.all([
       db.query(
         `SELECT wp.test_id, wp.status, wp.note, wp.description, wp.remediation, wp.target_id, wp.linked_vuln_id, wp.updated_at,

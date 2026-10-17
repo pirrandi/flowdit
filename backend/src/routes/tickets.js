@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const mailer   = require('../services/mailer');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireLead, requireOwner, isLeadRole, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireLead, requireOwner, isLeadRole, portalRequiresFlag, isClientSession } = require('../middleware/project');
 const { vulnBelongsToProject } = require('../services/ownership');
 const { decrypt } = require('../utils/crypto');
 const github    = require('../services/github');
@@ -92,6 +92,16 @@ async function replyPortalUrl(ticket) {
   return rows.length ? portalLinks.portalUrl(portalLinks.tokenOf(rows[0])) : null;
 }
 
+// Una cuenta viewer (el cliente, ver isClientSession) conserva sus campos
+// crudos de ticket porque client.js distingue sus propias respuestas por
+// author_id, pero sin el link al issue de GitHub, que es interno del equipo.
+// El nombre del hallazgo vinculado ya llega nulo desde el SQL si no está
+// publicado.
+function viewerTicket(t) {
+  const { github_url, ...rest } = t;
+  return rest;
+}
+
 // ── TICKETS ───────────────────────────────────────────────────────
 
 // GET all tickets for a project
@@ -109,10 +119,12 @@ router.get('/', async (req, res, next) => {
        LEFT JOIN ticket_integrations gi ON gi.ticket_id = t.id AND gi.provider = 'github'
        WHERE t.project_id = $1
        ORDER BY t.updated_at DESC`,
-      // Team members see every linked finding; the portal only published ones.
-      [req.params.projectId, !req.isPortal]
+      // Team members see every linked finding; the client (portal or viewer
+      // account) only published ones.
+      [req.params.projectId, !isClientSession(req)]
     );
-    res.json(req.isPortal ? rows.map(t => portalTicket(t, req.project)) : rows);
+    if (req.isPortal) return res.json(rows.map(t => portalTicket(t, req.project)));
+    res.json(isClientSession(req) ? rows.map(viewerTicket) : rows);
   } catch (err) { next(err); }
 });
 
@@ -129,7 +141,7 @@ router.get('/:ticketId', async (req, res, next) => {
        LEFT JOIN custom_vulns v ON v.id = t.vuln_id
        LEFT JOIN ticket_integrations gi ON gi.ticket_id = t.id AND gi.provider = 'github'
        WHERE t.id = $1 AND t.project_id = $2`,
-      [req.params.ticketId, req.params.projectId, !req.isPortal]
+      [req.params.ticketId, req.params.projectId, !isClientSession(req)]
     );
     if (!tickets.length) return res.status(404).json({ error: 'Ticket not found' });
 
@@ -147,7 +159,8 @@ router.get('/:ticketId', async (req, res, next) => {
         replies: replies.map(r => portalReply(r, req.project)),
       });
     }
-    res.json({ ...tickets[0], replies });
+    const ticket = isClientSession(req) ? viewerTicket(tickets[0]) : tickets[0];
+    res.json({ ...ticket, replies });
   } catch (err) { next(err); }
 });
 
@@ -174,20 +187,21 @@ router.post('/', [
   const { title, description = '' } = req.body;
   const validVulnId = await vulnBelongsToProject(req.body.vuln_id, req.params.projectId);
 
+  // A client (portal session or viewer account) can only link a finding they
+  // can actually see — otherwise the ticket would reveal (and confirm) an
+  // unpublished finding. Checked on the raw id (not validVulnId) so a foreign
+  // or unknown id gets the same 400 as an unpublished one — no existence oracle.
+  let vulnName = null;
+  if (isClientSession(req) && req.body.vuln_id) {
+    const { rows: pub } = await db.query(
+      `SELECT name FROM custom_vulns WHERE id=$1 AND project_id=$2 AND client_visible`,
+      [req.body.vuln_id, req.params.projectId]
+    );
+    if (!pub.length) return res.status(400).json({ error: 'Finding not available' });
+    vulnName = pub[0].name;
+  }
+
   if (req.isPortal) {
-    // A client can only link a finding they can actually see in the portal —
-    // otherwise the ticket would reveal (and confirm) an unpublished finding.
-    // Checked on the raw id (not validVulnId) so a foreign or unknown id gets the
-    // same 400 as an unpublished one — no existence oracle.
-    let vulnName = null;
-    if (req.body.vuln_id) {
-      const { rows: pub } = await db.query(
-        `SELECT name FROM custom_vulns WHERE id=$1 AND project_id=$2 AND client_visible`,
-        [req.body.vuln_id, req.params.projectId]
-      );
-      if (!pub.length) return res.status(400).json({ error: 'Finding not available' });
-      vulnName = pub[0].name;
-    }
     // Portal user — no user account, store client_name/email instead
     const { clientName, clientEmail, linkId } = portalAuthor(req);
     try {

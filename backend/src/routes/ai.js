@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireUser } = require('../middleware/auth');
-const { requireProjectAccess } = require('../middleware/project');
+const { requireProjectAccess, denyClientSessions } = require('../middleware/project');
 const ai = require('../services/ai');
 const { logUsage } = require('../services/ai/usage');
 const { resolveProjectApiKey } = require('../utils/aiKeys');
@@ -9,7 +9,9 @@ const modelCache = require('../services/ai/modelCache');
 
 const router = express.Router({ mergeParams: true });
 
-router.use(requireAuth, requireUser, requireProjectAccess);
+// Las cuentas viewer son el cliente (ver isClientSession): igual que el portal,
+// no ven este material interno aunque no puedan escribirlo.
+router.use(requireAuth, requireUser, requireProjectAccess, denyClientSessions);
 
 const SYSTEM_PROMPT = `Eres un pentester senior redactando informes profesionales de seguridad en español.
 Escribe en tercera persona impersonal (ej. "se ha identificado", "se observó", "se logró", "se determinó") — nunca en primera persona.

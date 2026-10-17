@@ -1,12 +1,12 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const jwt = require('jsonwebtoken');
 const url  = require('url');
-const { userBelongsToProject } = require('./ownership');
 const { findProjectForUser, WRITER_ROLES } = require('../middleware/project');
 const db = require('../db');
 
-// Unirse a la sala solo exige membership (un viewer puede MIRAR el agente),
-// pero operar el agente es escribir: mismos roles que requireWriter en REST.
+// Unirse a la sala solo exige membership (un viewer entra, pero como cliente:
+// no recibe el stream del agente, ver ws._client más abajo), pero operar el
+// agente es escribir: mismos roles que requireWriter en REST.
 // Se consulta en cada mensaje, no al conectar, para que un cambio de rol (o
 // quitarlo del proyecto) aplique sin esperar a que se reconecte el socket.
 async function canOperateAiScan(userId, projectId) {
@@ -44,7 +44,8 @@ function setup(server) {
         // whiteboard como si fuera miembro real. Mismo chequeo que
         // requireProjectAccess (middleware REST) — membership directa o vía
         // owner/admin de la organización dueña.
-        if (!(await userBelongsToProject(user.id, projectId))) {
+        const membership = await findProjectForUser(projectId, user.id);
+        if (!membership) {
           // 4001, no un código nuevo: el cliente (frontend/js/services/ws.js)
           // ya tiene una lista de códigos que NO reintenta (4001/4002/4003)
           // — un código nuevo caería en el reconnect con backoff exponencial
@@ -71,6 +72,15 @@ function setup(server) {
 
         ws._user      = user;
         ws._projectId = projectId;
+        // Una cuenta viewer es el cliente (ver isClientSession en
+        // middleware/project.js): client.html abre este socket solo para
+        // enterarse de que hubo actividad y volver a pedir el feed por REST,
+        // que ya viene filtrado y proyectado. Antes recibía por acá el evento
+        // crudo (meta con ai_generated, tokens de invitación, nombres de
+        // borradores), el stream completo del AI Agent, los parches del
+        // whiteboard y la lista de presencia del equipo. El rol se fija al
+        // unirse; un cambio de rol aplica al reconectar.
+        ws._client    = membership.member_role === 'viewer';
 
         // Track by userId for logout
         if (!userSockets.has(user.id)) userSockets.set(user.id, new Set());
@@ -89,11 +99,13 @@ function setup(server) {
           try { msg = JSON.parse(data); } catch { return; }
 
           if (msg.type === 'wb:cursor' || msg.type === 'wb:patch') {
+            // El whiteboard es interno: un socket de cliente ni emite ni recibe.
+            if (ws._client) return;
             const room = rooms.get(projectId);
             if (!room) return;
             const out = JSON.stringify({ ...msg, userId: user.id, username: user.username, display_name: user.display_name });
             room.forEach(other => {
-              if (other !== ws && other.readyState === WebSocket.OPEN) other.send(out);
+              if (other !== ws && !other._client && other.readyState === WebSocket.OPEN) other.send(out);
             });
             return;
           }
@@ -185,8 +197,11 @@ function broadcastActivity(projectId, event) {
   const room = rooms.get(projectId);
   if (!room) return;
   const msg = JSON.stringify({ type: 'activity', ...event });
+  // Al cliente solo le llega el aviso, sin el evento: decide qué ver
+  // pidiendo GET /activity, que aplica la allowlist del portal.
+  const ping = JSON.stringify({ type: 'activity' });
   room.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    if (ws.readyState === WebSocket.OPEN) ws.send(ws._client ? ping : msg);
   });
 }
 
@@ -199,8 +214,9 @@ function broadcastScanEvent(projectId, data) {
   const room = rooms.get(projectId);
   if (!room) return;
   const msg = JSON.stringify({ type: 'ai_scan:event', ...data });
+  // El AI Agent es trabajo interno: nunca llega a un socket de cliente.
   room.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
   });
 }
 
@@ -212,8 +228,9 @@ function broadcastPresence(projectId) {
   room.forEach(ws => { if (ws._user && !seen.has(ws._user.id)) seen.set(ws._user.id, ws._user); });
   const online = [...seen.values()];
   const msg = JSON.stringify({ type: 'presence', online });
+  // La presencia lleva ids y usuarios del equipo; la vista cliente no la usa.
   room.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
   });
 }
 

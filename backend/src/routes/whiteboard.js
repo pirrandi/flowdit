@@ -1,9 +1,11 @@
 const router  = require('express').Router({ mergeParams: true });
 const db      = require('../db');
 const { requireAuth, requireUser } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
 
-router.use(requireAuth, requireUser, requireProjectAccess); // internal-only: never exposed to client portal sessions
+// Las cuentas viewer son el cliente (ver isClientSession): igual que el portal,
+// no ven este material interno aunque no puedan escribirlo.
+router.use(requireAuth, requireUser, requireProjectAccess, denyClientSessions); // internal-only: never exposed to client portal sessions
 
 router.get('/', async (req, res, next) => {
   try {

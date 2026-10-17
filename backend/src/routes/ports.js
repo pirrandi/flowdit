@@ -3,9 +3,12 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter, requireTargetAccess, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, requireTargetAccess, denyClientSessions } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_targets'), requireTargetAccess);
+// Puertos y endpoints son recon interno: la vista cliente no los muestra (solo
+// el scope de targets), así que portal y cuentas viewer quedan afuera con 403
+// en vez de recibir filas con notas y quién las agregó.
+router.use(requireAuth, requireProjectAccess, denyClientSessions, requireTargetAccess);
 
 // GET all ports for a target
 router.get('/', async (req, res, next) => {

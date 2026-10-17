@@ -3,11 +3,15 @@ const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, requireWriter, isLeadRole, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, requireWriter, isLeadRole, isClientSession, clientRequiresFlag } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
 const agentLoop = require('../services/ai/agentLoop');
 
-router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_findings'));
+// Portal y cuentas viewer (el cliente, ver isClientSession) quedan sujetos a
+// show_findings y reciben la misma proyección: antes la cuenta viewer recibía
+// todos los hallazgos, borradores incluidos, con notas, payloads, editor y
+// ai_generated.
+router.use(requireAuth, requireProjectAccess, clientRequiresFlag('show_findings'));
 
 // What a client portal session is allowed to see of a finding — an explicit
 // ALLOWLIST, not a blocklist, so a field added later (internal notes, raw
@@ -31,7 +35,8 @@ router.get('/', async (req, res, next) => {
   try {
     // Portal sessions see ONLY findings the pentester has published
     // (client_visible), never drafts or half-triaged ones.
-    const portalFilter = req.isPortal ? 'AND cv.client_visible = true' : '';
+    const client = isClientSession(req);
+    const portalFilter = client ? 'AND cv.client_visible = true' : '';
     const { rows } = await db.query(
       `SELECT cv.*, u.username AS editor_username, u.display_name AS editor_display_name, u.avatar_color AS editor_color, u.avatar_url AS editor_avatar_url,
               vu.username AS verifier_username, vu.display_name AS verifier_display_name,
@@ -48,7 +53,7 @@ router.get('/', async (req, res, next) => {
          cv.created_at`,
       [req.params.projectId]
     );
-    res.json(req.isPortal ? rows.map(toPortalFinding) : rows);
+    res.json(client ? rows.map(toPortalFinding) : rows);
   } catch (err) { next(err); }
 });
 

@@ -1,9 +1,12 @@
 const router = require('express').Router({ mergeParams: true });
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { requireProjectAccess, portalRequiresFlag } = require('../middleware/project');
+const { requireProjectAccess, isClientSession, clientRequiresFlag } = require('../middleware/project');
 
-router.use(requireAuth, requireProjectAccess, portalRequiresFlag('show_activity'));
+// "Cliente" = link del portal o cuenta con rol viewer (ver isClientSession):
+// ambos usan client.html y reciben el mismo feed filtrado y proyectado. Antes
+// la cuenta viewer recibía el feed interno completo (IA, borradores, recon).
+router.use(requireAuth, requireProjectAccess, clientRequiresFlag('show_activity'));
 
 // Qué eventos del feed puede ver el portal del cliente: ALLOWLIST de pares
 // (entity_type, action), no denylist. Antes se ocultaban algunos entity_type
@@ -75,7 +78,8 @@ router.get('/', async (req, res, next) => {
   const offset = parseInt(req.query.offset) || 0;
   try {
     const params = [req.params.projectId, limit, offset];
-    const filter = req.isPortal ? portalFilter(req.project, params) : '';
+    const client = isClientSession(req);
+    const filter = client ? portalFilter(req.project, params) : '';
     // El JOIN a custom_vulns solo lo usa el portal: decide si el hallazgo está
     // publicado y aporta su nombre actual (el que el cliente ve en Findings).
     const { rows } = await db.query(
@@ -100,7 +104,7 @@ router.get('/', async (req, res, next) => {
     // and/or the exact log timestamps when the owner enabled those switches.
     // Enforced server-side so the data never leaves the API, not just hidden in
     // the client's DOM. Internal user sessions always get the full rows.
-    if (req.isPortal) {
+    if (client) {
       const hideAvatars = req.project.portal_hide_team_avatars;
       const hideTimes   = req.project.portal_hide_log_times;
       // Proyección explícita (allowlist de campos): meta filtrada y, para
