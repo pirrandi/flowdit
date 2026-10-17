@@ -121,6 +121,7 @@ const AI_I18N = {
     subagentDelegated: '🧵 Sub-agente delegado: {task}',
     checkpointAuto: '↻ {calls} tool calls seguidos — sigue solo',
     checkpointManual: '⏸ Pausa tras {calls} tool calls seguidos — decile "continuá" para seguir',
+    checkpointNoProgress: '⏸ Pausado: el agente encadenó muchos intentos sin resultados nuevos. Revisá el rumbo o dale una indicación.',
     agentLabel: 'Agente', you: 'Vos', pentester: 'Pentester',
     newMessages: 'Nuevos mensajes',
     rejectReasonPrompt: 'Motivo del rechazo (opcional):',
@@ -197,6 +198,7 @@ const AI_I18N = {
     subagentDelegated: '🧵 Sub-agent delegated: {task}',
     checkpointAuto: '↻ {calls} tool calls in a row — continuing on its own',
     checkpointManual: '⏸ Paused after {calls} tool calls in a row — tell it "continue" to keep going',
+    checkpointNoProgress: '⏸ Paused: the agent chained many attempts with no new results. Review its direction or give it a hint.',
     agentLabel: 'Agent', you: 'You', pentester: 'Pentester',
     newMessages: 'New messages',
     rejectReasonPrompt: 'Reason for rejection (optional):',
@@ -753,6 +755,21 @@ function _severityBadge(sev) {
 // IA", ver README del rediseño. No fabrica pasos futuros/"pendientes": solo
 // muestra lo que efectivamente ya se llamó, con su estado real (done si ya
 // tiene resultado, running si no).
+// Texto de un turn.checkpoint según su `reason` (agentLoop.js). Hoy el
+// backend solo emite 'no_progress' (freno de racha sin resultados, bd446dd);
+// el de iteraciones no trae reason, y el presupuesto es otro evento
+// (session.cost_cap_reached). Un reason desconocido —p. ej. de un backend
+// más nuevo que este JS cacheado— cae al texto genérico en vez de romper.
+const CHECKPOINT_REASON_KEYS = { no_progress: 'checkpointNoProgress' };
+
+function checkpointText(payload = {}) {
+  const key = payload.reason && CHECKPOINT_REASON_KEYS[payload.reason];
+  if (key) return t(key, { calls: payload.calls });
+  return payload.auto
+    ? t('checkpointAuto', { calls: payload.calls })
+    : t('checkpointManual', { calls: payload.calls });
+}
+
 const DETALLE_SYSTEM_TYPES = new Set(['session.started', 'session.error', 'session.paused', 'session.resumed', 'session.cost_cap_reached', 'thread.started', 'turn.checkpoint']);
 
 function _detalleSystemLineText(ev) {
@@ -763,7 +780,7 @@ function _detalleSystemLineText(ev) {
     case 'session.resumed': return t('resumedLine');
     case 'session.cost_cap_reached': return t('costCapReachedLine', { cap: `$${Number(ev.payload.cap).toFixed(2)}`, spent: `$${Number(ev.payload.spent).toFixed(4)}` });
     case 'thread.started': return t('subagentDelegated', { task: ev.payload.task });
-    case 'turn.checkpoint': return ev.payload.auto ? t('checkpointAuto', { calls: ev.payload.calls }) : t('checkpointManual', { calls: ev.payload.calls });
+    case 'turn.checkpoint': return checkpointText(ev.payload);
     default: return ev.type;
   }
 }
@@ -1308,6 +1325,15 @@ function tierTitle(tier) { return t(`tier${tier}Title`); }
 // ilegibles.
 function isFindingTool(name) { return name === 'propose_finding' || name === 'update_finding'; }
 
+// Los proofs de un hallazgo del agente ya no los escribe el modelo: el
+// backend los arma desde los evidence_refs citados (evidence.js) y los deja
+// en `evidence_proofs` del tool.called — son las respuestas reales que vio.
+// Una llamada vieja sin ese campo sigue mostrando sus http_proofs.
+function findingCardInput(payload) {
+  const input = payload.input || {};
+  return Array.isArray(payload.evidence_proofs) ? { ...input, http_proofs: payload.evidence_proofs } : input;
+}
+
 function renderFindingCardBody(input) {
   const parts = [];
 
@@ -1520,7 +1546,7 @@ function renderPendingGate(ev) {
       ${isFinding ? `<button class="btn" onclick="scanEditAndAdd(${ev.id})">${icon('square-pen', { size: 13 })} ${esc(t('editAndAdd'))}</button>` : ''}
       <button class="btn-secondary" onclick="scanReject(${ev.id})">${icon('x', { size: 13 })} ${esc(t('reject'))}</button>
     </div>
-    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(ev.payload.input) : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, null) : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
+    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(findingCardInput(ev.payload)) : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, null) : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
   `;
   return div;
 }
@@ -1531,7 +1557,7 @@ function renderStaleGate(ev) {
   div.style.opacity = '.6';
   div.innerHTML = `
     <div class="scan-gate-head">${icon('triangle-alert', { size: 13 })} <strong>${esc(ev.payload.name)}</strong> — tier ${ev.payload.tier}</div>
-    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(ev.payload.input) : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, null) : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
+    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(findingCardInput(ev.payload)) : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, null) : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
     <div class="scan-gate-resolved">${esc(t('staleGateNote'))}</div>
   `;
   return div;
@@ -1556,7 +1582,7 @@ function renderResolvedGate(ev, result) {
   div.innerHTML = `
     <div class="scan-gate-head"><strong>${esc(ev.payload.name)}</strong> — tier ${ev.payload.tier}</div>
     <div class="scan-gate-resolved ${decision}">${note}</div>
-    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(ev.payload.input)
+    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(findingCardInput(ev.payload))
       : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, output.result || (output.error ? { error: output.error } : null))
       : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
   `;
@@ -1580,9 +1606,7 @@ function renderSystemLine(ev) {
     // idea es que trabaje solo"). Sin autónomo (o al llegar al freno de
     // última instancia, MAX_AUTO_CHECKPOINTS en agentLoop.js) sí necesita
     // un mensaje de chat para retomar — ahí se avisa además por Activity.
-    'turn.checkpoint':  ev.payload.auto
-      ? t('checkpointAuto', { calls: ev.payload.calls })
-      : t('checkpointManual', { calls: ev.payload.calls }),
+    'turn.checkpoint':  checkpointText(ev.payload),
   };
   // Único system.line con una acción propia — subir el tope acá mismo, en
   // vez de mandar al pentester a buscar dónde hacerlo. No retoma la sesión

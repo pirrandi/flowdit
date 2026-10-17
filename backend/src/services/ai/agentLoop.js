@@ -21,6 +21,7 @@ const { scanTools }        = require('./scanTools');
 const { scanToolsLevel1, normalizeEndpointPath } = require('./scanToolsLevel1');
 const { scanToolsLevel2 }  = require('./scanToolsLevel2');
 const { scanToolsLevel3 }  = require('./scanToolsLevel3');
+const { evidenceRefFor, validateEvidenceRefs, evidenceToProofs } = require('./evidence');
 const { targetBelongsToProject } = require('../ownership');
 const { logUsage } = require('./usage');
 const activity = require('../activity');
@@ -547,7 +548,13 @@ function eventsToMessages(events) {
       // Un resultado que no responde a la llamada pendiente (ya respondida con
       // el sintético, o de otro thread) sería un tool_result sin tool_use.
       if (callId !== pending) continue;
-      const result = compactToolResult(ev.payload, tier === 'full' ? MAX_TOOL_RESULT_CHARS : SUMMARY_PREVIEW_CHARS);
+      let result = compactToolResult(ev.payload, tier === 'full' ? MAX_TOOL_RESULT_CHARS : SUMMARY_PREVIEW_CHARS);
+      // El ref va FUERA de la compactación: aunque el resultado viaje
+      // resumido, el modelo tiene que poder citarlo en propose_finding. Solo
+      // lo llevan las observaciones reales (ver evidence.js): un not_found o
+      // un error no tienen ref, así no hay nada que citar.
+      const evidenceRef = evidenceRefFor(ev);
+      if (evidenceRef) result = { ...result, evidence_ref: evidenceRef };
       messages.push({ role: 'tool', toolCallId: callId, name: ev.payload.name, result });
       pending = null;
       messages.push(...deferred);
@@ -602,6 +609,9 @@ function buildSystemPrompt(project, thread, session, scopedTargetId = null) {
     `Always write your responses — chat messages, sub-agent reports, and every text field inside a proposed finding (name, description, remediation) — in ${RESPONSE_LANGUAGE_NAMES[session?.response_language] || RESPONSE_LANGUAGE_NAMES.es}. Tool names and JSON keys are never translated.`,
     'Always call get_targets_in_scope before proposing or attempting any action against a target — never act outside the authorized engagement scope. This is a hard boundary, not a matter of judgment, and it applies in every mode below.',
     'Call get_existing_findings and search_vuln_templates before writing up a new finding, to avoid duplicating existing work and to reuse standard descriptions/remediation text.',
+    // Incidente de bd446dd: hallazgos armados sobre soft-404s y paths que
+    // nunca existieron. propose_finding ahora valida los refs (evidence.js).
+    'Findings must be grounded in responses you actually received: every propose_finding needs evidence_refs — the evidence_ref values shown on successful network tool results in this session, from the same target. Not-found (404/410/soft-404) and failed results have no evidence_ref and prove nothing. The cited requests/responses become the finding\'s HTTP proofs, so cite the ones that actually show the issue.',
     'Prefer reading the actual client-side source (fetch_page_source, search_page_source) over blind black-box probing when possible — understanding real code finds things pattern-matching against raw HTTP responses alone misses.',
     // Nivel 0/1 (lectura, recon pasivo) nunca requiere aprobación, con o sin
     // autonomous mode — esto vale siempre, para evitar que el modelo se
@@ -639,7 +649,7 @@ function buildSystemPrompt(project, thread, session, scopedTargetId = null) {
   }
 
   if (thread.parent_thread_id) {
-    base.push('You are a sub-agent working on one task delegated to you by the lead. Focus only on that task, then give a clear final summary in plain text — that summary is the only thing the lead sees, so make it count.');
+    base.push('You are a sub-agent working on one task delegated to you by the lead. Focus only on that task, then give a clear final summary in plain text — that summary is the only thing the lead sees, so make it count. For every issue you confirmed, list the evidence_ref values that show it, so the lead can cite them.');
   } else if (project.ai_single_agent) {
     // delegate_to_subagent ni siquiera está en `tools` en este modo (ver
     // advance()) — se lo avisa igual acá para que no pierda tiempo
@@ -958,7 +968,10 @@ async function advance(sessionId, threadId) {
     } else if (tool.name === 'propose_finding') {
       // Antes de pedir aprobación: un duplicado no debería ni llegar al gate.
       const dup = await findDuplicateFinding(session.project_id, input);
-      if (dup) blockedReason = `A finding named "${dup.name}" already exists for this target (id ${dup.id}) — it was not created again. Use update_finding with finding_id "${dup.id}" to add evidence or refine it.`;
+      if (dup) blockedReason = duplicateFindingMessage(dup);
+      else blockedReason = await attachFindingEvidence(session, calledEv);
+    } else if (tool.name === 'update_finding') {
+      blockedReason = await attachFindingEvidence(session, calledEv);
     }
     if (blockedReason) {
       // Bloqueado antes de ejecutar — ni gasta el request real ni espera
@@ -1000,8 +1013,8 @@ async function advance(sessionId, threadId) {
       // evento (o vos leyéndolo) lo entienda igual sea gated o autónomo.
       try {
         const vulnId = tool.name === 'propose_finding'
-          ? await createFindingFromProposal(session.project_id, input, session.started_by, session.id)
-          : await updateFindingFromProposal(session.project_id, input, session.started_by);
+          ? await createFindingFromProposal(session.project_id, findingInputFor(calledEv.payload), session.started_by, session.id)
+          : await updateFindingFromProposal(session.project_id, findingInputFor(calledEv.payload), session.started_by);
         output = { decision: 'accepted', created_vuln_id: vulnId };
       } catch (err) {
         output = { decision: 'accepted', error: `failed to ${tool.name === 'propose_finding' ? 'create' : 'update'} finding: ${err.message}` };
@@ -1240,6 +1253,79 @@ async function findDuplicateFinding(projectId, input) {
   return rows[0] || null;
 }
 
+function duplicateFindingMessage(dup) {
+  return `A finding named "${dup.name}" already exists for this target (id ${dup.id}) — it was not created again. Use update_finding with finding_id "${dup.id}" to add evidence or refine it.`;
+}
+
+// ── Evidencia (ver evidence.js) ─────────────────────────────────────────
+const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
+
+// update_finding solo EXIGE evidencia cuando afirma algo técnico nuevo:
+// subir la severidad, o un retest que dice que sigue siendo explotable. Lo
+// editorial (redacción, traducción, remediación, bajar severidad a pedido
+// del pentester) no: los refs son por sesión, y si no editar un hallazgo de
+// una sesión anterior obligaría a re-atacar el target solo para corregir un
+// texto. Un cierre (verified_closed) tampoco: la prueba de un fix suele ser
+// justamente un 404, que no es citable.
+function updateNeedsEvidence(input, existing) {
+  if (input.remediation_status === 'not_remediated') return true;
+  if (input.severity && existing && SEVERITY_RANK[input.severity] > (SEVERITY_RANK[existing.severity] ?? -1)) return true;
+  return false;
+}
+
+// Valida los evidence_refs de propose_finding/update_finding ANTES del gate
+// (nunca le llega al pentester una propuesta sin respaldo) y congela en el
+// tool.called los proofs ya armados: el gate los muestra y la aprobación los
+// usa tal cual. Devuelve el error para el modelo, o null si pasa.
+async function attachFindingEvidence(session, calledEv) {
+  const input = calledEv.payload.input || {};
+  let targetId = input.target_id || null;
+  let required = true;
+  if (calledEv.payload.name === 'update_finding') {
+    const { rows } = /^[0-9a-f-]{36}$/i.test(String(input.finding_id || ''))
+      ? await db.query(`SELECT target_id, severity FROM custom_vulns WHERE id=$1 AND project_id=$2`, [input.finding_id, session.project_id])
+      : { rows: [] };
+    targetId = rows[0]?.target_id || null;
+    required = updateNeedsEvidence(input, rows[0]);
+  }
+
+  const hasRefs = Array.isArray(input.evidence_refs) ? input.evidence_refs.length > 0 : !!input.evidence_refs;
+  let extra = { evidence_proofs: [] };
+  if (required || hasRefs) {
+    const v = await validateEvidenceRefs({ sessionId: session.id, targetId, refs: input.evidence_refs, toolName: calledEv.payload.name });
+    if (v.errors) {
+      const why = calledEv.payload.name === 'update_finding' && required && !hasRefs
+        ? ' (this update raises the severity or marks the finding not_remediated, which is a new technical claim)'
+        : '';
+      return `Not submitted for review — fix evidence_refs and call ${calledEv.payload.name} again${why}:\n- ${v.errors.join('\n- ')}`;
+    }
+    extra = { evidence_proofs: evidenceToProofs(v.evidence, session.response_language) };
+    if (calledEv.payload.name === 'propose_finding' && !input.target_id && v.targetId) {
+      extra.evidence_target_id = v.targetId;
+      // El target salió de la evidencia: re-chequear duplicado con ese target.
+      const dup = await findDuplicateFinding(session.project_id, { ...input, target_id: v.targetId });
+      if (dup) return duplicateFindingMessage(dup);
+    }
+  }
+  await db.query(`UPDATE ai_scan_events SET payload = payload || $2::jsonb WHERE id=$1`, [calledEv.id, JSON.stringify(extra)]);
+  Object.assign(calledEv.payload, extra);
+  return null;
+}
+
+// Input efectivo de un hallazgo propuesto: los http_proofs son SOLO los
+// armados desde la evidencia (lo que el modelo escriba ahí se ignora). Una
+// llamada sin `evidence_proofs` es de antes de este cambio (quedó esperando
+// aprobación durante el deploy) y conserva lo que traía.
+function findingInputFor(payload) {
+  const input = payload.input || {};
+  if (!('evidence_proofs' in payload)) return input;
+  return {
+    ...input,
+    target_id: input.target_id || payload.evidence_target_id || null,
+    http_proofs: payload.evidence_proofs,
+  };
+}
+
 async function createFindingFromProposal(projectId, input, approvedBy, sessionId = null) {
   const validTargetId = await targetBelongsToProject(input.target_id || null, projectId);
   const { rows } = await db.query(
@@ -1301,7 +1387,10 @@ async function updateFindingFromProposal(projectId, input, approvedBy) {
     if (input[f] !== undefined) { values.push(input[f]); sets.push(`${f}=$${values.length}`); }
   });
   if (input.http_proofs?.length) {
-    const merged = [...(existing[0].http_proofs || []), ...input.http_proofs];
+    // Un ref ya adjuntado antes (mismo evento) no se vuelve a agregar.
+    const seen = new Set((existing[0].http_proofs || []).map(p => p?.evidence_ref).filter(Boolean));
+    const fresh = input.http_proofs.filter(p => !p?.evidence_ref || !seen.has(p.evidence_ref));
+    const merged = [...(existing[0].http_proofs || []), ...fresh];
     values.push(JSON.stringify(merged));
     sets.push(`http_proofs=$${values.length}`);
   }
@@ -1401,17 +1490,27 @@ async function resolveGatedCall(sessionId, callId, decision, userId, extra = {})
       // Vino de "Editar y agregar" — ya se creó por POST /vulns, solo confirmamos.
       // (Solo existe para propose_finding — update_finding no tiene un flujo
       // de edición previa propio, se acepta o se rechaza tal cual.)
+      // El modal no manda proofs: la evidencia citada se agrega acá, así el
+      // hallazgo editado a mano conserva lo que el agente vio de verdad.
+      const proofs = calledEv.payload.evidence_proofs || [];
+      if (proofs.length) {
+        await db.query(
+          `UPDATE custom_vulns SET http_proofs = COALESCE(http_proofs, '[]'::jsonb) || $1::jsonb WHERE id=$2 AND project_id=$3`,
+          [JSON.stringify(proofs), extra.created_vuln_id, session.project_id]
+        );
+      }
       output = { decision: 'accepted', created_vuln_id: extra.created_vuln_id };
     } else {
       // Pudo crearse uno igual mientras esperaba aprobación.
-      const dup = calledEv.payload.name === 'propose_finding' ? await findDuplicateFinding(session.project_id, calledEv.payload.input) : null;
+      const findingInput = findingInputFor(calledEv.payload);
+      const dup = calledEv.payload.name === 'propose_finding' ? await findDuplicateFinding(session.project_id, findingInput) : null;
       if (dup) {
-        output = { decision: 'accepted', error: `A finding named "${dup.name}" already exists for this target (id ${dup.id}) — it was not created again. Use update_finding with finding_id "${dup.id}" to add evidence or refine it.` };
+        output = { decision: 'accepted', error: duplicateFindingMessage(dup) };
       } else {
         try {
           const vulnId = calledEv.payload.name === 'propose_finding'
-            ? await createFindingFromProposal(session.project_id, calledEv.payload.input, userId, session.id)
-            : await updateFindingFromProposal(session.project_id, calledEv.payload.input, userId);
+            ? await createFindingFromProposal(session.project_id, findingInput, userId, session.id)
+            : await updateFindingFromProposal(session.project_id, findingInput, userId);
           output = { decision: 'accepted', created_vuln_id: vulnId };
         } catch (err) {
           output = { decision: 'accepted', error: `failed to ${calledEv.payload.name === 'propose_finding' ? 'create' : 'update'} finding: ${err.message}` };

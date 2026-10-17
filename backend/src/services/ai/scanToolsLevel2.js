@@ -10,6 +10,24 @@
 // sería una tarea sin fin y un riesgo de seguridad en sí mismo.
 
 const { assertTargetInScope, describeFetchError, buildTargetUrl, readBodyCapped } = require('./targetScope');
+const { notFoundReason, NOT_FOUND_NOTES } = require('./soft404');
+
+// Mismo criterio de "no existe" que Nivel 1 (soft404.js): sin esto, un GET
+// aprobado contra un SPA que contesta 200 a todo quedaba como respuesta
+// "exitosa" y servía de evidencia para un hallazgo (ver evidence.js). La
+// línea base es un GET, así que el soft-404 solo se juzga en GET/HEAD; un
+// 404/410 cuenta para cualquier método. A diferencia de Nivel 1, acá no se
+// persiste ningún endpoint: la request la eligió el pentester al aprobarla.
+async function judgeNotFound(target, scheme, path, url, method, response, text) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    return (response.status === 404 || response.status === 410) ? 'http_404' : null;
+  }
+  try {
+    return await notFoundReason(target, scheme, url, path, response, method === 'HEAD' ? null : text);
+  } catch {
+    return null; // sin veredicto se reporta la respuesta tal cual, como antes
+  }
+}
 
 async function sendRequest(target, { method = 'GET', path, scheme, headers = {}, body = null }) {
   let url;
@@ -33,11 +51,15 @@ async function sendRequest(target, { method = 'GET', path, scheme, headers = {},
     return { url, method, error: `request failed: ${describeFetchError(err)}` };
   }
   const { text } = await readBodyCapped(response);
-  return {
-    url, method, status: response.status,
-    headers: Object.fromEntries(response.headers.entries()),
-    body_preview: text.slice(0, 3000),
-  };
+  const reason = await judgeNotFound(target, scheme, path, url, method, response, text);
+  const headersOut = Object.fromEntries(response.headers.entries());
+  // Soft 404: el cuerpo es la página catch-all, no el contenido del path —
+  // mismo recorte que softNotFoundResult en Nivel 1.
+  if (reason === 'soft_404') {
+    return { url, method, status: response.status, headers: headersOut, not_found: true, reason, note: NOT_FOUND_NOTES[reason] };
+  }
+  const result = { url, method, status: response.status, headers: headersOut, body_preview: text.slice(0, 3000) };
+  return reason ? { ...result, not_found: true, reason, note: NOT_FOUND_NOTES[reason] } : result;
 }
 
 const scanToolsLevel2 = [

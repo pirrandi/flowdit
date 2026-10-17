@@ -4,6 +4,11 @@
 // agentLoop.js (resolveGatedCall, rama tier===3) maneja la creación real en
 // custom_vulns directamente cuando el pentester aprueba — por eso `execute`
 // acá es solo un stub defensivo, nunca se llama en el flujo normal.
+//
+// Ya no hay `http_proofs` escritos por el modelo: era texto libre que el
+// modelo podía inventar y terminaba en el informe como "proof HTTP". Ahora
+// se citan `evidence_refs` (respuestas reales guardadas en ai_scan_events) y
+// el backend arma los proofs a partir de ellas — ver evidence.js.
 
 const propose_finding = {
   name: 'propose_finding',
@@ -14,9 +19,14 @@ const propose_finding = {
     'approve, reject, or edit before anything is added to the report. Call ' +
     'get_existing_findings and search_vuln_templates first to avoid ' +
     'duplicating existing work and to reuse standard descriptions/remediation text. ' +
-    'If you already have real HTTP evidence at this point (from send_http_request/ ' +
-    'test_payload results you already ran for this issue), ALWAYS include it now ' +
-    'in http_proofs — do not propose without it planning to add it later. To add ' +
+    'REQUIRED: evidence_refs — the evidence_ref values (e.g. "ev_123") of the real, ' +
+    'successful responses in this session that show the issue. Every successful network ' +
+    'tool result (fetch_endpoint, fetch_page_source, search_page_source, send_http_request, ' +
+    'test_payload, run_exploit_poc, port_scan, subdomain_enum) carries one; not-found ' +
+    '(404/410/soft-404) and failed results do not and cannot be cited. They must be from ' +
+    'the same target as the finding. The cited requests/responses are attached verbatim ' +
+    'as the finding\'s HTTP proofs — you do not write proofs yourself. No evidence yet? ' +
+    'Test first; never propose from assumptions. To add ' +
     'evidence or refine a finding you already proposed, use update_finding instead ' +
     'of calling this again — calling this again for the same issue creates a ' +
     'duplicate finding, it does not edit the existing one.',
@@ -32,22 +42,14 @@ const propose_finding = {
       cwe: { type: 'string', description: 'Optional, e.g. "CWE-79"' },
       cvss_vector: { type: 'string', description: 'Optional CVSS v3.1 vector string' },
       cvss_score: { type: 'number', description: 'Optional CVSS v3.1 base score' },
-      http_proofs: {
-        type: 'array',
-        description: 'Optional — raw HTTP request/response proof from your testing (based on send_http_request/test_payload results). Format request and response as plain raw HTTP text blocks (e.g. "GET /path HTTP/1.1\\nHost: example.com\\n..." and "HTTP/1.1 200 OK\\n...\\n\\n<body>"), not structured JSON — this renders as a proper HTTP proof in the report. There is no way to attach images/screenshots; do not invent an image field.',
-        items: {
-          type: 'object',
-          properties: {
-            method:     { type: 'string', description: 'e.g. "GET", "POST"' },
-            request:    { type: 'string', description: 'Raw HTTP request text' },
-            response:   { type: 'string', description: 'Raw HTTP response text' },
-            annotation: { type: 'string', description: 'Optional short note explaining what this proof demonstrates' },
-          },
-        },
+      evidence_refs: {
+        type: 'array', minItems: 1, maxItems: 10,
+        items: { type: 'string' },
+        description: 'evidence_ref values (e.g. ["ev_123"]) of successful network tool results in this session, on this target, that demonstrate the issue. Their requests/responses become the finding\'s HTTP proofs.',
       },
       confidence: { type: 'string', enum: ['low', 'medium', 'high'], description: 'How confident you are this is a real, exploitable issue — helps the pentester triage what to review first' },
     },
-    required: ['name', 'category', 'severity', 'description'],
+    required: ['name', 'category', 'severity', 'description', 'evidence_refs'],
   },
   async execute() {
     // No debería llamarse nunca — ver resolveGatedCall() en agentLoop.js.
@@ -65,12 +67,15 @@ const update_finding = {
   tier: 3,
   description:
     'Update a finding you (or a previous turn) already proposed in this project — ' +
-    'e.g. to add HTTP proofs after more testing, refine the description, or bump ' +
+    'e.g. to add evidence after more testing, refine the description, or bump ' +
     'confidence. Use this INSTEAD OF propose_finding when the issue is the same one ' +
     'already reported — propose_finding always creates a brand new finding, never ' +
     'edits an existing one. Call get_existing_findings first to get the finding_id. ' +
     'Only the fields you pass are changed, everything else is left as-is. ' +
-    'http_proofs is APPENDED to whatever proofs the finding already has, never replaced. ' +
+    'evidence_refs (same rules as propose_finding) attach the cited responses as new HTTP proofs, ' +
+    'APPENDED to the existing ones. They are REQUIRED when you raise the severity or set ' +
+    'remediation_status "not_remediated" — those are new technical claims; purely editorial ' +
+    'changes (wording, translation, remediation text) do not need them. ' +
     'During a retest, use remediation_status + retest_notes (+ retest_date) to record ' +
     'the outcome: "remediated" (client claims a fix), "verified_closed" (you confirmed the ' +
     'fix holds), "not_remediated" (retest shows it is still exploitable) or "open". ' +
@@ -98,18 +103,10 @@ const update_finding = {
       },
       retest_date: { type: 'string', description: 'Date of the retest, YYYY-MM-DD' },
       retest_notes: { type: 'string', description: 'Retest verification: what was retested, how, and what was observed (evidence). Replaces the existing retest notes. Use this, NOT remediation, for retest results.' },
-      http_proofs: {
-        type: 'array',
-        description: 'New proofs to ADD to this finding (appended, existing proofs are kept) — same shape as propose_finding.http_proofs.',
-        items: {
-          type: 'object',
-          properties: {
-            method:     { type: 'string' },
-            request:    { type: 'string' },
-            response:   { type: 'string' },
-            annotation: { type: 'string' },
-          },
-        },
+      evidence_refs: {
+        type: 'array', maxItems: 10,
+        items: { type: 'string' },
+        description: 'evidence_ref values of successful network tool results in this session, on the finding\'s target — their requests/responses are APPENDED as HTTP proofs. Required when raising severity or setting remediation_status "not_remediated".',
       },
     },
     required: ['finding_id'],
