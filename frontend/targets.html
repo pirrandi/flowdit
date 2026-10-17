@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Targets</title>
-<link rel="stylesheet" href="css/main.css?v=3">
+<link rel="stylesheet" href="css/main.css?v=7">
 <link rel="stylesheet" href="css/transitions.css?v=3">
 <link rel="expect" href="#fd-document-end" blocking="render">
   <link rel="icon" type="image/x-icon" href="img/favicon.ico">
@@ -28,7 +28,7 @@
       <button class="btn btn-prim" onclick="openAddTargetModal()">+ Add Target</button>
     </div>
 
-    <div id="scope-summary" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+    <div id="scope-summary" class="ss-grid"></div>
     <div id="targets-content"></div>
   </main>
 
@@ -44,56 +44,79 @@
   </aside>
 </div>
 
-<!-- Add/Edit Target Modal -->
-<div class="modal-overlay" id="target-modal">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-title" id="target-modal-title">Add Target</div>
+<!-- Drawer de target: detalle (vd-pane-view, lo arma targets.js) y
+     alta/edición (vd-pane-edit). El formulario conserva los ids del viejo
+     #target-modal. -->
+<div class="drw-backdrop" id="td-backdrop" onclick="closeTargetDetail()"></div>
+<div class="drw vd-drw td-drw" id="td-drw" role="dialog" aria-modal="true" aria-labelledby="td-title" tabindex="-1">
+  <div class="vd-pane vd-pane-view">
+    <div class="drw-head" id="td-head"></div>
+    <div class="drw-body" id="td-body"></div>
+    <div class="ccp-drw-foot" id="td-foot"></div>
+  </div>
 
-    <div class="form-group">
-      <label class="form-label">Host *</label>
-      <input type="text" class="form-input" id="modal-target-host"
-        placeholder="e.g. example.com / 192.168.1.0 / 10.0.0.0/24"
-        onkeydown="if(event.key==='Enter') saveTarget()">
+  <div class="vd-pane vd-pane-edit" id="td-edit">
+    <div class="drw-head">
+      <button type="button" class="drw-close" onclick="closeTargetDetail()" title="Cerrar (Esc)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="drw-id"><span class="vd-kind" id="td-edit-kind">Nuevo target</span></div>
+      <div class="drw-title" id="target-modal-title">Nuevo target</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Type</label>
-        <select class="form-input" id="modal-target-type" style="cursor:pointer">
-          <option value="domain">Domain</option>
-          <option value="ip">IP</option>
-          <option value="cidr">CIDR</option>
-          <option value="url">URL</option>
-          <option value="other">Other</option>
-        </select>
+    <div class="drw-body" id="td-edit-body">
+      <div class="drw-sec">
+        <label class="drw-sec-label" for="modal-target-host">Host *</label>
+        <div class="vd-field">
+          <input type="text" class="form-input" id="modal-target-host"
+            placeholder="Ej: example.com / 192.168.1.10 / 10.0.0.0/24 / https://app.example.com"
+            autocomplete="off" onkeydown="if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();saveTarget()}">
+        </div>
       </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Scope</label>
-        <select class="form-input" id="modal-target-scope" style="cursor:pointer">
-          <option value="in" data-color="var(--a)">In Scope</option>
-          <option value="out" data-color="var(--t3)">Out of Scope</option>
-        </select>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Clasificación</div>
+        <div class="vd-grid vd-grid-3">
+          <div class="vd-field">
+            <label class="form-label" for="modal-target-type">Tipo</label>
+            <select class="form-input" id="modal-target-type">
+              <option value="domain">Domain</option>
+              <option value="ip">IP</option>
+              <option value="cidr">CIDR</option>
+              <option value="url">URL</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="vd-field">
+            <label class="form-label" for="modal-target-scope">Scope</label>
+            <select class="form-input" id="modal-target-scope">
+              <option value="in" data-color="var(--a)">In Scope</option>
+              <option value="out" data-color="var(--t3)">Out of Scope</option>
+            </select>
+          </div>
+          <div class="vd-field">
+            <label class="form-label" for="modal-target-status">Estado</label>
+            <select class="form-input" id="modal-target-status">
+              <option value="active" data-color="var(--a)">Active</option>
+              <option value="completed" data-color="var(--c-low)">Completed</option>
+              <option value="out-of-scope" data-color="var(--t3)">Out of Scope</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Status</label>
-        <select class="form-input" id="modal-target-status" style="cursor:pointer">
-          <option value="active" data-color="var(--a)">Active</option>
-          <option value="completed" data-color="var(--c-low)">Completed</option>
-          <option value="out-of-scope" data-color="var(--t3)">Out of Scope</option>
-        </select>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Notas <span class="ccp-sec-hint">· opcional</span></div>
+        <textarea class="form-input note-textarea vd-textarea" id="modal-target-notes"
+          placeholder="Tecnologías, puertos abiertos, información relevante..."></textarea>
       </div>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Notes <span style="color:var(--t3);font-weight:400">(optional)</span></label>
-      <textarea class="form-input note-textarea" id="modal-target-notes"
-        placeholder="Technologies, open ports, relevant info..."></textarea>
-    </div>
-
-    <div class="form-error" id="target-error"></div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeTargetModal()">Cancel</button>
-      <button class="btn-save" id="target-save-btn" onclick="saveTarget()">Save</button>
+    <div class="ccp-drw-foot vd-edit-foot">
+      <div class="form-error vd-edit-error" id="target-error"></div>
+      <span class="vd-hint">Ctrl+Enter guarda</span>
+      <div class="ccp-foot-actions">
+        <button type="button" class="btn-secondary" onclick="closeTargetModal()">Cancelar</button>
+        <button type="button" class="btn-save" id="target-save-btn" onclick="saveTarget()">Guardar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -108,7 +131,7 @@
 <script src="js/services/utils.js?v=3"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/targets.js?v=3"></script>
+<script src="js/views/targets.js?v=4"></script>
 <script src="js/components/notifications.js?v=3"></script>
 <script src="js/page.js?v=3"></script>
 
@@ -120,28 +143,52 @@ function renderScopeSummary() {
   const vulns = state.customVulns.length;
   const withFindings = new Set(state.customVulns.filter(v=>v.target_id).map(v=>v.target_id)).size;
 
-  document.getElementById('scope-summary').innerHTML = `
-    <div class="rpt-summary-card card-wstg" style="flex:none;min-width:110px;padding:10px 14px">
-      <div class="rpt-count" style="font-size:22px">${inSc}</div>
-      <div class="rpt-label">In Scope</div>
-    </div>
-    <div class="rpt-summary-card card-info" style="flex:none;min-width:110px;padding:10px 14px">
-      <div class="rpt-count" style="font-size:22px">${outSc}</div>
-      <div class="rpt-label">Out of Scope</div>
-    </div>
-    <div class="rpt-summary-card card-high" style="flex:none;min-width:110px;padding:10px 14px">
-      <div class="rpt-count" style="font-size:22px">${vulns}</div>
-      <div class="rpt-label">Total Findings</div>
-    </div>
-    <div class="rpt-summary-card card-critical" style="flex:none;min-width:110px;padding:10px 14px">
-      <div class="rpt-count" style="font-size:22px">${withFindings}</div>
-      <div class="rpt-label">Targets w/ Findings</div>
+  const total = t.length;
+  const pct   = (n, d) => d ? Math.round(n / d * 100) : 0;
+
+  // Barra apilada por severidad: de un vistazo se ve si lo encontrado es
+  // grave o ruido, sin tener que ir a Findings.
+  const sevs = ['critical','high','medium','low','info'];
+  const SEV_VAR = { critical:'--c-crit', high:'--c-high', medium:'--c-med', low:'--c-low', info:'--c-info' };
+  const bySev = Object.fromEntries(sevs.map(s => [s, state.customVulns.filter(v => v.severity === s).length]));
+  const sevBar = vulns
+    ? sevs.filter(s => bySev[s]).map(s => `<span style="flex:${bySev[s]};background:var(${SEV_VAR[s]})" title="${s}: ${bySev[s]}"></span>`).join('')
+    : '<span style="flex:1;background:var(--b1)"></span>';
+  const sevLegend = vulns
+    ? sevs.filter(s => bySev[s]).map(s => `<span class="ss-sev"><i style="background:var(${SEV_VAR[s]})"></i>${bySev[s]}</span>`).join('')
+    : 'none yet';
+
+  const card = (tone, ic, count, label, foot) => `
+    <div class="ss-card" style="--ss-c:var(${tone})">
+      <div class="ss-top">
+        <span class="ss-icon">${icon(ic, { size: 14 })}</span>
+        <span class="ss-label">${label}</span>
+      </div>
+      <div class="ss-count">${count}</div>
+      <div class="ss-foot">${foot}</div>
     </div>`;
+
+  document.getElementById('scope-summary').innerHTML =
+    card('--c-low', 'circle-check', inSc, 'In Scope',
+      `<div class="ss-bar"><span style="flex:${inSc || 0};background:var(--ss-c)"></span><span style="flex:${total - inSc};background:var(--b1)"></span></div>
+       <div class="ss-sub">${pct(inSc, total)}% of ${total} target${total === 1 ? '' : 's'}</div>`) +
+    card('--t3', 'circle-x', outSc, 'Out of Scope',
+      `<div class="ss-bar"><span style="flex:${outSc || 0};background:var(--ss-c)"></span><span style="flex:${total - outSc};background:var(--b1)"></span></div>
+       <div class="ss-sub">excluded from testing</div>`) +
+    card('--c-high', 'triangle-alert', vulns, 'Total Findings',
+      `<div class="ss-bar">${sevBar}</div><div class="ss-sub ss-legend">${sevLegend}</div>`) +
+    card('--a', 'zap', withFindings, 'Targets w/ Findings',
+      `<div class="ss-bar"><span style="flex:${withFindings || 0};background:var(--ss-c)"></span><span style="flex:${Math.max(total - withFindings, 0)};background:var(--b1)"></span></div>
+       <div class="ss-sub">${pct(withFindings, total)}% of targets affected</div>`);
 }
 
 function pageInit() {
   renderTargets();
   renderScopeSummary();
+  // ?target=<id> abre directamente el detalle de ese target.
+  const tid = new URLSearchParams(window.location.search).get('target');
+  if (tid && state.targets.some(t => t.id === tid)) openTargetDetail(tid);
+  prefetchTargetCounts(); // no await — conteos de puertos/endpoints en las filas
 }
 
 bootPage('targets');

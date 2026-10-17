@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Vulns</title>
-<link rel="stylesheet" href="css/main.css?v=5">
+<link rel="stylesheet" href="css/main.css?v=7">
 <link rel="stylesheet" href="css/transitions.css?v=3">
 <link rel="expect" href="#fd-document-end" blocking="render">
   <link rel="icon" type="image/x-icon" href="img/favicon.ico">
@@ -301,6 +301,9 @@
   function pageInit() {
     renderCustomVulns();
     renderClaudeProposals();
+    // ?vuln=<id> abre directamente el drawer de ese hallazgo (enlaces desde Targets).
+    const vid = new URLSearchParams(window.location.search).get('vuln');
+    if (vid && state.customVulns.some(v => v.id === vid)) openVulnDetail(vid);
   }
   bootPage('custom');
 </script>
