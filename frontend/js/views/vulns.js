@@ -523,19 +523,71 @@ function buildVulnCard(v) {
 
 function openEvidenceViewer(vulnId, idx) {
   const v = state.customVulns.find(x => x.id === vulnId);
-  if (!v?.evidence?.[idx]) return;
-  const img = v.evidence[idx];
+  const img = v?.evidence?.[idx];
+  if (!img) return;
+  // Se navega solo dentro de la misma fase (original / retest), como se ven.
+  const phase = img.phase || 'original';
+  const same  = v.evidence.filter(e => (e.phase || 'original') === phase);
+  openImageLightbox(same, same.indexOf(img));
+}
+
+// Lightbox genérico: images = [{ name, data }]. Esc / clic afuera cierra,
+// ←/→ recorre. Las teclas se escuchan en captura y no se propagan, para
+// que un drawer abierto debajo (ej. propuestas de Claude Code) no las reciba.
+function openImageLightbox(images, startIdx = 0) {
+  const start = (images || [])[startIdx];
+  const list  = (images || []).filter(img => img?.data);
+  if (!list.length) return;
+  document.getElementById('img-lb')?._close?.();
+  let idx = Math.max(list.indexOf(start), 0);
+
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
-  overlay.innerHTML = `<div style="max-width:90vw;max-height:90vh;display:flex;flex-direction:column;gap:8px" onclick="event.stopPropagation()">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="color:#fff;font-family:var(--mono);font-size:11px">${esc(img.name||'evidence')}</span>
-      <button onclick="this.closest('[style*=fixed]').remove()"
-        style="background:none;border:none;color:#fff;cursor:pointer;padding:4px 8px">${icon('x',{size:20})}</button>
+  overlay.className = 'img-lb';
+  overlay.id = 'img-lb';
+  overlay.innerHTML = `
+    <div class="img-lb-bar">
+      <span class="img-lb-name"></span>
+      <span class="img-lb-count"></span>
+      <button class="img-lb-btn img-lb-close" title="Cerrar (Esc)">${icon('x', { size: 20 })}</button>
     </div>
-    <img src="${img.data}" style="max-width:88vw;max-height:85vh;object-fit:contain;border-radius:8px">
-  </div>`;
-  overlay.addEventListener('click', () => overlay.remove());
+    <div class="img-lb-stage">
+      ${list.length > 1 ? `<button class="img-lb-btn img-lb-nav img-lb-prev" title="Anterior (←)">‹</button>` : ''}
+      <img class="img-lb-img" alt="">
+      ${list.length > 1 ? `<button class="img-lb-btn img-lb-nav img-lb-next" title="Siguiente (→)">›</button>` : ''}
+    </div>`;
+
+  const imgEl = overlay.querySelector('.img-lb-img');
+  const show = i => {
+    idx = (i + list.length) % list.length;
+    const img = list[idx];
+    // src y nombre por propiedad, nunca interpolados en HTML.
+    imgEl.src = img.data;
+    imgEl.alt = img.name || '';
+    overlay.querySelector('.img-lb-name').textContent = img.name || 'evidence';
+    overlay.querySelector('.img-lb-count').textContent = list.length > 1 ? `${idx + 1} / ${list.length}` : '';
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft')  show(idx - 1);
+    else if (e.key === 'ArrowRight') show(idx + 1);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const close = () => {
+    window.removeEventListener('keydown', onKey, true);
+    overlay.remove();
+  };
+  overlay._close = close;
+
+  overlay.addEventListener('click', e => {
+    if (e.target.closest('.img-lb-close')) return close();
+    if (e.target.closest('.img-lb-prev'))  return show(idx - 1);
+    if (e.target.closest('.img-lb-next'))  return show(idx + 1);
+    if (e.target === overlay || e.target.classList.contains('img-lb-stage')) close();
+  });
+  window.addEventListener('keydown', onKey, true);
+  show(idx);
   document.body.appendChild(overlay);
 }
 
@@ -1011,6 +1063,7 @@ window.clearCVSS          = clearCVSS;
 window.renderCustomVulns  = renderCustomVulns;
 window.buildVulnCard      = buildVulnCard;
 window.openEvidenceViewer = openEvidenceViewer;
+window.openImageLightbox  = openImageLightbox;
 window.toggleVulnBody     = toggleVulnBody;
 window.cycleVulnStatus    = cycleVulnStatus;
 window.toggleCustomItem   = toggleCustomItem;
@@ -1047,7 +1100,26 @@ window.collectComplianceTags  = collectComplianceTags;
 // (mcp_proposals), no en custom_vulns: no cuentan en el dashboard ni llegan
 // al reporte/portal hasta que un writer los aprueba acá. Aprobar un hallazgo
 // lo crea como cualquier otro, sin publicar al cliente.
-let _ccProposals = [];
+//
+// El inbox es una lista compacta; la revisión se hace en un drawer lateral
+// que permite pasar de una propuesta a la siguiente sin cerrarlo.
+let _ccProposals  = [];
+let _ccpOpenId    = null;  // propuesta abierta en el drawer
+let _ccpBusy      = false; // aprobación/rechazo en curso desde el drawer
+const _ccpEvidence = {};   // capturas ya descargadas, por id de propuesta
+
+const CCP_IMG_RE = /^data:image\/(png|jpeg|webp);base64,/;
+
+function _ccpCanReview() {
+  return ['owner', 'editor', 'pentester'].includes(state.currentProject?.member_role);
+}
+
+function _ccpTitle(pr) {
+  const pl = pr.payload || {};
+  return pr.kind === 'finding'
+    ? esc(pl.title || 'Hallazgo sin título')
+    : `Nota en ${esc(pl.entity_name || pr.entity_type)}`;
+}
 
 async function renderClaudeProposals() {
   const el = document.getElementById('cc-proposals');
@@ -1060,89 +1132,248 @@ async function renderClaudeProposals() {
   }
   if (!_ccProposals.length) { el.innerHTML = ''; return; }
 
-  const canReview = ['owner', 'editor', 'pentester'].includes(p.member_role);
-  const block = (label, text) => text ? `
-    <div class="items-section"><div class="items-label">${label}</div>
-      <div class="payload-code" style="color:var(--t2);white-space:pre-wrap">${esc(text)}</div></div>` : '';
-
+  const canReview = _ccpCanReview();
   el.innerHTML = `
     <div class="vuln-severity-section">
       <div class="vuln-severity-header">
-        <span style="font-weight:700;font-size:13px">${icon('sparkles', { size: 13 })} Propuestas de Claude Code</span>
+        <span class="ccp-inbox-title">${icon('sparkles', { size: 13 })} Propuestas de Claude Code</span>
         <span class="vuln-severity-count">${_ccProposals.length} pendiente${_ccProposals.length > 1 ? 's' : ''} de revisión</span>
       </div>
       ${_ccProposals.map(pr => {
         const pl = pr.payload || {};
         const isFinding = pr.kind === 'finding';
-        const title = isFinding ? esc(pl.title) : `Nota en ${esc(pl.entity_name || pr.entity_type)}`;
+        const id = esc(pr.id);
+        const shots  = (pr.evidence_uploads || []).length;
+        const proofs = isFinding ? (pl.http_proofs || []).length : 0;
         const meta = [
           isFinding ? 'Hallazgo' : `Nota (${esc(pr.entity_type)})`,
           pr.target_host ? esc(pr.target_host) : '',
           `por ${esc(displayName(pr, 'proposed_by_'))}`,
           esc(timeAgo(pr.created_at)),
         ].filter(Boolean).join(' · ');
-        const details = isFinding
-          ? block('Descripción', pl.description) + block('Remediación', pl.remediation) +
-            block('Evidencia', pl.evidence) +
-            ((pl.cvss_vector || pl.cwe) ? block('CVSS / CWE', [pl.cvss_score != null ? `${pl.cvss_score} ${pl.cvss_vector || ''}` : pl.cvss_vector, pl.cwe].filter(Boolean).join(' · ')) : '') +
-            ((pl.http_proofs || []).length ? block('HTTP proofs', `${pl.http_proofs.length} request(s) — se adjuntan al aprobar`) : '') +
-            ((pr.evidence_uploads || []).length ? `
-              <div class="items-section"><div class="items-label">Capturas (${pr.evidence_uploads.length}) — se adjuntan al aprobar</div>
-                <div class="evidence-thumbs" id="ccp-ev-${pr.id}"></div></div>` : '')
-          : block('Nota', pl.text);
         return `
-        <div class="vuln-card" id="ccp-${pr.id}">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px">
-            <div style="min-width:0;display:flex;align-items:center;gap:8px">
-              ${isFinding ? severityBadge(pl.severity) : ''}
-              <div style="min-width:0">
-                <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div>
-                <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">${meta}</div>
+        <div class="vuln-card ccp-row" id="ccp-${id}" tabindex="0" role="button"
+          onclick="openClaudeProposal('${id}')"
+          onkeydown="if(event.key==='Enter'&&event.target===this)openClaudeProposal('${id}')">
+          <div class="ccp-row-main">
+            ${isFinding ? severityBadge(pl.severity) : `<span class="ccp-kind-note">${icon('sticky-note', { size: 11 })} Nota</span>`}
+            <div class="ccp-row-text">
+              <div class="ccp-row-title">${_ccpTitle(pr)}</div>
+              <div class="ccp-row-meta">
+                <span>${meta}</span>
+                ${shots  ? `<span class="ccp-count" title="Capturas">${icon('image', { size: 10 })}${shots}</span>` : ''}
+                ${proofs ? `<span class="ccp-count" title="HTTP proofs">${icon('terminal', { size: 10 })}${proofs}</span>` : ''}
               </div>
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="toggleClaudeProposal('${pr.id}')">Ver</button>
-              ${canReview ? `
-              <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="reviewClaudeProposal('${pr.id}','reject')">Rechazar</button>
-              <button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="reviewClaudeProposal('${pr.id}','approve')">Aprobar</button>` : ''}
-            </div>
           </div>
-          <div id="ccp-body-${pr.id}" style="display:none;padding:0 14px 12px">${details}</div>
+          ${canReview ? `
+          <div class="ccp-row-actions" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
+            <button class="btn btn-ghost ccp-btn ccp-btn-reject" onclick="reviewClaudeProposal('${id}','reject')">Rechazar</button>
+            <button class="btn btn-prim ccp-btn" onclick="reviewClaudeProposal('${id}','approve')">Aprobar</button>
+          </div>` : ''}
         </div>`;
       }).join('')}
     </div>`;
 }
 
-function toggleClaudeProposal(id) {
-  const body = document.getElementById(`ccp-body-${id}`);
-  if (!body) return;
-  body.style.display = body.style.display === 'none' ? '' : 'none';
-  if (body.style.display !== 'none') loadClaudeProposalEvidence(id);
+// ── Drawer de revisión ────────────────────────────────────────────────
+function _mountClaudeProposalDrawer() {
+  if (document.getElementById('ccp-drw')) return;
+  const bd = document.createElement('div');
+  bd.className = 'drw-backdrop';
+  bd.id = 'ccp-drw-backdrop';
+  bd.onclick = closeClaudeProposal;
+
+  const drw = document.createElement('div');
+  drw.className = 'drw ccp-drw';
+  drw.id = 'ccp-drw';
+  drw.setAttribute('role', 'dialog');
+  drw.setAttribute('aria-modal', 'true');
+  drw.innerHTML = `
+    <div class="drw-head" id="ccp-drw-head"></div>
+    <div class="drw-body" id="ccp-drw-body"></div>
+    <div class="ccp-drw-foot" id="ccp-drw-foot"></div>
+  `;
+  document.body.appendChild(bd);
+  document.body.appendChild(drw);
+}
+
+function _ccpSection(label, html) {
+  return html ? `<div class="drw-sec"><div class="drw-sec-label">${label}</div>${html}</div>` : '';
+}
+
+function _ccpProofsHtml(proofs) {
+  return proofs.map((hp, i) => `
+    <div class="http-proof">
+      <div class="http-proof-head ccp-proof-head" onclick="this.closest('.http-proof').querySelector('.http-proof-body').classList.toggle('open')">
+        <span class="http-proof-method">${esc(hp.method || 'HTTP')}</span>
+        <span class="http-proof-label">Proof #${i + 1}</span>
+        <span class="http-proof-toggle">${icon('chevron-down', { size: 11 })}</span>
+      </div>
+      <div class="http-proof-body${i === 0 ? ' open' : ''}">
+        ${hp.request  ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${numberedCode(hp.request)}</pre>` : ''}
+        ${hp.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${numberedCode(hp.response)}</pre>` : ''}
+        ${hp.annotation ? `<div class="http-proof-section-label">Anotación</div><div class="http-proof-annotation md-body">${renderMd(hp.annotation)}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function openClaudeProposal(id) {
+  const idx = _ccProposals.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const pr = _ccProposals[idx];
+  const pl = pr.payload || {};
+  const isFinding = pr.kind === 'finding';
+  _mountClaudeProposalDrawer();
+  _ccpOpenId = id;
+
+  const score = pl.cvss_score != null && pl.cvss_score !== '' ? +pl.cvss_score : null;
+  const chips = [
+    pr.target_host ? `<span class="ccp-chip ccp-chip-target">${esc(pr.target_host)}</span>` : '',
+    isFinding && pl.category ? `<span class="ccp-chip">${esc(pl.category)}</span>` : '',
+    isFinding && score != null && !isNaN(score)
+      ? `<span class="ccp-chip ccp-chip-cvss" style="--ccp-cvss:${_cvssColor(score)}">CVSS ${score.toFixed(1)}</span>` : '',
+    isFinding && pl.cwe ? `<span class="ccp-chip">${esc(pl.cwe)}</span>` : '',
+  ].join('');
+
+  document.getElementById('ccp-drw-head').innerHTML = `
+    <button class="drw-close" onclick="closeClaudeProposal()" title="Cerrar (Esc)">${icon('x', { size: 16 })}</button>
+    <div class="drw-id">
+      <span class="ccp-drw-kind">${icon('sparkles', { size: 11 })} ${isFinding ? 'Hallazgo propuesto' : `Nota propuesta (${esc(pr.entity_type)})`}</span>
+      ${isFinding ? severityBadge(pl.severity) : ''}
+    </div>
+    <div class="drw-title">${_ccpTitle(pr)}</div>
+    ${chips ? `<div class="drw-meta">${chips}</div>` : ''}
+    <div class="ccp-drw-by">por ${esc(displayName(pr, 'proposed_by_'))} · ${esc(timeAgo(pr.created_at))}</div>
+  `;
+
+  const shots  = (pr.evidence_uploads || []).length;
+  const proofs = isFinding ? (pl.http_proofs || []) : [];
+  let html;
+  if (isFinding) {
+    html =
+      _ccpSection('Descripción', pl.description ? `<div class="drw-prose md-body">${renderMd(pl.description)}</div>` : '') +
+      _ccpSection('Evidencia / pasos', pl.evidence ? `<pre class="drw-code ccp-pre">${esc(pl.evidence)}</pre>` : '') +
+      _ccpSection(`HTTP proofs (${proofs.length}) <span class="ccp-sec-hint">· se adjuntan al aprobar</span>`,
+        proofs.length ? _ccpProofsHtml(proofs) : '') +
+      _ccpSection(`Capturas (${shots}) <span class="ccp-sec-hint">· se adjuntan al aprobar</span>`,
+        shots ? `<div class="ccp-shots" id="ccp-shots"><span class="ccp-muted">Cargando capturas…</span></div>` : '') +
+      _ccpSection('Remediación', pl.remediation ? `<div class="drw-prose md-body">${renderMd(pl.remediation)}</div>` : '') +
+      _ccpSection('Vector CVSS', pl.cvss_vector ? `<code class="ccp-vector">${esc(pl.cvss_vector)}</code>` : '');
+  } else {
+    html =
+      _ccpSection('Aplica a', `<div class="ccp-entity"><span class="ccp-chip">${esc(pr.entity_type)}</span> ${esc(pl.entity_name || '')}</div>`) +
+      _ccpSection('Nota', pl.text ? `<div class="drw-prose md-body">${renderMd(pl.text)}</div>` : '');
+  }
+  if (!html) html = `<div class="ccp-muted ccp-empty">La propuesta no trae contenido.</div>`;
+  const body = document.getElementById('ccp-drw-body');
+  body.innerHTML = html;
+  body.scrollTop = 0;
+
+  _ccpRenderFoot();
+  if (shots) _ccpLoadEvidence(id);
+
+  const bd  = document.getElementById('ccp-drw-backdrop');
+  const drw = document.getElementById('ccp-drw');
+  if (!drw.classList.contains('open')) {
+    drw.offsetHeight; // reflow para que se pinte primero el translateX(100%)
+    bd.classList.add('open');
+    drw.classList.add('open');
+    document.addEventListener('keydown', _ccpOnKey);
+  }
+}
+
+function _ccpRenderFoot() {
+  const foot = document.getElementById('ccp-drw-foot');
+  if (!foot) return;
+  const idx = _ccProposals.findIndex(x => x.id === _ccpOpenId);
+  const n = _ccProposals.length;
+  const dis = _ccpBusy ? 'disabled' : '';
+  const id = esc(_ccpOpenId);
+  foot.innerHTML = `
+    <div class="ccp-foot-nav">
+      <button class="btn btn-ghost ccp-btn" onclick="stepClaudeProposal(-1)" ${idx <= 0 ? 'disabled' : ''} title="Anterior (←)">‹ anterior</button>
+      <span class="ccp-pos">${idx + 1} de ${n}</span>
+      <button class="btn btn-ghost ccp-btn" onclick="stepClaudeProposal(1)" ${idx >= n - 1 ? 'disabled' : ''} title="Siguiente (→)">siguiente ›</button>
+    </div>
+    ${_ccpCanReview() ? `
+    <div class="ccp-foot-actions">
+      <button class="btn btn-ghost ccp-btn-reject" ${dis} onclick="reviewClaudeProposal('${id}','reject')">Rechazar</button>
+      <button class="btn btn-prim" ${dis} onclick="reviewClaudeProposal('${id}','approve')">Aprobar</button>
+    </div>` : ''}`;
+}
+
+function stepClaudeProposal(delta) {
+  const idx = _ccProposals.findIndex(x => x.id === _ccpOpenId);
+  const next = _ccProposals[idx + delta];
+  if (idx >= 0 && next) openClaudeProposal(next.id);
+}
+
+function closeClaudeProposal() {
+  _ccpOpenId = null;
+  document.removeEventListener('keydown', _ccpOnKey);
+  document.getElementById('ccp-drw-backdrop')?.classList.remove('open');
+  document.getElementById('ccp-drw')?.classList.remove('open');
+}
+
+function _ccpOnKey(e) {
+  // Con el lightbox abierto, las teclas son suyas (él las captura antes).
+  if (document.getElementById('img-lb')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeClaudeProposal(); }
+  else if (e.key === 'ArrowLeft'  || e.key === 'k') { e.preventDefault(); stepClaudeProposal(-1); }
+  else if (e.key === 'ArrowRight' || e.key === 'j') { e.preventDefault(); stepClaudeProposal(1); }
 }
 
 // Las capturas se piden recién al abrir la propuesta: pueden ser varias
 // imágenes de MB y el inbox no tiene por qué bajarlas todas al cargar.
-async function loadClaudeProposalEvidence(id) {
-  const box = document.getElementById(`ccp-ev-${id}`);
-  if (!box || box.dataset.loaded) return;
-  box.dataset.loaded = '1';
-  try {
-    const imgs = await api.mcpProposals.evidence(state.currentProject.id, id);
-    // Solo data URLs de imagen: es lo que guarda el backend, pero el src
-    // termina en el DOM y no se confía en nada que no lo sea.
-    box.innerHTML = imgs.filter(img => /^data:image\/(png|jpeg|webp);base64,/.test(img.data))
-      .map(img => `<img src="${img.data}" class="evidence-thumb" style="cursor:default" alt="${esc(img.name || '')}" title="${esc(img.name || '')}">`).join('');
-  } catch (e) {
-    delete box.dataset.loaded;
-    box.innerHTML = `<span style="font-family:var(--mono);font-size:11px;color:var(--t3)">No se pudieron cargar las capturas</span>`;
+async function _ccpLoadEvidence(id) {
+  if (!_ccpEvidence[id]) {
+    try {
+      const imgs = await api.mcpProposals.evidence(state.currentProject.id, id);
+      // Solo data URLs de imagen: es lo que guarda el backend, pero el src
+      // termina en el DOM y no se confía en nada que no lo sea.
+      _ccpEvidence[id] = (imgs || []).filter(img => CCP_IMG_RE.test(img?.data || ''));
+    } catch {
+      if (_ccpOpenId === id) {
+        const box = document.getElementById('ccp-shots');
+        if (box) box.innerHTML = `<span class="ccp-muted">No se pudieron cargar las capturas</span>`;
+      }
+      return;
+    }
   }
+  // El usuario pudo haber pasado a otra propuesta mientras se descargaban.
+  if (_ccpOpenId !== id) return;
+  const box = document.getElementById('ccp-shots');
+  if (!box) return;
+  const imgs = _ccpEvidence[id];
+  box.innerHTML = imgs.length
+    ? imgs.map((img, i) => `
+      <button class="ccp-shot" onclick="openClaudeProposalShot(${i})" title="${esc(img.name || '')}">
+        <img src="${esc(img.data)}" alt="${esc(img.name || '')}" loading="lazy">
+        <span class="ccp-shot-name">${esc(img.name || `captura ${i + 1}`)}</span>
+      </button>`).join('')
+    : `<span class="ccp-muted">Sin capturas válidas</span>`;
+}
+
+function openClaudeProposalShot(idx) {
+  const imgs = _ccpEvidence[_ccpOpenId];
+  if (imgs?.length) openImageLightbox(imgs, idx);
 }
 
 async function reviewClaudeProposal(id, action) {
   const pr = _ccProposals.find(x => x.id === id);
-  if (!pr) return;
+  if (!pr || _ccpBusy) return;
   if (action === 'reject' && !confirm('¿Rechazar esta propuesta?')) return;
   const pid = state.currentProject.id;
+  // Si se revisa desde el drawer, después se avanza a la siguiente pendiente.
+  const fromDrawer = _ccpOpenId === id;
+  const oldIdx = _ccProposals.findIndex(x => x.id === id);
+  const nextId = (_ccProposals[oldIdx + 1] || _ccProposals[oldIdx - 1])?.id || null;
+  let ok = false;
+  _ccpBusy = true;
+  if (fromDrawer) _ccpRenderFoot();
   try {
     if (action === 'approve') {
       await api.mcpProposals.approve(pid, id);
@@ -1156,12 +1387,31 @@ async function reviewClaudeProposal(id, action) {
       await api.mcpProposals.reject(pid, id);
       showToast('Propuesta rechazada', 'success');
     }
+    ok = true;
   } catch (e) { showToast(e.message, 'error'); }
   // Aun si falló (ej. otro la aprobó primero, 409) se recarga: el inbox
   // tiene que reflejar el estado real, no lo que se veía al cargar la página.
-  renderClaudeProposals();
+  await renderClaudeProposals();
+  _ccpBusy = false;
+  delete _ccpEvidence[id];
+  if (!_ccpOpenId) return; // drawer cerrado (revisión desde la lista)
+  if (!_ccProposals.length) { closeClaudeProposal(); return; }
+  const has = x => x && _ccProposals.some(p => p.id === x);
+  if (_ccpOpenId !== id) {
+    // Se navegó a otra mientras tanto: solo se refresca su posición.
+    if (has(_ccpOpenId)) _ccpRenderFoot(); else openClaudeProposal(_ccProposals[0].id);
+    return;
+  }
+  // Si falló pero sigue pendiente, se queda en la misma para reintentar.
+  const target = !ok && has(id) ? id
+    : has(nextId) ? nextId
+    : _ccProposals[Math.min(Math.max(oldIdx, 0), _ccProposals.length - 1)].id;
+  openClaudeProposal(target);
 }
 
-window.renderClaudeProposals = renderClaudeProposals;
-window.toggleClaudeProposal  = toggleClaudeProposal;
-window.reviewClaudeProposal  = reviewClaudeProposal;
+window.renderClaudeProposals  = renderClaudeProposals;
+window.openClaudeProposal     = openClaudeProposal;
+window.closeClaudeProposal    = closeClaudeProposal;
+window.stepClaudeProposal     = stepClaudeProposal;
+window.openClaudeProposalShot = openClaudeProposalShot;
+window.reviewClaudeProposal   = reviewClaudeProposal;
