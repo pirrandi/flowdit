@@ -112,16 +112,16 @@ const AI_I18N = {
     tier3Title: 'Nivel 3 — propone un hallazgo, gate por defecto',
     approveAsIs: 'Aceptar tal cual', editAndAdd: 'Editar y agregar', reject: 'Rechazar',
     requiresApproval: ' — tier {tier}, requiere tu aprobación',
-    staleGateNote: '⚠ La sesión terminó antes de que esto se resolviera — sin efecto, iniciá una nueva sesión.',
-    approved: '✓ Aprobado', rejectedPrefix: '✗ Rechazado',
+    staleGateNote: 'La sesión terminó antes de que esto se resolviera — sin efecto, iniciá una nueva sesión.',
+    approved: 'Aprobado', rejectedPrefix: 'Rechazado',
     findingAddedNote: ' — hallazgo agregado al proyecto', findingUpdatedNote: ' — hallazgo actualizado', errorNotePrefix: ' — error: ',
     showRemediation: 'Ver remediación', proofLabel: 'Proof {n}', confidenceLabel: 'Confianza', requestFailed: 'Falló',
     sessionStarted: 'Sesión iniciada', errorLine: 'Error: {reason}',
     pausedLine: 'Pausado', resumedLine: 'Reanudado',
-    subagentDelegated: '🧵 Sub-agente delegado: {task}',
-    checkpointAuto: '↻ {calls} tool calls seguidos — sigue solo',
-    checkpointManual: '⏸ Pausa tras {calls} tool calls seguidos — decile "continuá" para seguir',
-    checkpointNoProgress: '⏸ Pausado: el agente encadenó muchos intentos sin resultados nuevos. Revisá el rumbo o dale una indicación.',
+    subagentDelegated: 'Sub-agente delegado: {task}',
+    checkpointAuto: '{calls} tool calls seguidos — sigue solo',
+    checkpointManual: 'Pausa tras {calls} tool calls seguidos — decile "continuá" para seguir',
+    checkpointNoProgress: 'El agente encadenó muchos intentos sin resultados nuevos. Revisá el rumbo o dale una indicación.',
     agentLabel: 'Agente', you: 'Vos', pentester: 'Pentester',
     newMessages: 'Nuevos mensajes',
     rejectReasonPrompt: 'Motivo del rechazo (opcional):',
@@ -130,9 +130,30 @@ const AI_I18N = {
     editFindingTitle: 'Editar hallazgo propuesto',
     labelName: 'Nombre *', labelCategory: 'Categoría', labelSeverity: 'Severidad',
     labelDescription: 'Descripción', labelRemediation: 'Remediación',
-    labelCwe: 'CWE <span style="color:var(--t3);font-weight:400">(opcional)</span>',
+    labelCwe: 'CWE <span class="aa-opt">(opcional)</span>',
     createdViaEndpoint: 'Se crea vía el mismo endpoint que "Add Vulnerability"',
     cancel: 'Cancelar', addFinding: 'Agregar hallazgo', deleteSessionLabel: 'Borrar sesión',
+    // Rediseño 2026-10 — `send` faltaba (el botón mostraba la clave cruda "send").
+    send: 'Enviar', noSessionsMatch: 'Ninguna sesión coincide',
+    newSessionTitle: 'Nueva sesión del agente', langName: 'español',
+    startLangHint: 'El agente va a responder en {lang} — queda fijo para esta sesión',
+    gatesOnChip: 'Lo activo pasa por tu aprobación', autonomousOnChip: 'Modo sin restricciones activo',
+    autonomousModeHint: 'Las acciones de Nivel 2/3 corren sin pedir aprobación',
+    singleAgentHint: 'Sin sub-agentes trabajando en paralelo',
+    gatePendingTitle: 'Esperando tu aprobación', gatePendingHint: 'Revisá la evidencia antes de aprobar',
+    gateAccepted: 'Aprobado', gateRejected: 'Rechazado', gateStale: 'Sin resolver',
+    gateAuto: 'Ejecutado sin aprobación', gateFailed: 'Falló',
+    evidenceLabel: 'Evidencia', requestLabel: 'Request', responseLabel: 'Response',
+    inputLabel: 'Entrada', outputLabel: 'Salida', payloadLabel: 'Payload', notRunYet: 'sin ejecutar',
+    linesLabel: '{n} líneas', copy: 'Copiar', copied: 'Copiado', copyFailed: 'No se pudo copiar',
+    showAll: 'Ver todo', showLess: 'Contraer',
+    errorTitle: 'El agente se detuvo por un error', checkpointTitle: 'Pausa de control',
+    noProgressTitle: 'Pausado — sin progreso', costCapTitle: 'Tope de gasto alcanzado',
+    detailCountActions: '{n} acciones', detailCountRunning: '{n} en curso', detailCountErrors: '{n} con error',
+    sessionStatsHeading: 'Esta sesión', statActions: 'Acciones', statEndpoints: 'Endpoints',
+    statPorts: 'Puertos', statSubdomains: 'Subdominios', statCost: 'Gasto',
+    statCostCap: 'tope {cap}', statNoCap: 'sin tope', statHosts: 'abiertos en {n} host(s)', statUnreachable: '{n} no resuelven',
+    pctOfTotal: '{pct}% del total', openInVulns: 'Abrir en My Vulns',
   },
   en: {
     subtitle: '// autonomous pentest scanner — connected to this project',
@@ -189,16 +210,16 @@ const AI_I18N = {
     tier3Title: 'Level 3 — proposes a finding, gated by default',
     approveAsIs: 'Accept as-is', editAndAdd: 'Edit and add', reject: 'Reject',
     requiresApproval: ' — tier {tier}, requires your approval',
-    staleGateNote: '⚠ The session ended before this was resolved — no effect, start a new session.',
-    approved: '✓ Approved', rejectedPrefix: '✗ Rejected',
+    staleGateNote: 'The session ended before this was resolved — no effect, start a new session.',
+    approved: 'Approved', rejectedPrefix: 'Rejected',
     findingAddedNote: ' — finding added to the project', findingUpdatedNote: ' — finding updated', errorNotePrefix: ' — error: ',
     showRemediation: 'Show remediation', proofLabel: 'Proof {n}', confidenceLabel: 'Confidence', requestFailed: 'Failed',
     sessionStarted: 'Session started', errorLine: 'Error: {reason}',
     pausedLine: 'Paused', resumedLine: 'Resumed',
-    subagentDelegated: '🧵 Sub-agent delegated: {task}',
-    checkpointAuto: '↻ {calls} tool calls in a row — continuing on its own',
-    checkpointManual: '⏸ Paused after {calls} tool calls in a row — tell it "continue" to keep going',
-    checkpointNoProgress: '⏸ Paused: the agent chained many attempts with no new results. Review its direction or give it a hint.',
+    subagentDelegated: 'Sub-agent delegated: {task}',
+    checkpointAuto: '{calls} tool calls in a row — continuing on its own',
+    checkpointManual: 'Paused after {calls} tool calls in a row — tell it "continue" to keep going',
+    checkpointNoProgress: 'The agent chained many attempts with no new results. Review its direction or give it a hint.',
     agentLabel: 'Agent', you: 'You', pentester: 'Pentester',
     newMessages: 'New messages',
     rejectReasonPrompt: 'Reason for rejection (optional):',
@@ -207,13 +228,141 @@ const AI_I18N = {
     editFindingTitle: 'Edit proposed finding',
     labelName: 'Name *', labelCategory: 'Category', labelSeverity: 'Severity',
     labelDescription: 'Description', labelRemediation: 'Remediation',
-    labelCwe: 'CWE <span style="color:var(--t3);font-weight:400">(optional)</span>',
+    labelCwe: 'CWE <span class="aa-opt">(optional)</span>',
     createdViaEndpoint: 'Created via the same endpoint as "Add Vulnerability"',
     cancel: 'Cancel', addFinding: 'Add Finding', deleteSessionLabel: 'Delete session',
+    send: 'Send', noSessionsMatch: 'No sessions match',
+    newSessionTitle: 'New agent session', langName: 'English',
+    startLangHint: 'The agent will reply in {lang} — fixed for this session',
+    gatesOnChip: 'Active actions need your approval', autonomousOnChip: 'Unrestricted mode on',
+    autonomousModeHint: 'Level 2/3 actions run without asking for approval',
+    singleAgentHint: 'No sub-agents working in parallel',
+    gatePendingTitle: 'Waiting for your approval', gatePendingHint: 'Review the evidence before approving',
+    gateAccepted: 'Approved', gateRejected: 'Rejected', gateStale: 'Unresolved',
+    gateAuto: 'Ran without approval', gateFailed: 'Failed',
+    evidenceLabel: 'Evidence', requestLabel: 'Request', responseLabel: 'Response',
+    inputLabel: 'Input', outputLabel: 'Output', payloadLabel: 'Payload', notRunYet: 'not run yet',
+    linesLabel: '{n} lines', copy: 'Copy', copied: 'Copied', copyFailed: 'Could not copy',
+    showAll: 'Show all', showLess: 'Collapse',
+    errorTitle: 'The agent stopped on an error', checkpointTitle: 'Control pause',
+    noProgressTitle: 'Paused — no progress', costCapTitle: 'Cost cap reached',
+    detailCountActions: '{n} actions', detailCountRunning: '{n} running', detailCountErrors: '{n} failed',
+    sessionStatsHeading: 'This session', statActions: 'Actions', statEndpoints: 'Endpoints',
+    statPorts: 'Ports', statSubdomains: 'Subdomains', statCost: 'Spend',
+    statCostCap: 'cap {cap}', statNoCap: 'no cap', statHosts: 'open on {n} host(s)', statUnreachable: '{n} unresolved',
+    pctOfTotal: '{pct}% of total', openInVulns: 'Open in My Vulns',
   },
 };
 
 function statusLabel(status) { return t(`status_${status}`); }
+
+// ── Helpers de presentación (rediseño 2026-10) ──────────────────────────
+// Íconos de esta página que no están en icons.js (mismo trazo lucide,
+// 24x24) — se arman acá para no tocar el set compartido de toda la app.
+const _AA_ICONS = {
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  coins: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
+  network: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+};
+function _aaIcon(name, size = 14) {
+  const body = _AA_ICONS[name];
+  if (!body) return icon(name, { size });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon">${body}</svg>`;
+}
+
+// Hora local corta (HH:MM) — la fecha completa queda en el title. Reemplaza
+// a timeAgo() en esta vista ("1h ago" quedaba en inglés en una página en ES).
+function _aaClock(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function _aaWhen(iso) {
+  const c = _aaClock(iso);
+  return c ? `<span class="aa-when" title="${esc(new Date(iso).toLocaleString())}">${esc(c)}</span>` : '';
+}
+
+function _aaDuration(fromIso, toIso) {
+  const ms = new Date(toIso) - new Date(fromIso);
+  if (!isFinite(ms) || ms < 0) return null;
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
+  const m = Math.floor(ms / 60000), s = Math.round((ms % 60000) / 1000);
+  if (m < 60) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function _aaTierChip(tier) {
+  const n = Number(tier) || 0;
+  return `<span class="aa-chip aa-tier-${n}" title="${esc(tierTitle(n))}">T${n}</span>`;
+}
+
+// Chip de status HTTP coloreado por familia (2xx/3xx/4xx/5xx).
+function _aaHttpChip(res) {
+  if (!res) return `<span class="aa-chip aa-chip-plain">${esc(t('notRunYet'))}</span>`;
+  if (res.error) return `<span class="aa-chip aa-http-err">${esc(t('requestFailed'))}</span>`;
+  const code = Number(res.status);
+  const cls = code >= 200 && code < 600 ? `aa-http-${Math.floor(code / 100)}` : 'aa-chip-plain';
+  return `<span class="aa-chip ${cls}">HTTP ${esc(String(res.status ?? '?'))}</span>`;
+}
+
+function _aaCvssTone(score) {
+  const n = Number(score);
+  if (n >= 9) return 'aa-http-5';
+  if (n >= 7) return 'aa-tier-3';
+  if (n >= 4) return 'aa-http-4';
+  return n > 0 ? 'aa-http-2' : 'aa-chip-plain';
+}
+
+// Bloque de código numerado (request/response, input/output). Texto
+// SIEMPRE escapado. Los largos arrancan plegados con "Ver todo"; `key`
+// identifica el bloque para recordar si quedó expandido entre re-renders
+// (Detalle se reconstruye entero en cada evento en vivo).
+const AA_CODE_FOLD_LINES = 16;
+let _aaFullCode = new Set();
+
+function _aaCode(label, text, key, opts = {}) {
+  const str = text == null ? '' : String(text);
+  const lines = str.split('\n');
+  const long = lines.length > AA_CODE_FOLD_LINES || str.length > 2400;
+  const full = long && _aaFullCode.has(key);
+  return `
+    <div class="aa-code${full ? ' is-full' : ''}${opts.error ? ' aa-code-err' : ''}">
+      <div class="aa-code-head">
+        <span>${esc(label)}</span><span class="aa-code-meta">${esc(t('linesLabel', { n: lines.length }))}</span>
+        <span class="aa-code-btns">
+          ${long ? `<button type="button" class="aa-code-btn" onclick="event.stopPropagation();aaToggleCode(this,'${esc(String(key))}')">${esc(t(full ? 'showLess' : 'showAll'))}</button>` : ''}
+          <button type="button" class="aa-code-btn" title="${esc(t('copy'))}" aria-label="${esc(t('copy'))}" onclick="event.stopPropagation();aaCopyCode(this)">${_aaIcon('copy', 11)}</button>
+        </span>
+      </div>
+      <pre class="aa-code-pre">${lines.map(l => `<span>${esc(l)}</span>`).join('')}</pre>
+    </div>`;
+}
+
+function aaToggleCode(btn, key) {
+  const box = btn.closest('.aa-code');
+  if (!box) return;
+  const full = !box.classList.contains('is-full');
+  box.classList.toggle('is-full', full);
+  if (full) _aaFullCode.add(key); else _aaFullCode.delete(key);
+  btn.textContent = t(full ? 'showLess' : 'showAll');
+}
+
+async function aaCopyCode(btn) {
+  const text = btn.closest('.aa-code')?.querySelector('.aa-code-pre')?.innerText ?? '';
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(t('copied'), 'success');
+  } catch {
+    showToast(t('copyFailed'), 'error');
+  }
+}
+
+function _aaJson(v) { return v === undefined ? '' : JSON.stringify(v, null, 2); }
 
 function setAiLang(lang) {
   if (lang !== 'es' && lang !== 'en') return;
@@ -349,25 +498,26 @@ function renderSessionPicker() {
   if (!_scanSessions.length) { el.innerHTML = ''; return; }
 
   const triggerLabel = _scanSession ? _sessionLabel(_scanSession) : t('noSession');
-  const triggerColor = _scanSession ? _sessionStatusColorVar(_scanSession.status) : 'var(--scan-muted3)';
+  const triggerStatus = _scanSession ? _scanSession.status : 'idle';
 
   const q = _sessionSearchQuery.trim().toLowerCase();
   const visibleSessions = q ? _scanSessions.filter(s => _sessionLabel(s).toLowerCase().includes(q)) : _scanSessions;
 
   el.innerHTML = `
     <span class="scan-session-picker">
-      <button class="scan-session-trigger" onclick="event.stopPropagation();toggleScanSessionMenu()">
-        <span class="dot" style="background:${triggerColor}"></span>
+      <button class="scan-session-trigger" title="${esc(triggerLabel)}" onclick="event.stopPropagation();toggleScanSessionMenu()">
+        <span class="dot aa-st-${esc(triggerStatus)}"></span>
         <span class="name">${esc(triggerLabel)}</span>
-        <span class="chev">▾</span>
+        <span class="chev">${icon('chevron-down', { size: 13 })}</span>
       </button>
       <div class="scan-session-dropdown" id="scan-session-dropdown">
-        <div class="scan-session-dropdown-head">${esc(t('sessionsDropdownHeader'))}</div>
+        <div class="scan-session-dropdown-head"><span>${esc(t('sessionsDropdownHeader'))}</span><span>${_scanSessions.length}</span></div>
         ${_scanSessions.length > 6 ? `
           <input type="text" class="scan-session-search" id="scan-session-search" autocomplete="off"
             placeholder="${esc(t('searchSessionsPlaceholder'))}" value="${esc(_sessionSearchQuery)}"
             onclick="event.stopPropagation()" oninput="_scanSessionSearchInput(this.value)">
         ` : ''}
+        ${!visibleSessions.length ? `<div class="aa-session-none">${esc(t('noSessionsMatch'))}</div>` : ''}
         ${visibleSessions.map(s => {
           const target = _sessionTargetLabel(s);
           const dur = _sessionDuration(s);
@@ -385,18 +535,18 @@ function renderSessionPicker() {
           </div>` : `
           <div class="scan-session-row ${_scanSession && _scanSession.id === s.id ? 'active' : ''}">
             <button class="scan-session-row-btn" onclick="switchScanSession('${s.id}');closeScanSessionMenu()">
-              <span class="scan-session-dot" style="background:${_sessionStatusColorVar(s.status)}"></span>
+              <span class="scan-session-dot aa-st-${esc(s.status)}"></span>
               <span class="scan-session-main">
                 <span class="scan-session-name">${esc(_sessionLabel(s))}</span>
                 ${meta ? `<span class="scan-session-meta">${esc(meta)}</span>` : ''}
               </span>
-              <span class="scan-session-status ${s.status}">${esc(statusLabel(s.status))}</span>
+              <span class="scan-session-status ${esc(s.status)}">${esc(statusLabel(s.status))}</span>
             </button>
             <button class="scan-session-rename" title="${esc(t('renameSessionTooltip'))}" onclick="event.stopPropagation();startRenameSession('${s.id}')">${icon('square-pen', { size: 12 })}</button>
             <button class="scan-session-delete" title="${esc(t('deleteSessionTooltip'))}" onclick="event.stopPropagation();scanDeleteSession('${s.id}')">${icon('x', { size: 12 })}</button>
           </div>`;
         }).join('')}
-        <button class="scan-session-new" onclick="switchScanSession('');closeScanSessionMenu()">${icon('plus', { size: 13 })} + ${esc(t('newSessionShort'))}</button>
+        <button class="scan-session-new" onclick="switchScanSession('');closeScanSessionMenu()">${icon('plus', { size: 13 })} ${esc(t('newSessionShort'))}</button>
       </div>
     </span>
   `;
@@ -411,15 +561,9 @@ function renderSessionPicker() {
   }
 }
 
-// Mapea el status de sesión al token de color del rediseño (ver CSS
-// .scan-main): running/paused/waiting_approval/done — mismo agrupamiento
-// que .scan-session-status en las filas del dropdown.
-function _sessionStatusColorVar(status) {
-  if (status === 'running') return 'var(--scan-status-running)';
-  if (status === 'paused' || status === 'waiting_approval') return 'var(--scan-status-paused)';
-  if (status === 'error') return 'var(--scan-status-error)';
-  return 'var(--scan-status-done)'; // idle/completed
-}
+// El color de estado (dot de la sesión, píldora del status strip) sale de
+// las clases .aa-st-<status> del CSS de la página — antes era un style
+// inline con los viejos tokens --scan-*.
 
 function toggleScanSessionMenu() { document.getElementById('scan-session-dropdown')?.classList.toggle('open'); }
 function closeScanSessionMenu()  { document.getElementById('scan-session-dropdown')?.classList.remove('open'); }
@@ -524,7 +668,7 @@ function renderThreadsStrip() {
     const isPrimary = !thr.parent_thread_id;
     const label = isPrimary ? t('coordinator') : (thr.label || t('subAgent'));
     const status = thr.status || 'running';
-    return `<span class="scan-thread-chip ${status}"><span class="dot"></span>${isPrimary ? '🧭' : '🧵'} ${esc(label.slice(0, 48))} — ${esc(statusLabel(status))}</span>`;
+    return `<span class="scan-thread-chip ${esc(status)}" title="${esc(label)} — ${esc(statusLabel(status))}"><span class="dot"></span><span class="aa-thread-ic">${isPrimary ? _aaIcon('bot', 12) : icon('workflow', { size: 12 })}</span><span class="aa-thread-label">${esc(label.slice(0, 80))}</span><span>· ${esc(statusLabel(status))}</span></span>`;
   }).join('');
 }
 
@@ -532,11 +676,23 @@ function renderThreadsStrip() {
 function renderTabsBar() {
   const el = document.getElementById('scan-tabs');
   if (!el) return;
-  if (!_scanSession) { el.style.display = 'none'; return; }
+  // La fila de pestañas también aloja el indicador de actividad en vivo
+  // (#scan-live-activity) — se esconde entera sin sesión.
+  const row = document.getElementById('aa-tabs-row');
+  if (!_scanSession) { el.style.display = 'none'; if (row) row.style.display = 'none'; return; }
   el.style.display = 'flex';
-  const tabs = [['chat', 'tabChat'], ['detalle', 'tabDetalle'], ['resumen', 'tabResumen']];
-  el.innerHTML = tabs.map(([id, key]) =>
-    `<button class="scan-tab ${_scanActiveTab === id ? 'active' : ''}" onclick="scanSelectTab('${id}')">${esc(t(key))}</button>`
+  if (row) row.style.display = 'flex';
+  const nTools = _scanEvents.filter(e => e.type === 'tool.called').length;
+  const nVulns = (state.customVulns || []).length;
+  // Aviso en Chat cuando hay una aprobación pendiente y estás mirando otra pestaña.
+  const pendingGate = _scanSession.status === 'waiting_approval' && _scanActiveTab !== 'chat';
+  const tabs = [
+    ['chat', 'tabChat', pendingGate ? '<span class="td-tab-n is-alert">!</span>' : ''],
+    ['detalle', 'tabDetalle', `<span class="td-tab-n">${nTools}</span>`],
+    ['resumen', 'tabResumen', `<span class="td-tab-n">${nVulns}</span>`],
+  ];
+  el.innerHTML = tabs.map(([id, key, badge]) =>
+    `<button class="scan-tab ${_scanActiveTab === id ? 'active' : ''}" role="tab" aria-selected="${_scanActiveTab === id}" onclick="scanSelectTab('${id}')">${esc(t(key))}${badge}</button>`
   ).join('');
 }
 
@@ -666,7 +822,7 @@ function renderTypingBubble(activity) {
   const node = document.createElement('div');
   node.className = 'scan-msg assistant scan-msg-enter';
   node.id = 'scan-typing-bubble';
-  node.innerHTML = `<span class="who">${esc(t('agentLabel'))}</span><div class="bubble scan-typing-dots"><span></span><span></span><span></span></div>`;
+  node.innerHTML = `<span class="who"><span class="aa-av">${_aaIcon('bot', 12)}</span>${esc(t('agentLabel'))}</span><div class="bubble scan-typing-dots"><span></span><span></span><span></span></div>`;
   node.addEventListener('animationend', () => node.classList.remove('scan-msg-enter'), { once: true });
   el.appendChild(node);
   if (wasAtBottom) scanScrollToBottom();
@@ -785,6 +941,99 @@ function _detalleSystemLineText(ev) {
   }
 }
 
+// Resumen corto del input de una tool para la fila del timeline (url,
+// método+path, host...) — solo lectura de campos comunes, una tool nueva
+// sin ninguno de estos simplemente cae al primer valor escalar.
+function _aaInputSummary(input) {
+  if (!input || typeof input !== 'object') return '';
+  if (input.method || input.path) return `${input.method || 'GET'} ${input.path || '/'}`;
+  if (input.url) return String(input.url);
+  if (Array.isArray(input.request_sequence)) return `${input.technique || ''} · ${input.request_sequence.length} req`.trim();
+  if (input.host) return input.ports ? `${input.host} · ${input.ports}` : String(input.host);
+  for (const k of ['domain', 'task', 'name', 'query', 'target']) if (typeof input[k] === 'string') return input[k];
+  const first = Object.values(input).find(v => typeof v === 'string' || typeof v === 'number');
+  return first != null ? String(first) : '';
+}
+
+// Salida "útil" de un tool.result: las dos formas de payload que existen
+// (ver renderResolvedGate) — anidada en `result`, o el payload del gate
+// resuelto (decision/reason/error) sin los campos de enlace.
+function _aaResultOutput(result) {
+  const p = (result && result.payload) || {};
+  if ('result' in p) return p.result;
+  const { call_id, name, ...rest } = p; // eslint-disable-line no-unused-vars
+  return rest;
+}
+
+// Estado visible de una tool call en el timeline. Sin resultado: si la
+// sesión ya terminó quedó "sin resolver"; si es Nivel 2+ gateada, espera
+// aprobación; si no, sigue corriendo.
+function _aaToolState(ev, result) {
+  const terminal = _scanSession && (_scanSession.status === 'error' || _scanSession.status === 'completed');
+  if (!result) {
+    if (terminal) return 'stale';
+    const autonomous = !!(state.currentProject && state.currentProject.ai_autonomous_requests);
+    return (ev.payload.tier ?? 0) >= 2 && !autonomous ? 'waiting' : 'running';
+  }
+  const p = result.payload || {};
+  if (p.decision === 'rejected' || p.error || (p.result && (p.result.error || p.result.decision === 'rejected'))) return 'error';
+  return 'done';
+}
+
+const _AA_TEXT_FIELDS = ['body_preview', 'content', 'body', 'html', 'output', 'stdout', 'stderr'];
+const _AA_TOOL_STATE_ICON = { done: 'check', waiting: 'triangle-alert', error: 'x', stale: 'minus' };
+
+function _aaSysKind(ev) {
+  const p = ev.payload || {};
+  switch (ev.type) {
+    case 'session.started': return ['play', 'done'];
+    case 'session.error': return ['circle-x', 'error'];
+    case 'session.paused': return ['pause', 'warn'];
+    case 'session.resumed': return ['play', 'sys'];
+    case 'session.cost_cap_reached': return ['triangle-alert', 'warn'];
+    case 'thread.started': return ['workflow', 'sys'];
+    case 'turn.checkpoint': return p.auto && !CHECKPOINT_REASON_KEYS[p.reason] ? ['rotate-ccw', 'sys'] : ['pause', 'warn'];
+    default: return ['info', 'sys'];
+  }
+}
+
+// Detalle expandido de una tool: para las HTTP se reconstruye el
+// request/response legible (igual que en las tarjetas del Chat); para el
+// resto, input/output como JSON. Todo en bloques numerados plegables.
+function _aaToolDetail(ev, result) {
+  const name = ev.payload.name;
+  const input = ev.payload.input;
+  const out = result ? _aaResultOutput(result) : undefined;
+  const k = String(ev.id);
+  const blocks = [];
+  if (name === 'run_exploit_poc' && Array.isArray(input && input.request_sequence)) {
+    const steps = Array.isArray(out && out.steps) ? out.steps : [];
+    input.request_sequence.forEach((req, i) => {
+      blocks.push(_aaCode(`${t('requestLabel')} ${i + 1}`, formatHttpRequestPreview(req), `${k}:rq${i}`));
+      if (steps[i]) blocks.push(_aaCode(`${t('responseLabel')} ${i + 1}`, formatHttpResponsePreview(steps[i]), `${k}:rs${i}`, { error: !!steps[i].error }));
+    });
+  } else if (isHttpTool(name) && input) {
+    blocks.push(_aaCode(t('requestLabel'), formatHttpRequestPreview(input), `${k}:rq`));
+    if (out && (out.status != null || out.error)) blocks.push(_aaCode(t('responseLabel'), formatHttpResponsePreview(out), `${k}:rs`, { error: !!out.error }));
+    else if (out !== undefined) blocks.push(_aaCode(t('outputLabel'), _aaJson(out), `${k}:out`));
+  } else {
+    blocks.push(_aaCode(t('inputLabel'), _aaJson(input), `${k}:in`));
+    // Campos de texto multilínea (HTML de fetch_endpoint, etc.) van en su
+    // propio bloque: dentro del JSON quedaban como una sola línea con "\n".
+    const texts = out && typeof out === 'object' && !Array.isArray(out)
+      ? _AA_TEXT_FIELDS.filter(f => typeof out[f] === 'string' && out[f].includes('\n')) : [];
+    if (texts.length) {
+      const rest = { ...out };
+      texts.forEach(f => delete rest[f]);
+      blocks.push(_aaCode(t('outputLabel'), _aaJson(rest), `${k}:out`, { error: !!out.error }));
+      texts.forEach(f => blocks.push(_aaCode(f, out[f], `${k}:o_${f}`)));
+    } else if (out !== undefined) {
+      blocks.push(_aaCode(t('outputLabel'), _aaJson(out), `${k}:out`, { error: !!(out && out.error) }));
+    }
+  }
+  return blocks.join('');
+}
+
 function renderDetalleTab() {
   const el = document.getElementById('scan-panel-detalle');
   if (!el) return;
@@ -793,45 +1042,82 @@ function renderDetalleTab() {
   _scanEvents.forEach(ev => { if (ev.type === 'tool.result') resultsByCallId[String(ev.payload.call_id)] = ev; });
 
   const rows = _scanEvents.filter(ev => ev.type === 'tool.called' || DETALLE_SYSTEM_TYPES.has(ev.type));
+  const heading = `<div class="scan-panel-heading">${icon('list', { size: 12 })} ${esc(t('detailHeading'))}</div>`;
 
   if (!rows.length) {
-    el.innerHTML = `<div class="scan-panel-heading">${esc(t('detailHeading'))}</div><div class="scan-detail-empty">${esc(t('detailEmpty'))}</div>`;
+    el.innerHTML = `${heading}<div class="scan-detail-empty">${esc(t('detailEmpty'))}</div>`;
     return;
   }
 
+  // Etiqueta del sub-agente dueño del evento (el coordinador no lleva chip).
+  const subLabel = threadId => {
+    const th = _scanThreads.find(x => x.id === threadId);
+    return th && th.parent_thread_id ? (th.label || t('subAgent')) : null;
+  };
+
+  let nTools = 0, nRunning = 0, nErr = 0;
+  const html = rows.map(ev => {
+    const isTool = ev.type === 'tool.called';
+    const expanded = ev.id != null && _expandedDetailIds.has(ev.id);
+    const when = _aaClock(ev.created_at);
+    let dot, main, chips = '', full = '';
+    let expandable = ev.id != null;
+
+    if (isTool) {
+      nTools++;
+      const result = resultsByCallId[String(ev.id)];
+      const st = _aaToolState(ev, result);
+      if (st === 'running' || st === 'waiting') nRunning++;
+      if (st === 'error') nErr++;
+      const dotCls = st === 'stale' ? 'sys' : st;
+      dot = `<span class="aa-ic scan-detail-dot ${dotCls}">${st === 'running' ? '<span class="aa-spin"></span>' : icon(_AA_TOOL_STATE_ICON[st], { size: 12 })}</span>`;
+      const summary = _aaInputSummary(ev.payload.input);
+      main = `<span class="scan-detail-text">${esc(ev.payload.name)}</span>${summary ? `<span class="scan-detail-sub" title="${esc(summary)}">${esc(summary.slice(0, 240))}</span>` : ''}`;
+      const owner = subLabel(ev.thread_id);
+      const dur = result ? _aaDuration(ev.created_at, result.created_at) : null;
+      chips = `${owner ? `<span class="aa-chip aa-chip-plain" title="${esc(owner)}">${icon('workflow', { size: 10 })} ${esc(owner.slice(0, 18))}</span>` : ''}${_aaTierChip(ev.payload.tier ?? 0)}${dur ? `<span class="aa-chip aa-chip-plain">${esc(dur)}</span>` : ''}`;
+      if (expanded) full = _aaToolDetail(ev, result);
+    } else {
+      const [ic, cls] = _aaSysKind(ev);
+      dot = `<span class="aa-ic scan-detail-dot ${cls}">${icon(ic, { size: 12 })}</span>`;
+      main = `<span class="scan-detail-text is-sys">${esc(_detalleSystemLineText(ev))}</span>`;
+      // Un payload vacío ({}) no tiene nada que mostrar al expandir.
+      expandable = expandable && ev.payload && Object.keys(ev.payload).length > 0;
+      if (expanded && expandable) full = _aaCode(t('payloadLabel'), _aaJson(ev.payload), `${ev.id}:p`);
+    }
+
+    return `
+      <div class="scan-detail-row ${expanded && full ? 'expanded' : ''} ${isTool ? '' : 'is-sys'}">
+        <div class="scan-detail-row-head" ${expandable ? `onclick="toggleDetailRow('${esc(String(ev.id))}')"` : ''}>
+          ${dot}
+          <div class="scan-detail-body">${main}</div>
+          ${chips ? `<div class="aa-tl-chips">${chips}</div>` : ''}
+          <div class="scan-detail-time mono" title="${esc(ev.created_at ? new Date(ev.created_at).toLocaleString() : '')}">${esc(when)}</div>
+          ${expandable ? `<div class="scan-detail-chevron">${icon('chevron-right', { size: 14 })}</div>` : ''}
+        </div>
+        ${full ? `<div class="scan-detail-full">${full}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
   el.innerHTML = `
-    <div class="scan-panel-heading">${esc(t('detailHeading'))}</div>
-    <div class="scan-detail-feed">
-      ${rows.map(ev => {
-        const isTool = ev.type === 'tool.called';
-        const result = isTool ? resultsByCallId[String(ev.id)] : null;
-        const status = isTool ? (result ? 'done' : 'running') : 'done';
-        const text = isTool ? ev.payload.name : _detalleSystemLineText(ev);
-        const sub = isTool ? tierTitle(ev.payload.tier ?? 0) : null;
-        const expanded = _expandedDetailIds.has(ev.id);
-        const detailObj = isTool ? { input: ev.payload.input, result: result ? result.payload.result : undefined } : ev.payload;
-        return `
-          <div class="scan-detail-row ${expanded ? 'expanded' : ''}">
-            <div class="scan-detail-row-head" onclick="toggleDetailRow('${ev.id}')">
-              <div class="scan-detail-dot ${status}"></div>
-              <div class="scan-detail-body">
-                <div class="scan-detail-text mono">${esc(text)}</div>
-                ${sub ? `<div class="scan-detail-sub">${esc(sub)}</div>` : ''}
-              </div>
-              <div class="scan-detail-time mono">${esc(timeAgo(ev.created_at))}</div>
-              <div class="scan-detail-chevron">›</div>
-            </div>
-            ${expanded ? `<div class="scan-detail-full">${esc(JSON.stringify(detailObj, null, 2))}</div>` : ''}
-          </div>
-        `;
-      }).join('')}
+    <div class="aa-tl-head">
+      ${heading}
+      <div class="aa-tl-sum">
+        <span class="aa-chip aa-chip-plain">${esc(t('detailCountActions', { n: nTools }))}</span>
+        ${nRunning ? `<span class="aa-chip aa-http-4">${esc(t('detailCountRunning', { n: nRunning }))}</span>` : ''}
+        ${nErr ? `<span class="aa-chip aa-http-err">${esc(t('detailCountErrors', { n: nErr }))}</span>` : ''}
+      </div>
     </div>
+    <div class="scan-detail-feed">${html}</div>
   `;
 }
 
 function toggleDetailRow(eventId) {
-  if (_expandedDetailIds.has(eventId)) _expandedDetailIds.delete(eventId);
-  else _expandedDetailIds.add(eventId);
+  const ev = _scanEvents.find(e => String(e.id) === String(eventId));
+  const id = ev ? ev.id : eventId;
+  if (_expandedDetailIds.has(id)) _expandedDetailIds.delete(id);
+  else _expandedDetailIds.add(id);
   renderDetalleTab();
 }
 
@@ -843,6 +1129,16 @@ function toggleDetailRow(eventId) {
 // por sesión" — confirmado como la interpretación correcta acá.
 const SCAN_SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
 
+function _aaStatCard(cls, iconHtml, label, count, sub, barPct, small) {
+  return `
+    <div class="ss-card ${cls}">
+      <div class="ss-top"><span class="ss-icon">${iconHtml}</span><span class="ss-label">${esc(label)}</span></div>
+      <div class="ss-count${small ? ' is-sm' : ''}">${esc(String(count))}</div>
+      ${barPct != null ? `<div class="ss-bar"><span class="aa-bar-fill" style="width:${Math.max(0, Math.min(100, barPct)).toFixed(1)}%"></span></div>` : ''}
+      ${sub ? `<div class="ss-sub">${esc(sub)}</div>` : ''}
+    </div>`;
+}
+
 function renderResumenTab() {
   const el = document.getElementById('scan-panel-resumen');
   if (!el) return;
@@ -851,38 +1147,73 @@ function renderResumenTab() {
   const counts = {};
   SCAN_SEV_ORDER.forEach(s => counts[s] = 0);
   vulns.forEach(v => { const s = v.severity || 'medium'; if (counts[s] !== undefined) counts[s]++; });
+  const total = vulns.length;
 
-  const cards = SCAN_SEV_ORDER.map(sev => `
-    <div class="scan-sev-card ${sev}">
-      <div class="n">${counts[sev]}</div>
-      <div class="label">${esc(_SEV_LABELS[sev])}</div>
-    </div>
-  `).join('');
+  // Bloque "Esta sesión": agregados de computeScanHighlights() (dedupe
+  // entre varias llamadas) — puertos/subdominios no tenían ningún lugar
+  // propio desde que se retiró la vieja UI de chips.
+  const hl = computeScanHighlights(_scanEvents);
+  const nTools = _scanEvents.filter(e => e.type === 'tool.called').length;
+  const hosts = new Set(hl.ports.map(p => p.host)).size;
+  const unreachable = hl.subdomains.filter(s => s.reachable === false || s.error).length;
+  const cost = Number(_scanSession && _scanSession.total_cost) || 0;
+  const cap = Number(_scanSession && _scanSession.ai_max_cost_usd) || 0;
+  const sessionCards = [
+    _aaStatCard('aa-k-actions', icon('zap', { size: 14 }), t('statActions'), nTools, null, null),
+    _aaStatCard('aa-k-endpoints', _aaIcon('globe', 14), t('statEndpoints'), hl.endpoints.length, null, null),
+    _aaStatCard('aa-k-ports', _aaIcon('network', 14), t('statPorts'), hl.ports.length, hosts ? t('statHosts', { n: hosts }) : null, null),
+    _aaStatCard('aa-k-subs', icon('search', { size: 14 }), t('statSubdomains'), hl.subdomains.length, unreachable ? t('statUnreachable', { n: unreachable }) : null, null),
+    _aaStatCard('aa-k-cost', _aaIcon('coins', 14), t('statCost'), `$${cost.toFixed(cost >= 100 ? 2 : 4)}`,
+      cap ? t('statCostCap', { cap: `$${cap.toFixed(2)}` }) : t('statNoCap'), cap ? (cost / cap) * 100 : null, true),
+  ].join('');
+
+  const sevCards = SCAN_SEV_ORDER.map(sev => _aaStatCard(
+    `aa-sev-${sev}`, _aaIcon('shield', 14), _SEV_LABELS[sev], counts[sev],
+    t('pctOfTotal', { pct: total ? Math.round((counts[sev] / total) * 100) : 0 }),
+    total ? (counts[sev] / total) * 100 : 0,
+  )).join('');
+
+  const sessionSec = _scanSession ? `
+    <div class="aa-sum-sec">
+      <div class="scan-panel-heading">${_aaIcon('bot', 12)} ${esc(t('sessionStatsHeading'))}</div>
+      <div class="aa-ss-grid">${sessionCards}</div>
+    </div>` : '';
+
+  const sevSec = `
+    <div class="aa-sum-sec">
+      <div class="scan-panel-heading">${_aaIcon('shield', 12)} ${esc(t('resumenHeading'))} <span class="aa-opt">· ${total}</span></div>
+      <div class="aa-ss-grid">${sevCards}</div>
+    </div>`;
 
   if (!vulns.length) {
-    el.innerHTML = `<div class="scan-sev-cards">${cards}</div><div class="scan-panel-heading">${esc(t('resumenHeading'))}</div><div class="scan-detail-empty">${esc(t('resumenEmpty'))}</div>`;
+    el.innerHTML = `${sessionSec}${sevSec}<div class="scan-detail-empty">${esc(t('resumenEmpty'))}</div>`;
     return;
   }
 
+  // Cada fila abre el hallazgo en My Vulns (mismo deep-link que usa el
+  // drawer de Targets: vulns?pid=…&vuln=…).
+  const pid = encodeURIComponent(state.currentProject.id);
   const sorted = [...vulns].sort((a, b) => SCAN_SEV_ORDER.indexOf(a.severity || 'medium') - SCAN_SEV_ORDER.indexOf(b.severity || 'medium'));
   const rows = sorted.map(v => {
-    const sev = v.severity || 'medium';
     const remStatus = v.remediation_status || 'open';
-    const tag = remStatus !== 'open' ? t(`rem_${remStatus}`) : null;
+    const meta = [
+      remStatus !== 'open' ? `<span class="vr-tag">${esc(t(`rem_${remStatus}`))}</span>` : '',
+      v.category ? `<span>${esc(v.category)}</span>` : '',
+      v.cwe ? `<span>${esc(String(v.cwe))}</span>` : '',
+      v.cvss_score != null ? `<span>CVSS ${esc(String(v.cvss_score))}</span>` : '',
+    ].filter(Boolean).join('<span class="td-dot">·</span>');
     return `
-      <div class="scan-findings-row">
-        <span class="scan-sev-badge ${sev}">${esc(_SEV_LABELS[sev])}</span>
-        <span class="text">${esc(v.name)}</span>
-        ${tag ? `<span class="scan-findings-tag">${esc(tag)}</span>` : ''}
-      </div>
-    `;
+      <a class="td-finding" href="vulns?pid=${pid}&amp;vuln=${esc(encodeURIComponent(v.id))}" title="${esc(t('openInVulns'))}">
+        ${_severityBadge(v.severity || 'medium')}
+        <span class="td-finding-text">
+          <span class="td-finding-name">${esc(v.name)}</span>
+          ${meta ? `<span class="td-finding-meta">${meta}</span>` : ''}
+        </span>
+        <span class="td-finding-go">${icon('chevron-right', { size: 14 })}</span>
+      </a>`;
   }).join('');
 
-  el.innerHTML = `
-    <div class="scan-sev-cards">${cards}</div>
-    <div class="scan-panel-heading">${esc(t('resumenHeading'))}</div>
-    <div class="scan-findings-table">${rows}</div>
-  `;
+  el.innerHTML = `${sessionSec}${sevSec}<div class="td-list aa-findings">${rows}</div>`;
 }
 
 async function switchScanSession(id) {
@@ -908,6 +1239,7 @@ async function loadSession(sessionId) {
   _scanEvents  = data.events;
   _scanThreads = data.threads || [];
   _expandedDetailIds = new Set(); // sesión distinta — sin nada abierto todavía
+  _aaFullCode = new Set();
   _scanActiveTab = 'chat'; // volvemos siempre a Chat al cambiar de sesión
   _showScanPanels(true);
   renderSessionPicker();
@@ -942,68 +1274,88 @@ function renderEmptyState() {
   // Targets. Preselecciona, no auto-arranca — sigue siendo un click
   // explícito del pentester.
   const presetTarget = new URLSearchParams(window.location.search).get('target');
+  const findingsCount = (state.customVulns || []).length;
+  const autonomousDefault = !!state.currentProject.ai_autonomous_requests;
+  // Se queda inline en vez de pasar a un drawer: sin sesión, este formulario
+  // ES el contenido de la página — un drawer agregaría un click y dejaría
+  // un vacío detrás. Mismo lenguaje que los drawers (secciones, pie fijo).
   el.innerHTML = `
     <div class="scan-empty">
-      <div style="font-family:var(--mono);font-size:12px;color:var(--t2);margin-bottom:14px">
-        ${esc(t('emptyStateDesc'))}
-      </div>
-      <div class="form-group">
-        <label class="form-label">${esc(t('targetLabel'))} <span style="color:var(--t3);font-weight:400">${esc(t('targetOptionalNote'))}</span></label>
-        <select class="form-input" id="scan-start-target">
-          <option value="">${esc(t('wholeProjectOption'))}</option>
-          ${inScopeTargets.map(tg => `<option value="${tg.id}" ${tg.id === presetTarget ? 'selected' : ''}>${esc(tg.host)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label class="form-label">${esc(t('initialInstructionLabel'))} <span style="color:var(--t3);font-weight:400">${esc(t('instructionOptionalNote'))}</span></label>
-        <textarea class="form-input note-textarea" id="scan-start-instruction" placeholder="${esc(t('instructionPlaceholder'))}"></textarea>
-      </div>
-      <details style="margin-top:14px">
-        <summary style="cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--t3)">
-          ${esc(t('advancedOptions'))} <span style="font-weight:400">${esc(t('advancedOptionsNote'))}</span>
-        </summary>
-        <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">${esc(t('profileLabel'))}</label>
-            <select class="form-input" id="scan-start-profile">
-              <option value="pentest">${esc(t('profilePentest'))}</option>
-              <option value="ctf">${esc(t('profileCtf'))}</option>
-              <option value="lab">${esc(t('profileLab'))}</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">${esc(t('providerLabel'))}</label>
-            <select class="form-input" id="scan-start-provider">
-              ${['groq', 'anthropic', 'deepseek', 'kimi', 'custom'].map(p =>
-                `<option value="${p}" ${p === (state.currentProject.ai_provider || 'groq') ? 'selected' : ''}>${p}</option>`
-              ).join('')}
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">${esc(t('modelLabel'))}</label>
-            <input type="text" class="form-input" id="scan-start-model" placeholder="${esc(t('modelPlaceholder'))}" value="${esc(state.currentProject.ai_model || '')}">
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">${esc(t('costCapLabel'))}</label>
-            <input type="number" min="0.01" step="0.01" class="form-input" id="scan-start-cost-cap" placeholder="${esc(t('costCapPlaceholder'))}">
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-            <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${esc(t('autonomousModeLabel'))}</span>
-            <button type="button" class="setting-toggle ${state.currentProject.ai_autonomous_requests ? 'on' : ''}" id="scan-start-autonomous"
-              onclick="this.classList.toggle('on')">
-              <span class="setting-toggle-knob"></span>
-            </button>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-            <span style="font-family:var(--mono);font-size:11px;color:var(--t2)">${esc(t('singleAgentLabel'))}</span>
-            <button type="button" class="setting-toggle ${state.currentProject.ai_single_agent ? 'on' : ''}" id="scan-start-single-agent"
-              onclick="this.classList.toggle('on')">
-              <span class="setting-toggle-knob"></span>
-            </button>
+      <div class="aa-start-hero">
+        <div class="aa-mark">${_aaIcon('bot', 19)}</div>
+        <div>
+          <div class="aa-start-title">${esc(t('newSessionTitle'))}</div>
+          <div class="scan-empty-desc">${esc(t('emptyStateDesc'))}</div>
+          <div class="aa-start-chips">
+            <span class="aa-chip aa-c-scope">${_aaIcon('target', 11)} ${inScopeTargets.length} ${esc(t(inScopeTargets.length === 1 ? 'inScopeLabel' : 'inScopeLabel_other'))}</span>
+            <span class="aa-chip aa-c-findings">${_aaIcon('shield', 11)} ${findingsCount} ${esc(t('findingsLabel'))}</span>
+            <span class="aa-chip ${autonomousDefault ? 'aa-http-4' : 'aa-http-2'}">${icon(autonomousDefault ? 'zap' : 'check', { size: 11 })} ${esc(t(autonomousDefault ? 'autonomousOnChip' : 'gatesOnChip'))}</span>
           </div>
         </div>
-      </details>
-      <button class="btn btn-prim" style="margin-top:14px" onclick="scanStartSession()">${esc(t('startScanBtn'))}</button>
+      </div>
+      <div class="aa-start-body">
+        <div class="form-group">
+          <label class="form-label" for="scan-start-target">${esc(t('targetLabel'))} <span class="aa-opt">${esc(t('targetOptionalNote'))}</span></label>
+          <select class="form-input" id="scan-start-target">
+            <option value="">${esc(t('wholeProjectOption'))}</option>
+            ${inScopeTargets.map(tg => `<option value="${esc(String(tg.id))}" ${tg.id === presetTarget ? 'selected' : ''}>${esc(tg.host)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="scan-start-instruction">${esc(t('initialInstructionLabel'))} <span class="aa-opt">${esc(t('instructionOptionalNote'))}</span></label>
+          <textarea class="form-input note-textarea" id="scan-start-instruction" placeholder="${esc(t('instructionPlaceholder'))}"></textarea>
+        </div>
+        <details class="aa-adv">
+          <summary>
+            <span class="aa-chev">${icon('chevron-right', { size: 13 })}</span>
+            ${esc(t('advancedOptions'))} <span class="aa-adv-note">${esc(t('advancedOptionsNote'))}</span>
+          </summary>
+          <div class="aa-adv-body">
+            <div class="form-group">
+              <label class="form-label" for="scan-start-profile">${esc(t('profileLabel'))}</label>
+              <select class="form-input" id="scan-start-profile">
+                <option value="pentest">${esc(t('profilePentest'))}</option>
+                <option value="ctf">${esc(t('profileCtf'))}</option>
+                <option value="lab">${esc(t('profileLab'))}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scan-start-provider">${esc(t('providerLabel'))}</label>
+              <select class="form-input" id="scan-start-provider">
+                ${['groq', 'anthropic', 'deepseek', 'kimi', 'custom'].map(p =>
+                  `<option value="${p}" ${p === (state.currentProject.ai_provider || 'groq') ? 'selected' : ''}>${p}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scan-start-model">${esc(t('modelLabel'))}</label>
+              <input type="text" class="form-input" id="scan-start-model" placeholder="${esc(t('modelPlaceholder'))}" value="${esc(state.currentProject.ai_model || '')}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scan-start-cost-cap">${esc(t('costCapLabel'))} <span class="aa-opt">USD</span></label>
+              <input type="number" min="0.01" step="0.01" class="form-input" id="scan-start-cost-cap" placeholder="${esc(t('costCapPlaceholder'))}">
+            </div>
+            <div class="aa-toggle-row">
+              <span><span class="aa-toggle-label">${esc(t('autonomousModeLabel'))}</span><span class="aa-toggle-hint">${esc(t('autonomousModeHint'))}</span></span>
+              <button type="button" class="setting-toggle ${autonomousDefault ? 'on' : ''}" id="scan-start-autonomous"
+                aria-label="${esc(t('autonomousModeLabel'))}" onclick="this.classList.toggle('on')">
+                <span class="setting-toggle-knob"></span>
+              </button>
+            </div>
+            <div class="aa-toggle-row">
+              <span><span class="aa-toggle-label">${esc(t('singleAgentLabel'))}</span><span class="aa-toggle-hint">${esc(t('singleAgentHint'))}</span></span>
+              <button type="button" class="setting-toggle ${state.currentProject.ai_single_agent ? 'on' : ''}" id="scan-start-single-agent"
+                aria-label="${esc(t('singleAgentLabel'))}" onclick="this.classList.toggle('on')">
+                <span class="setting-toggle-knob"></span>
+              </button>
+            </div>
+          </div>
+        </details>
+      </div>
+      <div class="aa-start-foot">
+        <span class="aa-hint">${esc(t('startLangHint', { lang: t('langName') }))}</span>
+        <button class="btn btn-prim aa-start-btn" onclick="scanStartSession()">${icon('play', { size: 12 })} ${esc(t('startScanBtn'))}</button>
+      </div>
     </div>
   `;
 }
@@ -1052,10 +1404,9 @@ async function scanStartSession() {
 function renderStatusStrip() {
   const el = document.getElementById('scan-status-strip');
   if (!el) return;
-  if (!_scanSession) { el.innerHTML = ''; return; }
+  if (!_scanSession) { el.innerHTML = ''; renderLiveActivity(); return; }
 
   const s = _scanSession.status;
-  const dotColor = _sessionStatusColorVar(s);
   const inScope  = (state.targets || []).filter(tg => tg.scope === 'in').length;
   const findings = (state.customVulns || []).length;
   const hl = computeScanHighlights(_scanEvents);
@@ -1071,22 +1422,23 @@ function renderStatusStrip() {
     actions = `<button class="scan-btn-resume" onclick="scanRetry()">${icon('rotate-ccw', { size: 13 })} ${esc(t('retry'))}</button>`;
   }
 
+  const inScopeLabel = t(inScope === 1 ? 'inScopeLabel' : 'inScopeLabel_other');
   el.innerHTML = `
-    <div class="scan-status-dot-label">
-      <span class="dot" style="background:${dotColor}"></span>
-      <span class="label" style="color:${dotColor}">${esc(statusLabel(s))}</span>
+    <div class="scan-status-dot-label aa-st-${esc(s)}${s === 'running' ? ' is-live' : ''}">
+      <span class="dot"></span>
+      <span class="label">${esc(statusLabel(s))}</span>
     </div>
-    <div class="scan-status-sep"></div>
-    <div class="scan-counter"><span class="n">${inScope}</span><span class="label">${esc(t(inScope === 1 ? 'inScopeLabel' : 'inScopeLabel_other'))}</span></div>
-    <div class="scan-counter${findings ? ' clickable' : ''}" ${findings ? `onclick="scanSelectTab('resumen')"` : ''}><span class="n">${findings}</span><span class="label">${esc(t('findingsLabel'))}</span></div>
-    ${_counterPopoverWrap('endpoints', hl.endpoints.length, t('endpointsLabel'), hl.endpoints, e => `
-      <div class="scan-counter-popover-row"><span class="mono url">${esc(e.url)}</span><span class="status">${esc(String(e.status))}</span></div>
-    `)}
-    ${hl.review.length ? _counterPopoverWrap('review', hl.review.length, t('reviewLabel'), hl.review, r => `
-      <div class="scan-counter-popover-row col"><span class="label">${esc(r.label)}</span><span class="detail mono">${esc(r.detail || '')}</span></div>
-    `, true) : ''}
+    <div class="aa-stats">
+      <div class="scan-counter aa-c-scope" title="${inScope} ${esc(inScopeLabel)}"><span class="aa-ic">${_aaIcon('target', 12)}</span><span class="n">${inScope}</span><span class="label">${esc(inScopeLabel)}</span></div>
+      <div class="scan-counter aa-c-findings${findings ? ' clickable' : ''}" title="${findings} ${esc(t('findingsLabel'))}" ${findings ? `onclick="scanSelectTab('resumen')"` : ''}><span class="aa-ic">${_aaIcon('shield', 12)}</span><span class="n">${findings}</span><span class="label">${esc(t('findingsLabel'))}</span></div>
+      ${_counterPopoverWrap('endpoints', hl.endpoints.length, t('endpointsLabel'), hl.endpoints, e => `
+        <div class="scan-counter-popover-row"><span class="mono url" title="${esc(e.url)}">${esc(e.url)}</span>${_aaHttpChip(e)}</div>
+      `, false, _aaIcon('globe', 12), 'aa-c-endpoints')}
+      ${hl.review.length ? _counterPopoverWrap('review', hl.review.length, t('reviewLabel'), hl.review, r => `
+        <div class="scan-counter-popover-row col"><span class="label">${esc(r.label)}</span><span class="detail mono">${esc(r.detail || '')}</span></div>
+      `, true, icon('triangle-alert', { size: 12 }), 'aa-c-review') : ''}
+    </div>
     <div class="scan-status-spacer"></div>
-    <div class="scan-live-activity mono" id="scan-live-activity"></div>
     <div class="scan-status-actions">${actions}</div>
   `;
   renderLiveActivity();
@@ -1096,18 +1448,18 @@ function renderStatusStrip() {
 // antes (pre-rediseño) esto vivía en la vieja UI de chips; el rediseño lo
 // redujo a un número plano sin forma de ver qué hay detrás. `accentN`
 // pinta el número en el color de acento (usado para "para revisar").
-function _counterPopoverWrap(key, count, label, items, renderItem, accentN) {
+function _counterPopoverWrap(key, count, label, items, renderItem, accentN, iconHtml = '', toneCls = '') {
   const clickable = count > 0;
   const open = clickable && _scanCounterPopoverOpen === key;
   const onclick = clickable ? `onclick="event.stopPropagation();toggleCounterPopover('${key}')"` : '';
   return `
     <div class="scan-counter-popover-wrap">
-      <div class="scan-counter${clickable ? ' clickable' : ''}" ${onclick}>
-        <span class="n${accentN ? ' accent' : ''}">${count}</span><span class="label">${esc(label)}</span>
+      <div class="scan-counter ${toneCls}${clickable ? ' clickable' : ''}${open ? ' is-open' : ''}" title="${count} ${esc(label)}" ${onclick}>
+        ${iconHtml ? `<span class="aa-ic">${iconHtml}</span>` : ''}<span class="n${accentN ? ' accent' : ''}">${count}</span><span class="label">${esc(label)}</span>
       </div>
       ${clickable ? `
       <div class="scan-counter-popover ${open ? 'open' : ''}">
-        <div class="scan-counter-popover-head">${esc(label)}</div>
+        <div class="scan-counter-popover-head">${esc(label)} · ${count}</div>
         <div class="scan-counter-popover-list">${items.map(renderItem).join('')}</div>
       </div>` : ''}
     </div>
@@ -1288,8 +1640,8 @@ function renderMarkdown(text) {
 // sustancial (lo que encontró), no solo un cambio de estado.
 function renderSubagentReport(ev) {
   const div = document.createElement('div');
-  div.className = 'scan-msg assistant';
-  div.innerHTML = `<span class="who">🧵 ${esc(ev.payload.label || t('subAgent'))}</span><div class="bubble">${renderMarkdown(ev.payload.summary)}</div>`;
+  div.className = 'scan-msg assistant is-sub';
+  div.innerHTML = `<span class="who"><span class="aa-av is-sub">${icon('workflow', { size: 12 })}</span>${esc(ev.payload.label || t('subAgent'))}${_aaWhen(ev.created_at)}</span><div class="bubble">${renderMarkdown(ev.payload.summary)}</div>`;
   return div;
 }
 
@@ -1298,7 +1650,11 @@ function renderChatMessage(ev) {
   const isUser = ev.payload.role === 'user';
   div.className = `scan-msg ${isUser ? 'user' : 'assistant'}`;
   const bubbleHtml = isUser ? `<p>${esc(ev.payload.text || '')}</p>` : renderMarkdown(ev.payload.text);
-  div.innerHTML = `<span class="who">${isUser ? esc(usernameFor(ev.created_by)) : t('agentLabel')}</span><div class="bubble">${bubbleHtml}</div>`;
+  const name = isUser ? usernameFor(ev.created_by) : t('agentLabel');
+  const avatar = isUser
+    ? `<span class="aa-av is-user">${esc((name || '?').trim().charAt(0).toUpperCase())}</span>`
+    : `<span class="aa-av">${_aaIcon('bot', 12)}</span>`;
+  div.innerHTML = `<span class="who">${avatar}${esc(name)}${_aaWhen(ev.created_at)}</span><div class="bubble">${bubbleHtml}</div>`;
   return div;
 }
 
@@ -1334,7 +1690,13 @@ function findingCardInput(payload) {
   return Array.isArray(payload.evidence_proofs) ? { ...input, http_proofs: payload.evidence_proofs } : input;
 }
 
-function renderFindingCardBody(input) {
+// Status de la primera línea de una respuesta HTTP cruda ("HTTP/1.1 500").
+function _aaRawHttpStatus(raw) {
+  const m = typeof raw === 'string' && raw.match(/^HTTP\/[\d.]+\s+(\d{3})/);
+  return m ? _aaHttpChip({ status: Number(m[1]) }) : '';
+}
+
+function renderFindingCardBody(input, key = 'f') {
   const parts = [];
 
   // Reportado: update_finding casi nunca trae `name` (solo manda los campos
@@ -1350,39 +1712,51 @@ function renderFindingCardBody(input) {
     <div class="scan-finding-head">
       ${severity ? _severityBadge(severity) : ''}
       <strong>${esc(name || t('unnamed'))}</strong>
-      ${input.category ? `<span class="scan-finding-tag">${esc(input.category)}</span>` : ''}
-      ${input.remediation_status ? `<span class="scan-finding-tag">${esc(t(`rem_${input.remediation_status}`))}</span>` : ''}
     </div>
   `);
 
-  if (input.description) parts.push(`<p class="scan-finding-desc">${esc(input.description)}</p>`);
+  // Metadatos como chips (antes vivían escondidos en el <summary> de la remediación).
+  const chips = [];
+  if (input.category) chips.push(`<span class="aa-chip aa-chip-plain scan-finding-tag">${esc(String(input.category))}</span>`);
+  if (input.remediation_status) chips.push(`<span class="aa-chip aa-http-2 scan-finding-tag">${esc(t(`rem_${input.remediation_status}`))}</span>`);
+  if (input.cwe) chips.push(`<span class="aa-chip aa-chip-plain">${esc(String(input.cwe))}</span>`);
+  if (input.cvss_score != null) chips.push(`<span class="aa-chip ${_aaCvssTone(input.cvss_score)}">CVSS ${esc(String(input.cvss_score))}</span>`);
+  if (input.confidence) chips.push(`<span class="aa-chip aa-chip-plain">${esc(t('confidenceLabel'))}: ${esc(String(input.confidence))}</span>`);
+  if (chips.length) parts.push(`<div class="aa-chips">${chips.join('')}</div>`);
+
+  if (input.description) parts.push(`<p class="scan-finding-desc">${esc(String(input.description))}</p>`);
   // update_finding de un retest — el pentester tiene que ver qué estado y
   // qué notas está aprobando, no solo el nombre del hallazgo.
   if (input.retest_notes || input.retest_date) {
-    parts.push(`<p class="scan-finding-desc"><strong>${esc(t('retestNotesLabel'))}${input.retest_date ? ` (${esc(input.retest_date)})` : ''}:</strong> ${esc(input.retest_notes || '')}</p>`);
+    parts.push(`<p class="scan-finding-desc"><strong>${esc(t('retestNotesLabel'))}${input.retest_date ? ` (${esc(String(input.retest_date))})` : ''}:</strong> ${esc(String(input.retest_notes || ''))}</p>`);
   }
 
-  const meta = [];
-  if (input.cwe) meta.push(esc(input.cwe));
-  if (input.cvss_score != null) meta.push(`CVSS ${esc(String(input.cvss_score))}`);
-  if (input.confidence) meta.push(`${esc(t('confidenceLabel'))}: ${esc(input.confidence)}`);
-  if (input.remediation || meta.length) {
+  if (input.remediation) {
     parts.push(`
       <details class="scan-finding-remediation">
-        <summary>${esc(t('showRemediation'))}${meta.length ? ` <span class="scan-finding-meta">${meta.join(' · ')}</span>` : ''}</summary>
-        ${input.remediation ? `<p>${esc(input.remediation)}</p>` : ''}
+        <summary><span class="aa-chev">${icon('chevron-right', { size: 12 })}</span>${esc(t('showRemediation'))}</summary>
+        <p>${esc(String(input.remediation))}</p>
       </details>
     `);
   }
 
   if (Array.isArray(input.http_proofs) && input.http_proofs.length) {
     parts.push(`
+      <div class="aa-sec-label">${esc(t('evidenceLabel'))} <span class="aa-n">${input.http_proofs.length}</span></div>
       <div class="scan-finding-proofs">
         ${input.http_proofs.map((p, i) => `
           <details class="scan-proof-item">
-            <summary>${esc(t('proofLabel', { n: i + 1 }))}${p.method ? ` — ${esc(p.method)}` : ''}${p.annotation ? ` — ${esc(p.annotation)}` : ''}</summary>
-            ${p.request ? `<pre>${esc(p.request)}</pre>` : ''}
-            ${p.response ? `<pre>${esc(p.response)}</pre>` : ''}
+            <summary>
+              <span class="aa-chev">${icon('chevron-right', { size: 12 })}</span>
+              <span class="aa-proof-n">${i + 1}</span>
+              ${p.method ? `<span class="aa-chip aa-chip-plain">${esc(String(p.method))}</span>` : ''}
+              <span class="aa-proof-t">${esc(p.annotation ? String(p.annotation) : t('proofLabel', { n: i + 1 }))}</span>
+              ${_aaRawHttpStatus(p.response)}
+            </summary>
+            <div class="aa-proof-body">
+              ${p.request ? _aaCode(t('requestLabel'), p.request, `${key}:p${i}:rq`) : ''}
+              ${p.response ? _aaCode(t('responseLabel'), p.response, `${key}:p${i}:rs`) : ''}
+            </div>
           </details>
         `).join('')}
       </div>
@@ -1418,63 +1792,86 @@ function formatHttpResponsePreview(res) {
 // `output` es el resultado de sendRequest() (scanToolsLevel2.js) — para
 // send_http_request/test_payload directo, para run_exploit_poc adentro de
 // `.steps[]`. `null` cuando todavía no corrió (gate pendiente/stale).
-function renderHttpToolCardBody(name, input, output) {
+function renderHttpToolCardBody(name, input, output, key = 'h') {
   const parts = [];
+  const proof = (i, req, res, label) => `
+    <details class="scan-proof-item">
+      <summary>
+        <span class="aa-chev">${icon('chevron-right', { size: 12 })}</span>
+        ${i != null ? `<span class="aa-proof-n">${i + 1}</span>` : ''}
+        <span class="aa-chip aa-chip-plain">${esc(String(req.method || 'GET'))}</span>
+        <span class="aa-proof-t" title="${esc(String(req.path || '/'))}">${esc(label)}</span>
+        ${_aaHttpChip(res)}
+      </summary>
+      <div class="aa-proof-body">
+        ${_aaCode(t('requestLabel'), formatHttpRequestPreview(req), `${key}:rq${i ?? ''}`)}
+        ${res ? _aaCode(t('responseLabel'), formatHttpResponsePreview(res), `${key}:rs${i ?? ''}`, { error: !!res.error }) : ''}
+      </div>
+    </details>`;
 
   if (name === 'run_exploit_poc') {
-    parts.push(`<div class="scan-finding-head"><strong>${esc(input.technique || name)}</strong></div>`);
+    parts.push(`<div class="scan-finding-head"><strong class="mono">${esc(String(input.technique || name))}</strong></div>`);
     const steps = Array.isArray(input.request_sequence) ? input.request_sequence : [];
     const results = Array.isArray(output && output.steps) ? output.steps : [];
     parts.push(`
-      <div class="scan-finding-proofs">
-        ${steps.map((req, i) => {
-          const res = results[i];
-          const statusLabel = res ? (res.error ? esc(t('requestFailed')) : `HTTP ${esc(String(res.status))}`) : '';
-          return `
-            <details class="scan-proof-item">
-              <summary>${esc(t('proofLabel', { n: i + 1 }))} — ${esc(req.method)} ${esc(req.path)}${statusLabel ? ` — ${statusLabel}` : ''}</summary>
-              <pre>${esc(formatHttpRequestPreview(req))}</pre>
-              ${res ? `<pre>${esc(formatHttpResponsePreview(res))}</pre>` : ''}
-            </details>
-          `;
-        }).join('')}
-      </div>
+      <div class="aa-sec-label">${esc(t('requestLabel'))} <span class="aa-n">${steps.length}</span></div>
+      <div class="scan-finding-proofs">${steps.map((req, i) => proof(i, req, results[i], String(req.path || '/'))).join('')}</div>
     `);
     return `<div class="scan-finding-card">${parts.join('')}</div>`;
   }
 
-  parts.push(`<div class="scan-finding-head"><strong>${esc(input.method || '')} ${esc(input.path || '')}</strong></div>`);
+  parts.push(`<div class="scan-finding-head"><strong class="mono">${esc(String(input.method || ''))} ${esc(String(input.path || ''))}</strong></div>`);
   if (name === 'test_payload' && input.param_name) {
-    parts.push(`<p class="scan-finding-desc">${input.category ? `<span class="scan-finding-tag">${esc(input.category)}</span> ` : ''}<code>${esc(input.param_location)}.${esc(input.param_name)}</code> ← <code>${esc(input.payload)}</code></p>`);
+    parts.push(`<p class="scan-finding-desc">${input.category ? `<span class="aa-chip aa-chip-plain scan-finding-tag">${esc(String(input.category))}</span> ` : ''}<code>${esc(String(input.param_location))}.${esc(String(input.param_name))}</code> ← <code>${esc(String(input.payload))}</code></p>`);
   }
-  const statusLabel = output ? (output.error ? esc(t('requestFailed')) : `HTTP ${esc(String(output.status))}`) : '';
-  parts.push(`
-    <div class="scan-finding-proofs">
-      <details class="scan-proof-item">
-        <summary>${statusLabel}</summary>
-        <pre>${esc(formatHttpRequestPreview(input))}</pre>
-        ${output ? `<pre>${esc(formatHttpResponsePreview(output))}</pre>` : ''}
-      </details>
-    </div>
-  `);
+  parts.push(`<div class="scan-finding-proofs">${proof(null, input, output, String(input.path || '/'))}</div>`);
   return `<div class="scan-finding-card">${parts.join('')}</div>`;
 }
 
+// Cabecera común de las tarjetas de tool (gate pendiente/resuelto/rancio
+// y ejecución autónoma): ícono de estado + título + tool/nivel + hora.
+const _AA_GATE_KINDS = {
+  pending:  ['triangle-alert', 'gatePendingTitle'],
+  accepted: ['circle-check',   'gateAccepted'],
+  rejected: ['circle-x',       'gateRejected'],
+  stale:    ['minus',          'gateStale'],
+  auto:     ['zap',            'gateAuto'],
+  failed:   ['circle-x',       'gateFailed'],
+};
+function _aaGateHead(ev, kind) {
+  const [ic, key] = _AA_GATE_KINDS[kind] || _AA_GATE_KINDS.stale;
+  const when = _aaClock(ev.created_at);
+  return `
+    <div class="scan-gate-head">
+      <span class="aa-ic">${icon(ic, { size: 13 })}</span>
+      <div class="aa-gate-titles">
+        <div class="aa-gate-title">${esc(t(key))}</div>
+        <div class="aa-gate-sub"><strong>${esc(ev.payload.name)}</strong>${_aaTierChip(ev.payload.tier ?? 0)}</div>
+      </div>
+      ${when ? `<span class="aa-gate-time" title="${esc(new Date(ev.created_at).toLocaleString())}">${esc(when)}</span>` : ''}
+    </div>`;
+}
+
+// Cuerpo según la tool: hallazgo, HTTP, o el input como bloque de código.
+function _aaGateBody(ev, httpOutput) {
+  const name = ev.payload.name;
+  if (isFindingTool(name)) return renderFindingCardBody(findingCardInput(ev.payload), `g${ev.id}`);
+  if (isHttpTool(name)) return renderHttpToolCardBody(name, ev.payload.input, httpOutput, `g${ev.id}`);
+  return _aaCode(t('inputLabel'), _aaJson(ev.payload.input), `g${ev.id}:in`);
+}
+
 // Ejecución de una tool HTTP SIN gate (modo sin restricciones) — mismo
-// lenguaje visual que un gate resuelto (tarjeta con borde ámbar), pero sin
-// texto de aprobado/rechazado: acá nunca hubo una aprobación que dar, solo
-// se ejecutó directo. `result` puede ser null si por algún motivo el
-// tool.result todavía no llegó (no debería pasar en la práctica ya que esta
-// rama solo se usa cuando `resultsByCallId` ya lo tiene, pero se guarda por
-// las dudas).
+// lenguaje visual que un gate resuelto, pero sin aprobado/rechazado: acá
+// nunca hubo una aprobación que dar, solo se ejecutó directo. `result`
+// puede ser null si el tool.result todavía no llegó.
 function renderAutoExecutedTool(ev, result) {
   const output = result ? result.payload.result : null;
+  const failed = !!(output && output.error);
   const div = document.createElement('div');
-  div.className = 'scan-gate';
-  div.style.opacity = '.85';
+  div.className = `scan-gate ${failed ? 'is-failed' : 'is-auto'}`;
   div.innerHTML = `
-    <div class="scan-gate-head">${icon(output && output.error ? 'x' : 'circle-check', { size: 13 })} <strong>${esc(ev.payload.name)}</strong> — tier ${ev.payload.tier}</div>
-    ${renderHttpToolCardBody(ev.payload.name, ev.payload.input, output)}
+    ${_aaGateHead(ev, failed ? 'failed' : 'auto')}
+    <div class="aa-gate-body">${renderHttpToolCardBody(ev.payload.name, ev.payload.input, output, `g${ev.id}`)}</div>
   `;
   return div;
 }
@@ -1516,20 +1913,17 @@ function renderToolCalled(ev, resultsByCallId) {
 
   const div = document.createElement('div');
   div.className = 'scan-tool';
-  // Antes de esto, el único indicador de si una tool ya terminó era un
-  // sufijo de texto chico ("— ejecutando...") — fácil de no ver en una
-  // lista larga. Un punto pulsando (sigue) vs. un check verde (terminó) se
-  // nota de un vistazo sin tener que leer cada fila.
+  // Un spinner (sigue) vs. un check verde (terminó) se nota de un vistazo
+  // sin tener que leer cada fila.
   const statusIcon = result
     ? icon('circle-check', { size: 13, class: 'scan-tool-done' })
-    : '<span class="scan-tool-spinner"></span>';
+    : '<span class="aa-spin scan-tool-spinner"></span>';
   div.innerHTML = `
-    <span class="tier-badge" title="${esc(tierTitle(tier))}">T${tier}</span>
     ${statusIcon}
     <details>
-      <summary>${esc(ev.payload.name)}</summary>
-      <pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>
-      ${result ? `<pre>→ ${esc(JSON.stringify(result.payload.result, null, 2))}</pre>` : ''}
+      <summary><span class="aa-chev">${icon('chevron-right', { size: 12 })}</span>${esc(ev.payload.name)} ${_aaTierChip(tier)}${_aaWhen(ev.created_at)}</summary>
+      ${_aaCode(t('inputLabel'), _aaJson(ev.payload.input), `t${ev.id}:in`)}
+      ${result ? _aaCode(t('outputLabel'), _aaJson(result.payload.result), `t${ev.id}:out`) : ''}
     </details>
   `;
   return div;
@@ -1538,27 +1932,31 @@ function renderToolCalled(ev, resultsByCallId) {
 function renderPendingGate(ev) {
   const isFinding = ev.payload.name === 'propose_finding';
   const div = document.createElement('div');
-  div.className = 'scan-gate';
+  div.className = 'scan-gate is-pending';
   div.innerHTML = `
-    <div class="scan-gate-head">${icon('triangle-alert', { size: 13 })} <strong>${esc(ev.payload.name)}</strong>${esc(t('requiresApproval', { tier: ev.payload.tier }))}</div>
-    <div class="scan-gate-actions">
-      <button class="btn btn-prim" onclick="scanApprove(${ev.id})">${icon('check', { size: 13 })} ${esc(t('approveAsIs'))}</button>
-      ${isFinding ? `<button class="btn" onclick="scanEditAndAdd(${ev.id})">${icon('square-pen', { size: 13 })} ${esc(t('editAndAdd'))}</button>` : ''}
-      <button class="btn-secondary" onclick="scanReject(${ev.id})">${icon('x', { size: 13 })} ${esc(t('reject'))}</button>
+    ${_aaGateHead(ev, 'pending')}
+    <div class="aa-gate-body">${_aaGateBody(ev, null)}</div>
+    <div class="aa-gate-foot">
+      <span class="aa-gate-hint">${esc(t('gatePendingHint'))}</span>
+      <div class="scan-gate-actions">
+        <button class="btn aa-btn-reject" onclick="scanReject(${ev.id})">${icon('x', { size: 13 })} ${esc(t('reject'))}</button>
+        ${isFinding ? `<button class="btn" onclick="scanEditAndAdd(${ev.id})">${icon('square-pen', { size: 13 })} ${esc(t('editAndAdd'))}</button>` : ''}
+        <button class="btn btn-prim" onclick="scanApprove(${ev.id})">${icon('check', { size: 13 })} ${esc(t('approveAsIs'))}</button>
+      </div>
     </div>
-    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(findingCardInput(ev.payload)) : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, null) : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
   `;
   return div;
 }
 
 function renderStaleGate(ev) {
   const div = document.createElement('div');
-  div.className = 'scan-gate';
-  div.style.opacity = '.6';
+  div.className = 'scan-gate is-stale';
   div.innerHTML = `
-    <div class="scan-gate-head">${icon('triangle-alert', { size: 13 })} <strong>${esc(ev.payload.name)}</strong> — tier ${ev.payload.tier}</div>
-    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(findingCardInput(ev.payload)) : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, null) : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
-    <div class="scan-gate-resolved">${esc(t('staleGateNote'))}</div>
+    ${_aaGateHead(ev, 'stale')}
+    <div class="aa-gate-body">
+      <div class="scan-gate-resolved">${icon('triangle-alert', { size: 12 })}<span>${esc(t('staleGateNote'))}</span></div>
+      ${_aaGateBody(ev, null)}
+    </div>
   `;
   return div;
 }
@@ -1573,58 +1971,81 @@ function renderResolvedGate(ev, result) {
   // no está, es la variante autónoma y hay que mirar un nivel más adentro.
   const output = 'decision' in result.payload ? result.payload : (result.payload.result || {});
   const decision = output.decision;
+  const accepted = decision === 'accepted';
   const div = document.createElement('div');
-  div.className = 'scan-gate';
-  div.style.opacity = '.7';
-  let note = decision === 'accepted' ? t('approved') : `${t('rejectedPrefix')}${output.reason ? ' — ' + esc(output.reason) : ''}`;
+  div.className = `scan-gate ${accepted ? 'is-accepted' : 'is-rejected'}`;
+  // El veredicto ya está en la cabecera — acá va solo el detalle (motivo,
+  // hallazgo creado/actualizado, error), si lo hay.
+  let note = '';
+  if (!accepted && output.reason) note += ` — ${esc(String(output.reason))}`;
   if (output.created_vuln_id) note += ev.payload.name === 'update_finding' ? t('findingUpdatedNote') : t('findingAddedNote');
-  if (output.error) note += `${t('errorNotePrefix')}${esc(output.error)}`;
+  if (output.error) note += `${t('errorNotePrefix')}${esc(String(output.error))}`;
+  note = note.replace(/^ — /, '');
   div.innerHTML = `
-    <div class="scan-gate-head"><strong>${esc(ev.payload.name)}</strong> — tier ${ev.payload.tier}</div>
-    <div class="scan-gate-resolved ${decision}">${note}</div>
-    ${isFindingTool(ev.payload.name) ? renderFindingCardBody(findingCardInput(ev.payload))
-      : isHttpTool(ev.payload.name) ? renderHttpToolCardBody(ev.payload.name, ev.payload.input, output.result || (output.error ? { error: output.error } : null))
-      : `<pre>${esc(JSON.stringify(ev.payload.input, null, 2))}</pre>`}
+    ${_aaGateHead(ev, accepted ? 'accepted' : 'rejected')}
+    <div class="aa-gate-body">
+      ${note ? `<div class="scan-gate-resolved ${esc(String(decision || ''))}">${icon(accepted ? 'check' : 'x', { size: 12 })}<span>${note}</span></div>` : ''}
+      ${_aaGateBody(ev, output.result || (output.error ? { error: output.error } : null))}
+    </div>
   `;
   return div;
 }
 
 function renderSystemLine(ev) {
   const div = document.createElement('div');
-  const isErr = ev.type === 'session.error';
-  const isWarn = ev.type === 'session.cost_cap_reached';
-  div.className = `scan-line${isErr ? ' err' : isWarn ? ' warn' : ''}`;
-  const labels = {
-    'session.started':  t('sessionStarted'),
-    'session.error':    t('errorLine', { reason: ev.payload.reason }),
-    'session.paused':   t('pausedLine'),
-    'session.resumed':  t('resumedLine'),
-    'session.cost_cap_reached': t('costCapReachedLine', { cap: `$${Number(ev.payload.cap).toFixed(2)}`, spent: `$${Number(ev.payload.spent).toFixed(4)}` }),
-    'thread.started':   t('subagentDelegated', { task: ev.payload.task }),
-    // Con modo autónomo, el checkpoint sigue de largo solo (`auto: true`)
-    // — pedido explícito ("lo de decirle continuá me parece ridículo, la
-    // idea es que trabaje solo"). Sin autónomo (o al llegar al freno de
-    // última instancia, MAX_AUTO_CHECKPOINTS en agentLoop.js) sí necesita
-    // un mensaje de chat para retomar — ahí se avisa además por Activity.
-    'turn.checkpoint':  checkpointText(ev.payload),
+  const p = ev.payload || {};
+  const when = _aaClock(ev.created_at);
+
+  // Banner — para lo que pide atención (error, pausa, tope de gasto).
+  const banner = (cls, ic, title, text, extra = '') => {
+    div.className = `aa-banner ${cls}`;
+    div.innerHTML = `
+      <span class="aa-ic">${icon(ic, { size: 13 })}</span>
+      <div class="aa-banner-body">
+        <div class="aa-banner-title">${esc(title)}</div>
+        <div class="aa-banner-text">${esc(text)}</div>
+        ${extra}
+      </div>
+      ${when ? `<span class="aa-banner-time">${esc(when)}</span>` : ''}`;
+    return div;
   };
+
+  if (ev.type === 'session.error') return banner('is-err', 'circle-x', t('errorTitle'), String(p.reason ?? ''));
+
   // Único system.line con una acción propia — subir el tope acá mismo, en
   // vez de mandar al pentester a buscar dónde hacerlo. No retoma la sesión
   // sola (ver el comentario en la ruta PATCH, ai-scan.js): solo actualiza el
   // tope; para seguir hace falta mandar un mensaje de chat, que ya está
   // habilitado (el input no se bloquea en estado `idle`).
   if (ev.type === 'session.cost_cap_reached') {
-    div.innerHTML = `
-      <span>${esc(labels[ev.type])}</span>
+    return banner('', 'triangle-alert', t('costCapTitle'),
+      t('costCapReachedLine', { cap: `$${Number(p.cap).toFixed(2)}`, spent: `$${Number(p.spent).toFixed(4)}` }), `
       <span class="scan-cost-cap-raise">
         <input type="number" min="0.01" step="0.01" class="scan-cost-cap-input" placeholder="${esc(t('costCapPlaceholder'))}">
         <button class="scan-cost-cap-btn" onclick="scanRaiseCostCap(this)">${esc(t('raiseCostCapBtn'))}</button>
-      </span>
-    `;
-    return div;
+      </span>`);
   }
 
-  div.textContent = labels[ev.type] || ev.type;
+  // Con modo autónomo, el checkpoint sigue de largo solo (`auto: true`)
+  // — pedido explícito ("lo de decirle continuá me parece ridículo, la
+  // idea es que trabaje solo"). Sin autónomo (o al llegar al freno de
+  // última instancia, MAX_AUTO_CHECKPOINTS en agentLoop.js) sí necesita
+  // un mensaje de chat para retomar — eso es una pausa real: banner.
+  if (ev.type === 'turn.checkpoint' && (!p.auto || CHECKPOINT_REASON_KEYS[p.reason])) {
+    return banner('', 'pause', t(p.reason === 'no_progress' ? 'noProgressTitle' : 'checkpointTitle'), checkpointText(p));
+  }
+
+  // El resto son cambios de estado — separador liviano con texto.
+  const lines = {
+    'session.started':  ['play', t('sessionStarted')],
+    'session.paused':   ['pause', t('pausedLine')],
+    'session.resumed':  ['play', t('resumedLine')],
+    'thread.started':   ['workflow', t('subagentDelegated', { task: p.task ?? '' })],
+    'turn.checkpoint':  ['rotate-ccw', checkpointText(p)],
+  };
+  const [ic, text] = lines[ev.type] || ['info', ev.type];
+  div.className = 'scan-line';
+  div.innerHTML = `<span class="aa-line-in">${icon(ic, { size: 11 })}<span>${esc(String(text))}</span>${when ? `<span class="aa-line-time">· ${esc(when)}</span>` : ''}</span>`;
   return div;
 }
 
@@ -1676,6 +2097,7 @@ function handleScanEvent(msg) {
   appendLiveEvent(msg.event);
   renderSessionPicker();
   renderThreadsStrip();
+  renderTabsBar(); // contadores de las pestañas (acciones / aviso de aprobación pendiente)
   renderStatusStrip(); // barato — recomputa contadores + actividad en vivo sobre los eventos ya en memoria
   renderActiveTabPanel(); // no-op si Chat está activa; recompute barato de Detalle/Resumen si no
 }
