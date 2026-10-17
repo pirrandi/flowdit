@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Vulns</title>
-<link rel="stylesheet" href="css/main.css?v=4">
+<link rel="stylesheet" href="css/main.css?v=5">
 <link rel="stylesheet" href="css/transitions.css?v=3">
 <link rel="expect" href="#fd-document-end" blocking="render">
   <link rel="icon" type="image/x-icon" href="img/favicon.ico">
@@ -46,177 +46,194 @@
   </aside>
 </div>
 
-<!-- Modal — focused on operational data only -->
-<div class="modal-overlay" id="vuln-modal">
-  <div class="modal" style="max-width:580px">
-    <div class="modal-title" id="modal-title">Add Vulnerability</div>
+<!-- Drawer de hallazgo: detalle (vd-pane-view, lo arma vulns.js) y
+     edición/alta (vd-pane-edit). El formulario conserva los ids del viejo
+     #vuln-modal para que saveVuln, la AI, los templates y el CVSS sigan
+     funcionando igual. -->
+<div class="drw-backdrop" id="vd-backdrop" onclick="closeVulnDetail()"></div>
+<div class="drw vd-drw" id="vd-drw" role="dialog" aria-modal="true" aria-labelledby="vd-title" tabindex="-1">
+  <div class="vd-pane vd-pane-view">
+    <div class="drw-head" id="vd-head"></div>
+    <div class="drw-body" id="vd-body"></div>
+    <div class="ccp-drw-foot" id="vd-foot"></div>
+  </div>
 
-    <div class="tpl-search-wrap" id="tpl-search-wrap">
-      <div class="tpl-search-inner">
-        <input class="tpl-search-input" id="tpl-search-input"
-          placeholder="⌕  Search template — SQL Injection, XSS, IDOR..."
-          autocomplete="off" oninput="tplSearch(this.value)" onkeydown="tplKeydown(event)">
-        <button type="button" class="tpl-save-btn" onclick="tplSaveCurrent()" title="Save current fields as personal template">+ Save as template</button>
-      </div>
-      <div class="tpl-dropdown" id="tpl-dropdown"></div>
-    </div>
-    <hr class="tpl-divider">
-
-    <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Name *</label>
-        <input type="text" class="form-input" id="modal-vuln-name" placeholder="e.g. GraphQL Introspection Enabled">
-      </div>
-      <div class="form-group" style="margin:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <label class="form-label" style="margin:0">Severity</label>
-          <button type="button" class="ai-btn" id="ai-sev-btn" onclick="aiSeverity()" title="Suggest severity from name"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
-        </div>
-        <select class="form-input" id="modal-vuln-sev" style="cursor:pointer">
-          <option value="critical" data-color="var(--c-crit)">Critical</option>
-          <option value="high" data-color="var(--c-high)">High</option>
-          <option value="medium" data-color="var(--c-med)" selected>Medium</option>
-          <option value="low" data-color="var(--c-low)">Low</option>
-          <option value="info" data-color="var(--c-info)">Info</option>
-        </select>
-      </div>
+  <div class="vd-pane vd-pane-edit" id="vd-edit">
+    <div class="drw-head">
+      <button type="button" class="drw-close" onclick="closeVulnDetail()" title="Cerrar (Esc)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="drw-id"><span class="vd-kind" id="vd-edit-kind">Nuevo hallazgo</span></div>
+      <div class="drw-title" id="modal-title">Nuevo hallazgo</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Category</label>
-        <input type="text" class="form-input" id="modal-vuln-cat" placeholder="e.g. GraphQL, Auth, API...">
-      </div>
-      <div class="form-group" style="margin:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-          <label class="form-label" style="margin:0">CWE <span style="color:var(--t3);font-weight:400">(optional)</span></label>
-          <button type="button" class="ai-btn" id="ai-cwe-btn" onclick="aiCWE()" title="Suggest CWE from name &amp; description" style="font-size:9px;padding:2px 6px"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg></button>
-        </div>
-        <input type="text" class="form-input" id="modal-vuln-cwe" placeholder="e.g. CWE-79">
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Target <span style="color:var(--t3);font-weight:400">(optional)</span></label>
-        <select class="form-input" id="modal-vuln-target" style="cursor:pointer">
-          <option value="">— No target —</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Checklist Items</label>
-      <div id="modal-items-list"></div>
-      <button class="btn-add-row" onclick="addModalRow('modal-items-list','Check item...')">+ Add item</button>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Payloads</label>
-      <div id="modal-payloads-list"></div>
-      <button class="btn-add-row" onclick="addModalRow('modal-payloads-list','Payload...',true)">+ Add payload</button>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Notes <span style="color:var(--t3);font-weight:400">(quick observations)</span></label>
-      <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="Quick notes, references..."></textarea>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">PCI-DSS Controls <span style="color:var(--t3);font-weight:400">(optional)</span></label>
-      <div id="modal-compliance-list" class="compliance-picker"></div>
-    </div>
-
-    <div class="form-group">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-        <label class="form-label" style="margin:0">Description <span style="color:var(--t3);font-weight:400">supports markdown</span></label>
-        <button type="button" class="ai-btn" id="ai-draft-btn" onclick="aiDraft()" title="Generate full draft from name + category"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Draft</button>
-      </div>
-      <textarea class="form-input note-textarea" id="modal-vuln-desc" style="min-height:80px" placeholder="What is this vulnerability and why does it matter..."></textarea>
-    </div>
-
-    <div class="form-group">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-        <label class="form-label" style="margin:0">Remediation <span style="color:var(--t3);font-weight:400">supports markdown</span></label>
-        <button type="button" class="ai-btn" id="ai-rem-btn" onclick="aiRemediation()" title="Generate remediation from description"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
-      </div>
-      <textarea class="form-input note-textarea" id="modal-vuln-rem" style="min-height:80px" placeholder="How to fix or mitigate this vulnerability..."></textarea>
-    </div>
-
-    <!-- CVSS v3.1 Calculator -->
-    <div class="form-group" style="margin-bottom:0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <label class="form-label" style="margin:0">CVSS v3.1 <span style="font-size:10px;color:var(--t3);font-weight:400">(optional)</span></label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="cvss-header-pill" style="font-family:var(--mono);font-size:11px;color:var(--t3)">not scored</span>
-          <button type="button" id="cvss-clear-btn" onclick="clearCVSS()" style="font-family:var(--mono);font-size:10px;color:var(--c-crit);background:none;border:none;cursor:pointer;padding:0;display:none"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> clear</button>
-          <button type="button" id="cvss-toggle-btn" onclick="toggleCVSSSection()" style="font-family:var(--mono);font-size:10px;color:var(--a);background:none;border:none;cursor:pointer;padding:0"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="m9 18 6-6-6-6"/></svg> open</button>
+    <div class="drw-body" id="vd-edit-body" onscroll="_tplClose()">
+      <div class="drw-sec vd-tpl-sec">
+        <div class="drw-sec-label">Partir de un template</div>
+        <div class="tpl-search-wrap" id="tpl-search-wrap">
+          <div class="tpl-search-inner">
+            <input class="tpl-search-input" id="tpl-search-input"
+              placeholder="⌕  Buscar template — SQL Injection, XSS, IDOR..."
+              autocomplete="off" oninput="tplSearch(this.value)" onkeydown="tplKeydown(event)">
+            <button type="button" class="tpl-save-btn" onclick="tplSaveCurrent()" title="Guardar los campos actuales como template personal">+ Guardar como template</button>
+          </div>
+          <div class="tpl-dropdown" id="tpl-dropdown"></div>
         </div>
       </div>
-      <div id="cvss-calc" style="display:none">
-        <div class="cvss-grid">
-          <span class="cvss-label">Attack Vector</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="AV" data-value="N" onclick="setCVSSMetric('AV','N')">Network</button>
-            <button type="button" class="cvss-btn" data-metric="AV" data-value="A" onclick="setCVSSMetric('AV','A')">Adjacent</button>
-            <button type="button" class="cvss-btn" data-metric="AV" data-value="L" onclick="setCVSSMetric('AV','L')">Local</button>
-            <button type="button" class="cvss-btn" data-metric="AV" data-value="P" onclick="setCVSSMetric('AV','P')">Physical</button>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Datos básicos</div>
+        <div class="vd-grid vd-grid-name">
+          <div class="vd-field">
+            <label class="form-label" for="modal-vuln-name">Nombre *</label>
+            <input type="text" class="form-input" id="modal-vuln-name" placeholder="Ej: GraphQL Introspection Enabled">
           </div>
-          <span class="cvss-label">Attack Complexity</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="AC" data-value="L" onclick="setCVSSMetric('AC','L')">Low</button>
-            <button type="button" class="cvss-btn" data-metric="AC" data-value="H" onclick="setCVSSMetric('AC','H')">High</button>
-          </div>
-          <span class="cvss-label">Privileges Required</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="PR" data-value="N" onclick="setCVSSMetric('PR','N')">None</button>
-            <button type="button" class="cvss-btn" data-metric="PR" data-value="L" onclick="setCVSSMetric('PR','L')">Low</button>
-            <button type="button" class="cvss-btn" data-metric="PR" data-value="H" onclick="setCVSSMetric('PR','H')">High</button>
-          </div>
-          <span class="cvss-label">User Interaction</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="UI" data-value="N" onclick="setCVSSMetric('UI','N')">None</button>
-            <button type="button" class="cvss-btn" data-metric="UI" data-value="R" onclick="setCVSSMetric('UI','R')">Required</button>
-          </div>
-          <span class="cvss-label">Scope</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="S" data-value="U" onclick="setCVSSMetric('S','U')">Unchanged</button>
-            <button type="button" class="cvss-btn" data-metric="S" data-value="C" onclick="setCVSSMetric('S','C')">Changed</button>
-          </div>
-          <div class="cvss-divider"></div>
-          <span class="cvss-label">Confidentiality</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="C" data-value="N" onclick="setCVSSMetric('C','N')">None</button>
-            <button type="button" class="cvss-btn" data-metric="C" data-value="L" onclick="setCVSSMetric('C','L')">Low</button>
-            <button type="button" class="cvss-btn" data-metric="C" data-value="H" onclick="setCVSSMetric('C','H')">High</button>
-          </div>
-          <span class="cvss-label">Integrity</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="I" data-value="N" onclick="setCVSSMetric('I','N')">None</button>
-            <button type="button" class="cvss-btn" data-metric="I" data-value="L" onclick="setCVSSMetric('I','L')">Low</button>
-            <button type="button" class="cvss-btn" data-metric="I" data-value="H" onclick="setCVSSMetric('I','H')">High</button>
-          </div>
-          <span class="cvss-label">Availability</span>
-          <div class="cvss-btns">
-            <button type="button" class="cvss-btn" data-metric="A" data-value="N" onclick="setCVSSMetric('A','N')">None</button>
-            <button type="button" class="cvss-btn" data-metric="A" data-value="L" onclick="setCVSSMetric('A','L')">Low</button>
-            <button type="button" class="cvss-btn" data-metric="A" data-value="H" onclick="setCVSSMetric('A','H')">High</button>
+          <div class="vd-field">
+            <div class="vd-label-row">
+              <label class="form-label" for="modal-vuln-sev">Severidad</label>
+              <button type="button" class="ai-btn" id="ai-sev-btn" onclick="aiSeverity()" title="Sugerir severidad a partir del nombre"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
+            </div>
+            <select class="form-input" id="modal-vuln-sev">
+              <option value="critical" data-color="var(--c-crit)">Critical</option>
+              <option value="high" data-color="var(--c-high)">High</option>
+              <option value="medium" data-color="var(--c-med)" selected>Medium</option>
+              <option value="low" data-color="var(--c-low)">Low</option>
+              <option value="info" data-color="var(--c-info)">Info</option>
+            </select>
           </div>
         </div>
-        <div class="cvss-score-wrap">
-          <div id="cvss-score-display" style="display:flex;align-items:center;gap:8px;min-width:110px">
-            <span style="font-family:var(--mono);font-size:26px;font-weight:800;color:var(--t3);line-height:1">0.0</span>
-            <span class="sev-badge sev-info">None</span>
+        <div class="vd-grid vd-grid-3">
+          <div class="vd-field">
+            <label class="form-label" for="modal-vuln-cat">Categoría</label>
+            <input type="text" class="form-input" id="modal-vuln-cat" placeholder="Ej: GraphQL, Auth, API...">
           </div>
-          <div style="flex:1;font-family:var(--mono);font-size:10px;color:var(--t3);word-break:break-all" id="cvss-vector-display">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N</div>
-          <button type="button" onclick="copyCVSSVector()" style="font-family:var(--mono);font-size:10px;color:var(--a);background:none;border:1px solid rgba(245,158,11,.3);border-radius:var(--r-sm);padding:3px 8px;cursor:pointer;flex-shrink:0">Copy</button>
+          <div class="vd-field">
+            <div class="vd-label-row">
+              <label class="form-label" for="modal-vuln-cwe">CWE <span class="vd-opt">(opcional)</span></label>
+              <button type="button" class="ai-btn" id="ai-cwe-btn" onclick="aiCWE()" title="Sugerir CWE a partir del nombre y la descripción"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg></button>
+            </div>
+            <input type="text" class="form-input" id="modal-vuln-cwe" placeholder="Ej: CWE-79">
+          </div>
+          <div class="vd-field">
+            <label class="form-label" for="modal-vuln-target">Target <span class="vd-opt">(opcional)</span></label>
+            <select class="form-input" id="modal-vuln-target">
+              <option value="">— No target —</option>
+            </select>
+          </div>
         </div>
+      </div>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Descripción <span class="ccp-sec-hint">· markdown</span>
+          <button type="button" class="ai-btn vd-sec-action" id="ai-draft-btn" onclick="aiDraft()" title="Generar un borrador completo a partir del nombre y la categoría"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Draft</button>
+        </div>
+        <textarea class="form-input note-textarea vd-textarea" id="modal-vuln-desc" placeholder="Qué es esta vulnerabilidad y por qué importa..."></textarea>
+      </div>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Remediación <span class="ccp-sec-hint">· markdown</span>
+          <button type="button" class="ai-btn vd-sec-action" id="ai-rem-btn" onclick="aiRemediation()" title="Generar la remediación a partir de la descripción"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg> Suggest</button>
+        </div>
+        <textarea class="form-input note-textarea vd-textarea" id="modal-vuln-rem" placeholder="Cómo corregir o mitigar la vulnerabilidad..."></textarea>
+      </div>
+
+      <!-- CVSS v3.1 Calculator -->
+      <div class="drw-sec">
+        <div class="drw-sec-label">CVSS v3.1 <span class="ccp-sec-hint">· opcional</span>
+          <span class="vd-sec-action vd-cvss-tools">
+            <span id="cvss-header-pill" class="vd-cvss-pill">not scored</span>
+            <button type="button" id="cvss-clear-btn" class="vd-link-btn vd-link-danger" onclick="clearCVSS()" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> clear</button>
+            <button type="button" id="cvss-toggle-btn" class="vd-link-btn" onclick="toggleCVSSSection()"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="m9 18 6-6-6-6"/></svg> open</button>
+          </span>
+        </div>
+        <div id="cvss-calc" style="display:none">
+          <div class="cvss-grid">
+            <span class="cvss-label">Attack Vector</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="AV" data-value="N" onclick="setCVSSMetric('AV','N')">Network</button>
+              <button type="button" class="cvss-btn" data-metric="AV" data-value="A" onclick="setCVSSMetric('AV','A')">Adjacent</button>
+              <button type="button" class="cvss-btn" data-metric="AV" data-value="L" onclick="setCVSSMetric('AV','L')">Local</button>
+              <button type="button" class="cvss-btn" data-metric="AV" data-value="P" onclick="setCVSSMetric('AV','P')">Physical</button>
+            </div>
+            <span class="cvss-label">Attack Complexity</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="AC" data-value="L" onclick="setCVSSMetric('AC','L')">Low</button>
+              <button type="button" class="cvss-btn" data-metric="AC" data-value="H" onclick="setCVSSMetric('AC','H')">High</button>
+            </div>
+            <span class="cvss-label">Privileges Required</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="PR" data-value="N" onclick="setCVSSMetric('PR','N')">None</button>
+              <button type="button" class="cvss-btn" data-metric="PR" data-value="L" onclick="setCVSSMetric('PR','L')">Low</button>
+              <button type="button" class="cvss-btn" data-metric="PR" data-value="H" onclick="setCVSSMetric('PR','H')">High</button>
+            </div>
+            <span class="cvss-label">User Interaction</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="UI" data-value="N" onclick="setCVSSMetric('UI','N')">None</button>
+              <button type="button" class="cvss-btn" data-metric="UI" data-value="R" onclick="setCVSSMetric('UI','R')">Required</button>
+            </div>
+            <span class="cvss-label">Scope</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="S" data-value="U" onclick="setCVSSMetric('S','U')">Unchanged</button>
+              <button type="button" class="cvss-btn" data-metric="S" data-value="C" onclick="setCVSSMetric('S','C')">Changed</button>
+            </div>
+            <div class="cvss-divider"></div>
+            <span class="cvss-label">Confidentiality</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="C" data-value="N" onclick="setCVSSMetric('C','N')">None</button>
+              <button type="button" class="cvss-btn" data-metric="C" data-value="L" onclick="setCVSSMetric('C','L')">Low</button>
+              <button type="button" class="cvss-btn" data-metric="C" data-value="H" onclick="setCVSSMetric('C','H')">High</button>
+            </div>
+            <span class="cvss-label">Integrity</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="I" data-value="N" onclick="setCVSSMetric('I','N')">None</button>
+              <button type="button" class="cvss-btn" data-metric="I" data-value="L" onclick="setCVSSMetric('I','L')">Low</button>
+              <button type="button" class="cvss-btn" data-metric="I" data-value="H" onclick="setCVSSMetric('I','H')">High</button>
+            </div>
+            <span class="cvss-label">Availability</span>
+            <div class="cvss-btns">
+              <button type="button" class="cvss-btn" data-metric="A" data-value="N" onclick="setCVSSMetric('A','N')">None</button>
+              <button type="button" class="cvss-btn" data-metric="A" data-value="L" onclick="setCVSSMetric('A','L')">Low</button>
+              <button type="button" class="cvss-btn" data-metric="A" data-value="H" onclick="setCVSSMetric('A','H')">High</button>
+            </div>
+          </div>
+          <div class="cvss-score-wrap">
+            <div id="cvss-score-display" class="vd-cvss-score">
+              <span class="vd-cvss-num">0.0</span>
+              <span class="sev-badge sev-info">None</span>
+            </div>
+            <div class="vd-cvss-vector" id="cvss-vector-display">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N</div>
+            <button type="button" class="vd-copy-vector" onclick="copyCVSSVector()">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Controles PCI-DSS <span class="ccp-sec-hint">· opcional</span></div>
+        <div id="modal-compliance-list" class="compliance-picker"></div>
+      </div>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Checklist</div>
+        <div id="modal-items-list"></div>
+        <button type="button" class="btn-add-row" onclick="addModalRow('modal-items-list','Check item...')">+ Agregar ítem</button>
+      </div>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Payloads</div>
+        <div id="modal-payloads-list"></div>
+        <button type="button" class="btn-add-row" onclick="addModalRow('modal-payloads-list','Payload...',true)">+ Agregar payload</button>
+      </div>
+
+      <div class="drw-sec">
+        <div class="drw-sec-label">Notas <span class="ccp-sec-hint">· observaciones rápidas</span></div>
+        <textarea class="form-input note-textarea" id="modal-vuln-notes" placeholder="Notas rápidas, referencias..."></textarea>
       </div>
     </div>
 
-    <div class="form-error" id="vuln-error"></div>
-    <div class="modal-footer">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">Markdown supported in description & remediation</span>
-      <div style="display:flex;gap:8px">
-        <button class="btn-secondary" onclick="closeVulnModal()">Cancel</button>
-        <button class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Save</button>
+    <div class="ccp-drw-foot vd-edit-foot">
+      <div class="form-error vd-edit-error" id="vuln-error"></div>
+      <span class="vd-hint">Ctrl+Enter guarda</span>
+      <div class="ccp-foot-actions">
+        <button type="button" class="btn-secondary" onclick="closeVulnModal()">Cancelar</button>
+        <button type="button" class="btn-save" id="vuln-save-btn" onclick="saveVuln()">Guardar</button>
       </div>
     </div>
   </div>
@@ -277,7 +294,7 @@
 <script src="js/services/utils.js?v=3"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/vulns.js?v=4"></script>
+<script src="js/views/vulns.js?v=5"></script>
 <script src="js/components/notifications.js?v=3"></script>
 <script src="js/page.js?v=3"></script>
 <script>

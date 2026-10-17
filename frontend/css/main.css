@@ -909,6 +909,154 @@ body {
 .ccp-foot-actions { display: flex; gap: 8px; }
 .ccp-foot-actions .btn:disabled { opacity: .5; cursor: wait; }
 
+/* ── HALLAZGOS: lista compacta + drawer de detalle/edición ───────── */
+/* Tono genérico por variable (CVSS, estado de remediación). */
+.vd-tone {
+  color: var(--vd-tone);
+  border-color: color-mix(in srgb, var(--vd-tone) 35%, transparent);
+  background: color-mix(in srgb, var(--vd-tone) 10%, transparent);
+}
+.vr-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: var(--mono); font-size: 10px; font-weight: 700; line-height: 1.5;
+  border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 0 6px; flex-shrink: 0;
+}
+.vr-row { margin-bottom: 6px; }
+.vr-row.is-active { border-color: var(--a); }
+.vr-row .ccp-row-main { align-items: center; }
+.vr-row .ccp-row-main > .sev-badge { margin-top: 0; flex-shrink: 0; }
+.vr-row .ccp-row-meta .compliance-badge { padding: 0 6px; line-height: 1.5; }
+.vr-target { color: var(--a); }
+.vr-flag { display: inline-flex; align-items: center; gap: 3px; color: var(--t3); }
+.vr-flag-ai { display: inline-flex; align-items: center; gap: 3px; color: var(--a); }
+.vr-editor { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--t3); }
+.vr-editor .avatar-sm, .vd-by .avatar-sm { flex-shrink: 0; margin-left: 0; }
+.vr-empty-btn { margin-top: 14px; }
+
+/* Check de estado (sin marcar → confirmado → vulnerable). */
+.vr-check { background: transparent; padding: 0; color: inherit; }
+.vr-check:focus-visible { outline: 2px solid var(--a); outline-offset: 1px; }
+.vr-check.is-done { background: var(--c-low); border-color: var(--c-low); color: var(--bg); }
+.vr-check.is-fail { background: var(--c-crit); border-color: var(--c-crit); color: #fff; }
+
+/* Acciones rápidas discretas: aparecen al pasar / enfocar la fila. */
+.vr-actions { gap: 3px; }
+@media (hover: hover) {
+  .vr-actions { opacity: .35; transition: opacity .15s; }
+  .vr-row:hover .vr-actions, .vr-row:focus-within .vr-actions, .vr-row:focus-visible .vr-actions { opacity: 1; }
+}
+
+/* Drawer: mismo ancho que el de propuestas; oculto del todo (y fuera del
+   orden de tab) mientras está cerrado. */
+.drw.vd-drw {
+  width: 760px; visibility: hidden; outline: none;
+  transition: transform .26s cubic-bezier(.22,1,.36,1), visibility 0s linear .26s;
+}
+.drw.vd-drw.open { visibility: visible; transition: transform .26s cubic-bezier(.22,1,.36,1), visibility 0s; }
+.vd-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.vd-drw .vd-pane-edit,
+.vd-drw.is-edit .vd-pane-view { display: none; }
+.vd-drw.is-edit .vd-pane-edit { display: flex; }
+.vd-drw:not(.is-add) .vd-tpl-sec { display: none; }
+
+.vd-drw .drw-head { padding-right: 48px; }
+.vd-drw .drw-id { flex-wrap: wrap; }
+.vd-drw .drw-title { font-size: 18px; word-break: break-word; }
+.vd-kind { color: var(--a); text-transform: uppercase; }
+.vd-status { font-family: var(--mono); font-size: 10px; letter-spacing: 0; }
+.vd-status.is-done { color: var(--c-low); }
+.vd-status.is-fail { color: var(--c-crit); }
+.vd-chip-muted { color: var(--t3); gap: 4px; }
+.vd-drw .drw-meta .vr-flag-ai { gap: 4px; }
+.vd-by { display: flex; align-items: center; gap: 6px; }
+
+.vd-drw .drw-body { padding: 20px 24px; }
+.vd-drw .drw-sec { margin-bottom: 22px; }
+.vd-drw .drw-sec-label { display: flex; align-items: center; gap: 4px; min-height: 20px; }
+.vd-sec-action { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; }
+.vd-drw .drw-prose.md-body { font-size: 13px; line-height: 1.65; color: var(--t2); padding: 0; word-break: break-word; }
+.vd-drw .drw-prose .md-h2 { font-size: 14px; color: var(--t1); margin: 12px 0 4px; }
+.vd-drw .drw-prose .md-h3 { font-size: 13px; color: var(--t1); margin: 10px 0 3px; }
+.vd-drw .drw-prose .md-li { line-height: 1.65; }
+.vd-drw .drw-prose .md-pre { font-size: 11px; }
+.vd-drw .drw-prose strong { color: var(--t1); }
+.vd-drw .drw-prose .rpt-table { width: 100%; font-size: 12px; }
+.vd-drw .item-text { font-size: 12px; }
+.vd-drw .item-checkbox:focus-visible { outline: 2px solid var(--a); outline-offset: 1px; }
+.vd-drw .payload-code { font-size: 11px; }
+.vd-notes { color: var(--t2); }
+.vd-upload { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: 0; }
+.vd-shots { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.vd-shots .ccp-shot img { height: 110px; }
+.vd-drw .http-proof-code { max-height: 420px; font-size: 11px; }
+.vd-drw .http-proof-annotation { font-size: 12px; }
+.vd-drw .http-proof.is-open .http-proof-toggle { transform: rotate(90deg); }
+
+/* CVSS (detalle). */
+.vd-cvss-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.vd-cvss-num { font-family: var(--mono); font-size: 24px; font-weight: 800; line-height: 1; color: var(--t3); }
+.vd-cvss-grid .drw-cvss-val { font-size: 12px; }
+
+/* Remediación + retest. */
+.vd-rem-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vd-rem-row > .vr-tag { padding: 1px 7px; }
+.vd-trail { margin-top: 8px; font-family: var(--mono); font-size: 10px; color: var(--t3); }
+.vd-retest {
+  display: flex; flex-direction: column; gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--c-med) 27%, transparent);
+  background: color-mix(in srgb, var(--c-med) 5%, transparent);
+  border-radius: 8px; padding: 12px 14px;
+}
+.vd-field { min-width: 0; }
+.vd-field-label { display: block; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--t3); margin-bottom: 4px; }
+.vd-retest-date { font-size: 11px; max-width: 170px; }
+.vd-retest textarea { font-size: 12px; width: 100%; box-sizing: border-box; resize: vertical; }
+.vd-row-end { display: flex; justify-content: flex-end; margin-top: 6px; }
+.vd-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.vd-label-row .form-label { margin: 0; }
+
+/* Footer del detalle. */
+#vd-foot .btn { display: inline-flex; align-items: center; gap: 5px; }
+.vd-published { border-color: var(--a); color: var(--a); }
+
+/* Formulario (modo edición). */
+.vd-grid { display: grid; gap: 10px; margin-bottom: 10px; }
+.vd-grid:last-child { margin-bottom: 0; }
+.vd-grid-name { grid-template-columns: 1fr 180px; }
+.vd-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+.vd-opt { color: var(--t3); text-transform: none; letter-spacing: 0; }
+.vd-pane-edit .tpl-search-wrap { margin-bottom: 0; }
+.vd-pane-edit .vd-textarea { min-height: 120px; }
+.vd-pane-edit .note-textarea, .vd-retest .note-textarea { margin-top: 0; }
+.vd-pane-edit .compliance-picker { max-height: 220px; }
+.vd-cvss-tools { gap: 10px; }
+.vd-cvss-pill { font-family: var(--mono); font-size: 11px; color: var(--t3); }
+.vd-link-btn { font-family: var(--mono); font-size: 10px; color: var(--a); background: none; border: none; cursor: pointer; padding: 0; }
+.vd-link-danger { color: var(--c-crit); }
+.vd-cvss-score { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+.vd-cvss-vector { flex: 1; font-family: var(--mono); font-size: 10px; color: var(--t3); word-break: break-all; }
+.vd-copy-vector {
+  font-family: var(--mono); font-size: 10px; color: var(--a); background: none; cursor: pointer; flex-shrink: 0;
+  border: 1px solid rgba(245,158,11,.3); border-radius: var(--r-sm); padding: 3px 8px;
+}
+.vd-edit-foot { flex-wrap: nowrap; }
+.vd-edit-error { margin: 0; flex: 1; min-width: 0; }
+.vd-hint { font-family: var(--mono); font-size: 10px; color: var(--t4); margin-left: auto; white-space: nowrap; }
+/* Con un drawer abierto los toasts suben y el botón flotante del chat se
+   oculta, para no tapar los botones del footer. */
+body:has(.drw.open) .toast-container { bottom: 72px; }
+body:has(.drw.open) #ai-fab { display: none; }
+
+@media (max-width: 640px) {
+  .drw.vd-drw, .drw.ccp-drw { width: 100vw; max-width: 100vw; border-left: none; }
+  .vd-drw .drw-body { padding: 16px; }
+  .vd-grid-name, .vd-grid-3 { grid-template-columns: 1fr; }
+  .vd-drw .drw-cvss { grid-template-columns: repeat(2, 1fr); }
+  .vd-hint { display: none; }
+  .vd-edit-foot { flex-wrap: wrap; }
+  .vr-editor { margin-left: 0; }
+}
+
 /* ── IMAGE LIGHTBOX ──────────────────────────────────────────────── */
 .img-lb {
   position: fixed; inset: 0; z-index: 9999; background: #000d;

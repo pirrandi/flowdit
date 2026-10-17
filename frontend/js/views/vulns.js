@@ -68,6 +68,7 @@ function tplKeydown(e) {
     e.preventDefault();
     tplApply(_tplFocusIdx);
   } else if (e.key === 'Escape') {
+    e.preventDefault(); // que el drawer no lo tome también como "cerrar"
     _tplClose();
   }
 }
@@ -329,18 +330,31 @@ const REMEDIATION_COLORS = { open: 'var(--t3)', remediated: 'var(--c-med)', not_
 function remediationBadge(status) {
   const s = status || 'open';
   const c = REMEDIATION_COLORS[s] || REMEDIATION_COLORS.open;
-  return `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}33;border-radius:4px;padding:1px 7px;flex-shrink:0">${REMEDIATION_LABELS[s]||s}</span>`;
+  return `<span class="vr-tag vd-tone" style="--vd-tone:${c}">${esc(REMEDIATION_LABELS[s] || s)}</span>`;
+}
+
+function _cvssScoreOf(v) {
+  const s = v.cvss_score != null && v.cvss_score !== '' ? +v.cvss_score : null;
+  return s != null && !isNaN(s) ? s : null;
+}
+
+// Agrupado por severidad, en el mismo orden en que se ven: es también el
+// orden del ‹ anterior / siguiente › del drawer.
+function _vulnsBySeverity() {
+  const bySev = {};
+  SEVERITY_ORDER.forEach(s => bySev[s] = []);
+  state.customVulns.forEach(v => { const s = v.severity||'medium'; (bySev[s]||bySev['medium']).push(v); });
+  return bySev;
 }
 
 function renderCustomVulns() {
   const container = document.getElementById('custom-content');
   if (!state.customVulns.length) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div><button class="btn btn-prim" style="margin-top:14px" onclick="openAddVulnModal()">+ Add Vulnerability</button></div>`;
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('inbox', { size: 28 })}</div><div class="empty-title">No custom vulnerabilities</div><div class="empty-sub">Add findings, then write descriptions & export from the Export page</div><button class="btn btn-prim vr-empty-btn" onclick="openAddVulnModal()">+ Add Vulnerability</button></div>`;
+    _vdRefresh();
     return;
   }
-  const bySev = {};
-  SEVERITY_ORDER.forEach(s => bySev[s] = []);
-  state.customVulns.forEach(v => { const s = v.severity||'medium'; (bySev[s]||bySev['medium']).push(v); });
+  const bySev = _vulnsBySeverity();
 
   container.innerHTML = '';
   SEVERITY_ORDER.forEach(sev => {
@@ -354,171 +368,79 @@ function renderCustomVulns() {
     bySev[sev].forEach(v => section.appendChild(buildVulnCard(v)));
     container.appendChild(section);
   });
+  // El drawer abierto se redibuja con los datos frescos (o se cierra si el
+  // hallazgo ya no existe). Todo cambio pasa por acá.
+  _vdRefresh();
 }
 
-function buildVulnCard(v) {
+// Check de estado (sin marcar → confirmado → vulnerable), compartido por la
+// fila y la cabecera del drawer.
+function _vrCheck(v) {
   const isDone = v.status === 'done';
   const isFail = v.status === 'fail';
-  const card   = document.createElement('div');
-  card.className = `vuln-card ${isDone?'completed':''} ${isFail?'failed':''}`;
-  card.id = `vuln-${v.id}`;
+  const st = isDone ? 'confirmado' : isFail ? 'vulnerable' : 'sin marcar';
+  return `<button type="button" class="test-check vr-check${isDone ? ' is-done' : isFail ? ' is-fail' : ''}"
+    onclick="cycleVulnStatus('${esc(v.id)}',event)" title="Estado: ${st} — clic para cambiar">${isDone ? icon('check',{size:12}) : isFail ? icon('x',{size:12}) : ''}</button>`;
+}
 
-  const itemsH = (v.items||[]).length ? `<div class="items-section"><div class="items-label">Checklist</div>` +
-    v.items.map((item, idx) => {
-      const chk = v.checked_items?.[idx] || false;
-      return `<div class="item-row">
-        <div class="item-checkbox ${chk?'checked':''}" onclick="toggleCustomItem('${v.id}',${idx},this)">${chk?icon('check',{size:11}):''}</div>
-        <span class="item-text ${chk?'done':''}">${esc(item)}</span>
-      </div>`;
-    }).join('') + '</div>' : '';
+function _vrPublishTitle(v) {
+  return v.client_visible ? 'Visible para el cliente — clic para ocultar' : 'Oculto del cliente — clic para publicar en el portal';
+}
 
-  const payH = (v.payloads||[]).length ? `<div class="payload-section"><div class="items-label">Payloads</div>` +
-    v.payloads.map(p => `<div class="payload-row">
-      <div class="payload-code">${esc(p)}</div>
-      <button class="copy-btn" onclick="copyText(this,'${btoa(encodeURIComponent(p))}')">copy</button>
-    </div>`).join('') + '</div>' : '';
+// Fila compacta (mismo patrón que el inbox de propuestas): clic / Enter /
+// Espacio abre el drawer de detalle. Las acciones rápidas no lo abren.
+function buildVulnCard(v) {
+  const id     = esc(v.id);
+  const isDone = v.status === 'done';
+  const isFail = v.status === 'fail';
+  const row    = document.createElement('div');
+  row.className = `vuln-card ccp-row vr-row${isDone ? ' completed' : ''}${isFail ? ' failed' : ''}${v.id === _vdOpenId && _vdMode ? ' is-active' : ''}`;
+  row.id = `vuln-${v.id}`;
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.addEventListener('click', () => openVulnDetail(v.id));
+  row.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === row) { e.preventDefault(); openVulnDetail(v.id); }
+  });
 
-  const noteH = v.notes ? `<div class="items-section"><div class="items-label">Notes</div>
-    <div class="payload-code" style="color:var(--t2);white-space:pre-wrap">${esc(v.notes)}</div></div>` : '';
+  const score  = _cvssScoreOf(v);
+  const items  = (v.items || []).length;
+  const itemsDone = (v.items || []).filter((_, i) => v.checked_items?.[i]).length;
+  const shots  = (v.evidence || []).length;
+  const proofs = (v.http_proofs || []).length;
+  const meta = [
+    `<span>${esc(v.category || 'Custom')}</span>`,
+    score != null ? `<span class="vr-tag vd-tone" style="--vd-tone:${_cvssColor(score)}">CVSS ${score.toFixed(1)}</span>` : '',
+    v.cwe ? `<span>${esc(v.cwe)}</span>` : '',
+    v.target_host ? `<span class="vr-target">${esc(v.target_host)}</span>` : '',
+    ...(v.compliance_tags || []).map(t => complianceBadge(t)),
+    (v.remediation_status && v.remediation_status !== 'open') ? remediationBadge(v.remediation_status) : '',
+    !v.client_visible ? `<span class="vr-flag" title="No visible en el portal del cliente">${icon('eye-off',{size:10})}Oculto</span>` : '',
+    v.ai_generated ? `<span class="vr-flag vr-flag-ai" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>` : '',
+    items  ? `<span class="ccp-count" title="Checklist">${icon('list-checks',{size:10})}${itemsDone}/${items}</span>` : '',
+    shots  ? `<span class="ccp-count" title="Evidencia">${icon('image',{size:10})}${shots}</span>` : '',
+    proofs ? `<span class="ccp-count" title="HTTP proofs">${icon('terminal',{size:10})}${proofs}</span>` : '',
+    v.editor_username ? `<span class="vr-editor" title="Última edición">
+      ${avatarHtml(displayName(v, 'editor_'), memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 14, v.editor_avatar_url||null)}
+      ${esc(displayName(v, 'editor_'))} · ${esc(timeAgo(v.updated_at))}</span>` : '',
+  ].filter(Boolean).join('');
 
-  const remStatus = v.remediation_status || 'open';
-  const remActionsH = remStatus === 'open'
-    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','remediated')">Marcar como remediado</button>`
-    : remStatus === 'remediated'
-    ? `<button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','verified_closed')">Verificar y cerrar</button>
-       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','not_remediated')">Marcar como no remediado</button>
-       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`
-    : remStatus === 'not_remediated'
-    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','remediated')">Marcar como remediado</button>
-       <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`
-    : `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--c-crit)" onclick="setRemediationStatus('${v.id}','open')">Reabrir</button>`;
-
-  const remTrailH = [
-    v.remediated_at ? `Remediado: ${new Date(v.remediated_at).toLocaleDateString()}` : '',
-    v.verified_at   ? `Verificado: ${new Date(v.verified_at).toLocaleDateString()}${v.verifier_username ? ' por ' + esc(displayName(v, 'verifier_')) : ''}` : '',
-  ].filter(Boolean).join(' · ');
-
-  const evidAll      = (v.evidence||[]).map((img,i) => ({ img, i }));
-  const evidOriginal = evidAll.filter(e => (e.img.phase||'original') === 'original');
-  const evidRetest   = evidAll.filter(e => e.img.phase === 'retest');
-  const evidThumb = ({img,i}) => `<img src="${img.data}" class="evidence-thumb" alt="${esc(img.name||'')}" onclick="openEvidenceViewer('${v.id}',${i})">`;
-
-  // Sección con acento propio (mismo color que "Notas de Retest" en el
-  // reporte exportado) — antes se confundía visualmente con cualquier otro
-  // .items-section genérico, y el retest es justo la parte del ciclo de
-  // vida que más importa distinguir de un vistazo.
-  const remH2 = `<div class="items-section">
-    <div class="items-label">Remediation Status</div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      ${remediationBadge(remStatus)}
-      ${remActionsH}
-    </div>
-    ${remTrailH ? `<div style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-bottom:8px">${remTrailH}</div>` : ''}
-    <div style="border:1px solid var(--c-med)44;background:var(--c-med)0d;border-radius:8px;padding:12px 14px;margin-top:4px">
-      <div style="font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-med);margin-bottom:10px;display:flex;align-items:center;gap:6px">
-        ${icon('rotate-ccw',{size:12})} Retest
-      </div>
-      <div style="margin-bottom:10px">
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Fecha</div>
-        <input type="date" class="form-input" style="font-size:11px;max-width:170px" value="${v.retest_date ? v.retest_date.slice(0,10) : ''}" onchange="setRetestDate('${v.id}', this.value)">
-      </div>
-      <div style="margin-bottom:10px">
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Notas — qué se probó y qué resultado se observó</div>
-        <textarea class="form-input note-textarea" id="retest-notes-${v.id}" rows="3" placeholder="Ej: se reintentó la validación del ticket QR con parámetros forjados; el endpoint ahora rechaza la solicitud..." style="font-size:12px;width:100%;box-sizing:border-box;resize:vertical">${esc(v.retest_notes||'')}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:6px">
-          <button class="btn btn-prim" style="font-size:11px;padding:5px 12px" onclick="setRetestNotes('${v.id}', document.getElementById('retest-notes-${v.id}').value)">Guardar nota</button>
-        </div>
-      </div>
-      <div>
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--t3);margin-bottom:5px;display:flex;align-items:center;justify-content:space-between">
-          <span>Evidencia de retest${evidRetest.length ? ` (${evidRetest.length})` : ''}</span>
-          <label class="btn btn-ghost" style="font-size:10px;padding:2px 8px;cursor:pointer">+ Agregar
-            <input type="file" accept="image/*" style="display:none" onchange="addEvidenceFile('${v.id}',this,'retest')">
-          </label>
-        </div>
-        ${evidRetest.length ? `<div class="evidence-thumbs">${evidRetest.map(evidThumb).join('')}</div>` : `<div style="font-family:var(--mono);font-size:11px;color:var(--t3);font-style:italic">Sin evidencia de retest todavía</div>`}
-      </div>
-    </div>
-  </div>`;
-
-  const complianceH = (v.compliance_tags||[]).length ? `<div class="items-section"><div class="items-label">PCI-DSS Coverage</div>
-    ${v.compliance_tags.map(t => `<div class="item-row"><span class="compliance-opt-id">${esc(t.control_id)}</span><span class="item-text">${esc(t.title)}</span></div>`).join('')}</div>` : '';
-
-  const descH = v.description ? `<div class="items-section"><div class="items-label">Description</div>
-    <div class="md-body" style="color:var(--t2)">${renderMd(v.description)}</div></div>` : '';
-  const remH  = v.remediation ? `<div class="items-section"><div class="items-label">Remediation</div>
-    <div class="md-body" style="color:var(--c-low)">${renderMd(v.remediation)}</div></div>` : '';
-  // Evidencia de retest se ve en su propia sección más abajo (dentro de
-  // "Retest", junto a la fecha y las notas) — mostrarla acá también sería
-  // duplicar las mismas miniaturas dos veces en la misma card.
-  const evidH = `<div class="items-section">
-    <div class="items-label" style="display:flex;align-items:center;justify-content:space-between">
-      <span>Evidence (${evidOriginal.length})</span>
-      <label class="btn btn-ghost" style="font-size:10px;padding:2px 8px;cursor:pointer">+ Agregar evidencia original
-        <input type="file" accept="image/*" style="display:none" onchange="addEvidenceFile('${v.id}',this,'original')">
-      </label>
-    </div>
-    ${evidOriginal.length ? `<div class="evidence-thumbs">${evidOriginal.map(evidThumb).join('')}</div>` : ''}
-  </div>`;
-
-  const proofs = (v.http_proofs || []);
-  const httpH = proofs.length ? `<div class="items-section">
-    <div class="items-label">HTTP Proofs (${proofs.length})</div>
-    ${proofs.map((pr, i) => {
-      const included = pr.include !== false;
-      return `
-      <div class="http-proof" id="http-proof-${v.id}-${i}">
-        <div class="http-proof-head">
-          <span class="http-proof-method">${esc(pr.method || 'HTTP')}</span>
-          <span class="http-proof-label" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">Proof #${i+1}</span>
-          <label class="http-proof-include" title="Incluir en reporte" onclick="event.stopPropagation()">
-            <input type="checkbox" ${included ? 'checked' : ''} onchange="toggleHttpProofInclude('${v.id}',${i},this.checked)">
-            <span>reporte</span>
-          </label>
-          <button class="http-proof-edit-btn" onclick="editHttpProof('${v.id}',${i})" title="Editar">${icon('square-pen',{size:11})}</button>
-          <span class="http-proof-toggle" onclick="document.getElementById('http-proof-${v.id}-${i}').querySelector('.http-proof-body').classList.toggle('open')">${icon('chevron-right',{size:11})}</span>
-        </div>
-        <div class="http-proof-body">
-          ${pr.request ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${numberedCode(pr.request)}</pre>` : ''}
-          ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${numberedCode(pr.response)}</pre>` : ''}
-          ${pr.annotation ? `<div class="http-proof-section-label" style="margin-top:10px">Anotación</div><div class="http-proof-annotation md-body">${renderMd(pr.annotation)}</div>` : ''}
-        </div>
-      </div>`;
-    }).join('')}
-  </div>` : '';
-
-  const editorBadge = v.editor_username ? `
-    <div class="last-editor" style="margin-left:auto">
-      ${avatarHtml(displayName(v, 'editor_'), memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 20, v.editor_avatar_url||null)}
-      <span class="last-editor-name">${esc(displayName(v, 'editor_'))}</span>
-      <span class="last-editor-time">${timeAgo(v.updated_at)}</span>
-    </div>` : '';
-
-  card.innerHTML = `
-    <div class="vuln-header" onclick="toggleVulnBody('${v.id}',event)">
-      <div class="test-check"
-        style="${isDone?'background:var(--c-low);border-color:var(--c-low);color:var(--bg)':isFail?'background:var(--c-crit);border-color:var(--c-crit);color:#fff':''}"
-        onclick="cycleVulnStatus('${v.id}',event)">${isDone?icon('check',{size:12}):isFail?icon('x',{size:12}):''}</div>
-      <span class="vuln-tag">${esc(v.category||'Custom')}</span>
+  row.innerHTML = `
+    <div class="ccp-row-main">
+      ${_vrCheck(v)}
       ${severityBadge(v.severity)}
-      ${v.cvss_score != null ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${_cvssColor(+v.cvss_score)};background:${_cvssColor(+v.cvss_score)}15;border:1px solid ${_cvssColor(+v.cvss_score)}33;border-radius:4px;padding:1px 7px;flex-shrink:0">CVSS ${(+v.cvss_score).toFixed(1)}</span>` : ''}
-      ${v.cwe ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0">${esc(v.cwe)}</span>` : ''}
-      ${(v.compliance_tags||[]).map(t => complianceBadge(t)).join('')}
-      ${v.target_host ? `<span class="vuln-tag" style="color:var(--a);border-color:var(--a)33">${esc(v.target_host)}</span>` : ''}
-      ${v.ai_generated ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;flex-shrink:0;display:inline-flex;align-items:center;gap:3px" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>` : ''}
-      ${(v.remediation_status && v.remediation_status !== 'open') ? remediationBadge(v.remediation_status) : ''}
-      ${!v.client_visible ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--t3);background:var(--bg2);border:1px solid var(--b1);border-radius:4px;padding:1px 7px;flex-shrink:0;display:inline-flex;align-items:center;gap:3px" title="No visible en el portal del cliente">${icon('eye-off',{size:10})}Oculto</span>` : ''}
-      <span class="vuln-name">${esc(v.name)}</span>
-      ${editorBadge}
-      <div class="vuln-actions">
-        ${canActForClient() ? `<button class="btn-icon ${v.client_visible ? 'published' : ''}" onclick="toggleVulnPublish('${v.id}',event)"
-          title="${v.client_visible ? 'Visible para el cliente — clic para ocultar' : 'Oculto del cliente — clic para publicar en el portal'}">${icon(v.client_visible ? 'eye' : 'eye-off',{size:12})}</button>` : ''}
-        <button class="btn-icon edit" onclick="openEditVuln('${v.id}',event)">${icon('square-pen',{size:12})}</button>
-        <button class="btn-icon delete" onclick="deleteVuln('${v.id}',event)">${icon('x',{size:12})}</button>
+      <div class="ccp-row-text">
+        <div class="ccp-row-title">${esc(v.name)}</div>
+        <div class="ccp-row-meta">${meta}</div>
       </div>
     </div>
-    <div class="vuln-body" id="vbody-${v.id}">${descH}${complianceH}${itemsH}${payH}${noteH}${remH}${remH2}${evidH}${httpH}</div>`;
-  return card;
+    <div class="ccp-row-actions vr-actions" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
+      ${canActForClient() ? `<button class="btn-icon ${v.client_visible ? 'published' : ''}" onclick="toggleVulnPublish('${id}',event)"
+        title="${_vrPublishTitle(v)}">${icon(v.client_visible ? 'eye' : 'eye-off',{size:12})}</button>` : ''}
+      <button class="btn-icon edit" onclick="openEditVuln('${id}',event)" title="Editar">${icon('square-pen',{size:12})}</button>
+      <button class="btn-icon delete" onclick="deleteVuln('${id}',event)" title="Eliminar">${icon('trash-2',{size:12})}</button>
+    </div>`;
+  return row;
 }
 
 function openEvidenceViewer(vulnId, idx) {
@@ -591,9 +513,360 @@ function openImageLightbox(images, startIdx = 0) {
   document.body.appendChild(overlay);
 }
 
-function toggleVulnBody(id, e) {
-  if (e.target.closest('.vuln-actions,.test-check')) return;
-  document.getElementById(`vbody-${id}`)?.classList.toggle('open');
+// ── DRAWER DE HALLAZGO (detalle + edición) ────────────────────────────
+// Un único drawer lateral (markup en vulns.html) con dos modos: 'view' arma
+// el detalle acá; 'edit' muestra el formulario de alta/edición. Se navega
+// con ‹ / › por la lista tal como se ve (agrupada por severidad).
+let _vdOpenId     = null;      // hallazgo abierto (null en un alta)
+let _vdMode       = null;      // 'view' | 'edit' | null (cerrado)
+let _vdSnapshot   = '';        // estado del formulario al abrir, para avisar cambios sin guardar
+let _vdOpenProofs = new Set(); // HTTP proofs expandidos del hallazgo abierto
+let _vdNotesBase  = '';        // notas de retest tal como se pintaron (para no pisar un borrador)
+let _vdReturnFocus = null;
+
+const _VD_CVSS_METRICS = [
+  ['AV', 'Attack Vector',     { N:'Network', A:'Adjacent', L:'Local', P:'Physical' }],
+  ['AC', 'Attack Complexity', { L:'Low', H:'High' }],
+  ['PR', 'Privileges',        { N:'None', L:'Low', H:'High' }],
+  ['UI', 'User Interaction',  { N:'None', R:'Required' }],
+  ['S',  'Scope',             { U:'Unchanged', C:'Changed' }],
+  ['C',  'Confidentiality',   { N:'None', L:'Low', H:'High' }],
+  ['I',  'Integrity',         { N:'None', L:'Low', H:'High' }],
+  ['A',  'Availability',      { N:'None', L:'Low', H:'High' }],
+];
+
+function _vdOrder() {
+  const bySev = _vulnsBySeverity();
+  return SEVERITY_ORDER.flatMap(s => bySev[s].map(v => v.id));
+}
+
+function _vdSec(label, html, action = '') {
+  return html ? `<div class="drw-sec"><div class="drw-sec-label">${label}${action ? `<span class="vd-sec-action">${action}</span>` : ''}</div>${html}</div>` : '';
+}
+
+function _vdUpload(id, phase, label) {
+  return `<label class="btn btn-ghost ccp-btn vd-upload">${icon('upload',{size:11})} ${label}
+    <input type="file" accept="image/*" hidden onchange="addEvidenceFile('${id}',this,'${phase}')"></label>`;
+}
+
+function _vdShots(id, list) {
+  return `<div class="ccp-shots vd-shots">${list.map(({ img, i }) => `
+    <button type="button" class="ccp-shot" onclick="openEvidenceViewer('${id}',${i})" title="${esc(img.name || '')}">
+      <img src="${esc(img.data || '')}" alt="${esc(img.name || '')}" loading="lazy">
+      <span class="ccp-shot-name">${esc(img.name || `evidencia ${i + 1}`)}</span>
+    </button>`).join('')}</div>`;
+}
+
+function _vdHead(v) {
+  const id = esc(v.id);
+  const score = _cvssScoreOf(v);
+  const chips = [
+    v.target_host ? `<span class="ccp-chip ccp-chip-target">${esc(v.target_host)}</span>` : '',
+    `<span class="ccp-chip">${esc(v.category || 'Custom')}</span>`,
+    score != null ? `<span class="ccp-chip ccp-chip-cvss" style="--ccp-cvss:${_cvssColor(score)}">CVSS ${score.toFixed(1)}</span>` : '',
+    v.cwe ? `<span class="ccp-chip">${esc(v.cwe)}</span>` : '',
+    ...(v.compliance_tags || []).map(t => complianceBadge(t)),
+    v.ai_generated ? `<span class="ccp-chip vr-flag-ai" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})} AI</span>` : '',
+    !v.client_visible ? `<span class="ccp-chip vd-chip-muted" title="No visible en el portal del cliente">${icon('eye-off',{size:10})} Oculto</span>` : '',
+  ].join('');
+  const status = v.status === 'done' ? `<span class="vd-status is-done">confirmado</span>`
+    : v.status === 'fail' ? `<span class="vd-status is-fail">vulnerable</span>` : '';
+  const editor = v.editor_username ? `
+    <div class="ccp-drw-by vd-by">
+      ${avatarHtml(displayName(v, 'editor_'), memberRoleColor(v.updated_by, v.editor_color||'#7c3aed'), 16, v.editor_avatar_url||null)}
+      <span>editado por ${esc(displayName(v, 'editor_'))} · ${esc(timeAgo(v.updated_at))}</span>
+    </div>` : '';
+  return `
+    <button class="drw-close" onclick="closeVulnDetail()" title="Cerrar (Esc)">${icon('x', { size: 16 })}</button>
+    <div class="drw-id">
+      ${_vrCheck(v)}
+      <span class="vd-kind">Hallazgo</span>
+      ${severityBadge(v.severity)}
+      ${status}
+      ${v.remediation_status && v.remediation_status !== 'open' ? remediationBadge(v.remediation_status) : ''}
+    </div>
+    <div class="drw-title" id="vd-title">${esc(v.name)}</div>
+    <div class="drw-meta">${chips}</div>
+    ${editor}`;
+}
+
+function _vdBody(v) {
+  const id = esc(v.id);
+
+  // CVSS: puntaje + vector + desglose de las 8 métricas.
+  const score = _cvssScoreOf(v);
+  const m = parseCVSSVector(v.cvss_vector);
+  const cvssH = (score != null || v.cvss_vector) ? `
+    <div class="vd-cvss-head">
+      ${score != null ? `<span class="vd-cvss-num" style="color:${_cvssColor(score)}">${score.toFixed(1)}</span>
+        <span class="sev-badge sev-${_cvssSevClass(score)}">${_cvssLabel(score)}</span>` : ''}
+      ${v.cvss_vector ? `<code class="ccp-vector">${esc(v.cvss_vector)}</code>
+        <button class="copy-btn" onclick="copyText(this,'${btoa(encodeURIComponent(v.cvss_vector))}')">copy</button>` : ''}
+    </div>
+    ${m ? `<div class="drw-cvss vd-cvss-grid">${_VD_CVSS_METRICS.map(([k, label, vals]) => `
+      <div class="drw-cvss-cell">
+        <div class="drw-cvss-label">${label}</div>
+        <div class="drw-cvss-val">${esc(vals[m[k]] || m[k] || '—')}</div>
+      </div>`).join('')}</div>` : ''}` : '';
+
+  const complianceH = (v.compliance_tags || []).map(t => `
+    <div class="item-row"><span class="compliance-opt-id">${esc(t.control_id)}</span><span class="item-text">${esc(t.title)}</span></div>`).join('');
+
+  const items = v.items || [];
+  const itemsDone = items.filter((_, i) => v.checked_items?.[i]).length;
+  const itemsH = items.map((item, idx) => {
+    const chk = v.checked_items?.[idx] || false;
+    return `<div class="item-row vd-item">
+      <div class="item-checkbox ${chk ? 'checked' : ''}" id="vd-item-${idx}" role="checkbox" tabindex="0" aria-checked="${chk}"
+        onclick="toggleCustomItem('${id}',${idx},this)"
+        onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${chk ? icon('check',{size:11}) : ''}</div>
+      <span class="item-text ${chk ? 'done' : ''}">${esc(item)}</span>
+    </div>`;
+  }).join('');
+
+  const payH = (v.payloads || []).map(p => `<div class="payload-row">
+      <div class="payload-code">${esc(p)}</div>
+      <button class="copy-btn" onclick="copyText(this,'${btoa(encodeURIComponent(p))}')">copy</button>
+    </div>`).join('');
+
+  const evidAll      = (v.evidence || []).map((img, i) => ({ img, i }));
+  const evidOriginal = evidAll.filter(e => (e.img.phase || 'original') === 'original');
+  const evidRetest   = evidAll.filter(e => e.img.phase === 'retest');
+
+  const proofs = v.http_proofs || [];
+  const proofsH = proofs.map((pr, i) => {
+    const open = _vdOpenProofs.has(i);
+    return `
+    <div class="http-proof${open ? ' is-open' : ''}" id="http-proof-${id}-${i}">
+      <div class="http-proof-head ccp-proof-head" onclick="_vdToggleProof(${i})">
+        <span class="http-proof-method">${esc(pr.method || 'HTTP')}</span>
+        <span class="http-proof-label">Proof #${i + 1}</span>
+        <label class="http-proof-include" title="Incluir en reporte" onclick="event.stopPropagation()">
+          <input type="checkbox" ${pr.include !== false ? 'checked' : ''} onchange="toggleHttpProofInclude('${id}',${i},this.checked)">
+          <span>reporte</span>
+        </label>
+        <button class="http-proof-edit-btn" onclick="event.stopPropagation();editHttpProof('${id}',${i})" title="Editar">${icon('square-pen',{size:11})}</button>
+        <span class="http-proof-toggle">${icon('chevron-right',{size:11})}</span>
+      </div>
+      <div class="http-proof-body${open ? ' open' : ''}">
+        ${pr.request  ? `<div class="http-proof-section-label">Request</div><pre class="http-proof-code">${numberedCode(pr.request)}</pre>` : ''}
+        ${pr.response ? `<div class="http-proof-section-label">Response</div><pre class="http-proof-code">${numberedCode(pr.response)}</pre>` : ''}
+        ${pr.annotation ? `<div class="http-proof-section-label">Anotación</div><div class="http-proof-annotation md-body">${renderMd(pr.annotation)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Estado de remediación: las acciones dependen del estado actual.
+  const remStatus = v.remediation_status || 'open';
+  const remBtn = (status, label, cls = 'btn-ghost') =>
+    `<button class="btn ${cls} ccp-btn" onclick="setRemediationStatus('${id}','${status}')">${label}</button>`;
+  const remActionsH = remStatus === 'open'
+    ? remBtn('remediated', 'Marcar como remediado')
+    : remStatus === 'remediated'
+    ? remBtn('verified_closed', 'Verificar y cerrar', 'btn-prim') + remBtn('not_remediated', 'Marcar como no remediado', 'btn-ghost ccp-btn-reject') + remBtn('open', 'Reabrir')
+    : remStatus === 'not_remediated'
+    ? remBtn('remediated', 'Marcar como remediado') + remBtn('open', 'Reabrir')
+    : remBtn('open', 'Reabrir', 'btn-ghost ccp-btn-reject');
+  const remTrailH = [
+    v.remediated_at ? `Remediado: ${new Date(v.remediated_at).toLocaleDateString()}` : '',
+    v.verified_at   ? `Verificado: ${new Date(v.verified_at).toLocaleDateString()}${v.verifier_username ? ' por ' + esc(displayName(v, 'verifier_')) : ''}` : '',
+  ].filter(Boolean).join(' · ');
+
+  // Retest con acento propio (mismo color que "Notas de Retest" en el
+  // reporte): es la parte del ciclo de vida que más importa distinguir.
+  const retestH = `
+    <div class="vd-retest">
+      <div class="vd-field">
+        <label class="vd-field-label" for="vd-retest-date">Fecha</label>
+        <input type="date" class="form-input vd-retest-date" id="vd-retest-date" value="${v.retest_date ? esc(v.retest_date.slice(0,10)) : ''}" onchange="setRetestDate('${id}', this.value)">
+      </div>
+      <div class="vd-field">
+        <label class="vd-field-label" for="vd-retest-notes">Notas — qué se probó y qué resultado se observó</label>
+        <textarea class="form-input note-textarea" id="vd-retest-notes" rows="3" placeholder="Ej: se reintentó la validación del ticket QR con parámetros forjados; el endpoint ahora rechaza la solicitud...">${esc(v.retest_notes || '')}</textarea>
+        <div class="vd-row-end">
+          <button class="btn btn-prim ccp-btn" onclick="setRetestNotes('${id}', document.getElementById('vd-retest-notes').value)">Guardar nota</button>
+        </div>
+      </div>
+      <div class="vd-field">
+        <div class="vd-field-label vd-label-row">
+          <span>Evidencia de retest${evidRetest.length ? ` (${evidRetest.length})` : ''}</span>
+          ${_vdUpload(id, 'retest', 'Agregar')}
+        </div>
+        ${evidRetest.length ? _vdShots(id, evidRetest) : `<div class="ccp-muted">Sin evidencia de retest todavía</div>`}
+      </div>
+    </div>`;
+
+  return [
+    _vdSec('Descripción', v.description ? `<div class="drw-prose md-body">${renderMd(v.description)}</div>` : ''),
+    _vdSec('Remediación', v.remediation ? `<div class="drw-prose md-body">${renderMd(v.remediation)}</div>` : ''),
+    _vdSec('CVSS v3.1', cvssH),
+    _vdSec('Cobertura PCI-DSS', complianceH),
+    _vdSec(`Checklist <span class="ccp-sec-hint">· ${itemsDone}/${items.length}</span>`, itemsH),
+    _vdSec(`Payloads (${(v.payloads || []).length})`, payH),
+    _vdSec('Notas', v.notes ? `<div class="payload-code vd-notes">${esc(v.notes)}</div>` : ''),
+    // Siempre visibles: tienen acciones (subir evidencia, remediación, retest).
+    _vdSec(`Evidencia (${evidOriginal.length})`,
+      evidOriginal.length ? _vdShots(id, evidOriginal) : `<div class="ccp-muted">Sin evidencia todavía</div>`,
+      _vdUpload(id, 'original', 'Agregar evidencia')),
+    _vdSec(`HTTP proofs (${proofs.length})`, proofsH),
+    _vdSec('Estado de remediación', `
+      <div class="vd-rem-row">${remediationBadge(remStatus)}${remActionsH}</div>
+      ${remTrailH ? `<div class="vd-trail">${remTrailH}</div>` : ''}`),
+    _vdSec(`${icon('rotate-ccw',{size:11})} Retest`, retestH),
+  ].join('');
+}
+
+function _vdFoot(v) {
+  const id = esc(v.id);
+  const order = _vdOrder();
+  const idx = order.indexOf(v.id);
+  const n = order.length;
+  return `
+    <div class="ccp-foot-nav">
+      <button class="btn btn-ghost ccp-btn" onclick="stepVulnDetail(-1)" ${idx <= 0 ? 'disabled' : ''} title="Anterior (←)">‹ anterior</button>
+      <span class="ccp-pos">${idx + 1} / ${n}</span>
+      <button class="btn btn-ghost ccp-btn" onclick="stepVulnDetail(1)" ${idx >= n - 1 ? 'disabled' : ''} title="Siguiente (→)">siguiente ›</button>
+    </div>
+    <div class="ccp-foot-actions">
+      <button class="btn btn-ghost ccp-btn-reject" onclick="deleteVuln('${id}',event)" title="Eliminar hallazgo">${icon('trash-2',{size:12})} Eliminar</button>
+      ${canActForClient() ? `<button class="btn ${v.client_visible ? 'vd-published' : ''}" onclick="toggleVulnPublish('${id}',event)" title="${_vrPublishTitle(v)}">
+        ${icon(v.client_visible ? 'eye' : 'eye-off',{size:12})} ${v.client_visible ? 'Publicado' : 'Publicar'}</button>` : ''}
+      <button class="btn btn-prim" onclick="openEditVuln('${id}',event)">${icon('square-pen',{size:12})} Editar</button>
+    </div>`;
+}
+
+// keep = redibujo del mismo hallazgo tras un cambio: conserva scroll, foco
+// y el borrador de las notas de retest.
+function _vdRenderView(keep) {
+  const v = state.customVulns.find(x => x.id === _vdOpenId);
+  if (!v) return;
+  const body = document.getElementById('vd-body');
+  let prev = null;
+  if (keep) {
+    const notes = document.getElementById('vd-retest-notes');
+    const active = document.activeElement;
+    prev = {
+      top:   body.scrollTop,
+      draft: notes && notes.value !== _vdNotesBase ? notes.value : null,
+      focus: active && body.contains(active) && active.id ? active.id : null,
+    };
+  }
+  document.getElementById('vd-head').innerHTML = _vdHead(v);
+  body.innerHTML = _vdBody(v);
+  document.getElementById('vd-foot').innerHTML = _vdFoot(v);
+  _vdNotesBase = v.retest_notes || '';
+  document.querySelectorAll('.vr-row.is-active').forEach(r => r.classList.remove('is-active'));
+  document.getElementById(`vuln-${v.id}`)?.classList.add('is-active');
+  if (prev) {
+    if (prev.draft != null) document.getElementById('vd-retest-notes').value = prev.draft;
+    body.scrollTop = prev.top;
+    if (prev.focus) document.getElementById(prev.focus)?.focus({ preventScroll: true });
+  } else {
+    body.scrollTop = 0;
+  }
+}
+
+function _vdShow(mode) {
+  const bd  = document.getElementById('vd-backdrop');
+  const drw = document.getElementById('vd-drw');
+  if (!drw) return;
+  _vdMode = mode;
+  drw.classList.toggle('is-edit', mode === 'edit');
+  drw.classList.toggle('is-add', mode === 'edit' && !_editingVulnId);
+  drw.setAttribute('aria-labelledby', mode === 'edit' ? 'modal-title' : 'vd-title');
+  if (!drw.classList.contains('open')) {
+    _vdReturnFocus = document.activeElement;
+    drw.offsetHeight; // reflow para que se pinte primero el translateX(100%)
+    bd.classList.add('open');
+    drw.classList.add('open');
+    document.addEventListener('keydown', _vdOnKey);
+  }
+}
+
+function openVulnDetail(id) {
+  if (!state.customVulns.some(v => v.id === id)) return;
+  if (_vdOpenId !== id) _vdOpenProofs = new Set([0]); // el primer proof abierto, como en propuestas
+  _vdOpenId = id;
+  _vdShow('view');
+  _vdRenderView(false);
+  document.getElementById('vd-drw').focus({ preventScroll: true });
+}
+
+function _vdEnterEdit(id) {
+  _vdOpenId = id;
+  _tplClose();
+  document.getElementById('vd-edit-body').scrollTop = 0;
+  _vdShow('edit');
+  _vdSnapshot = _vdFormState();
+  // La lista de PCI-DSS llega async: la selección vive en _selectedComplianceIds,
+  // que ya está seteada, así que el snapshot no depende de que termine.
+  document.getElementById('modal-vuln-name').focus({ preventScroll: true });
+}
+
+function stepVulnDetail(delta) {
+  const order = _vdOrder();
+  const next = order[order.indexOf(_vdOpenId) + delta];
+  if (_vdMode === 'view' && next) openVulnDetail(next);
+}
+
+// force = sin preguntar por cambios sin guardar (tras guardar / al borrar).
+function closeVulnDetail(force) {
+  if (force !== true && !_vdConfirmDiscard()) return;
+  const id = _vdOpenId;
+  _vdMode = null;
+  _vdOpenId = null;
+  _editingVulnId = null;
+  _tplClose();
+  document.removeEventListener('keydown', _vdOnKey);
+  document.getElementById('vd-backdrop')?.classList.remove('open');
+  document.getElementById('vd-drw')?.classList.remove('open');
+  document.querySelectorAll('.vr-row.is-active').forEach(r => r.classList.remove('is-active'));
+  // El foco vuelve a la fila del hallazgo (o a donde estaba al abrir).
+  const back = (id && document.getElementById(`vuln-${id}`)) || _vdReturnFocus;
+  if (back?.isConnected) back.focus({ preventScroll: true });
+  _vdReturnFocus = null;
+}
+
+function _vdRefresh() {
+  if (_vdMode !== 'view') return; // en edición no se pisa el formulario
+  if (state.customVulns.some(v => v.id === _vdOpenId)) _vdRenderView(true);
+  else closeVulnDetail(true);
+}
+
+function _vdToggleProof(i) {
+  if (_vdOpenProofs.has(i)) _vdOpenProofs.delete(i); else _vdOpenProofs.add(i);
+  const el = document.getElementById(`http-proof-${_vdOpenId}-${i}`);
+  el?.classList.toggle('is-open', _vdOpenProofs.has(i));
+  el?.querySelector('.http-proof-body')?.classList.toggle('open', _vdOpenProofs.has(i));
+}
+
+function _vdFormState() {
+  const root = document.getElementById('vd-edit');
+  if (!root) return '';
+  const vals = [...root.querySelectorAll('input:not([type=checkbox]):not(#tpl-search-input),textarea,select')].map(el => el.value);
+  const cvss = _cvssModified ? (_cvssCleared ? 'cleared' : buildCVSSVector(_cvss)) : '';
+  return JSON.stringify([vals, [..._selectedComplianceIds].sort(), cvss]);
+}
+
+function _vdConfirmDiscard() {
+  if (_vdMode !== 'edit' || _vdFormState() === _vdSnapshot) return true;
+  return confirm('Hay cambios sin guardar. ¿Descartarlos?');
+}
+
+function _vdOnKey(e) {
+  if (!_vdMode || e.defaultPrevented) return;
+  // Con el lightbox o el editor de proofs abiertos, las teclas son suyas.
+  if (document.getElementById('img-lb') || document.querySelector('.hp-edit-ovl')) return;
+  if (_vdMode === 'edit') {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveVuln(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeVulnModal(); }
+    return;
+  }
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeVulnDetail(); }
+  else if (e.key === 'ArrowLeft')  { e.preventDefault(); stepVulnDetail(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); stepVulnDetail(1); }
 }
 
 async function cycleVulnStatus(id, e) {
@@ -648,6 +921,7 @@ async function setRetestDate(vulnId, date) {
       remediation_status: v.remediation_status || 'open', retest_date: date || null, retest_notes: v.retest_notes || null,
     });
     Object.assign(v, updated);
+    renderCustomVulns();
     showToast('Fecha de retest guardada', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
@@ -660,6 +934,7 @@ async function setRetestNotes(vulnId, notes) {
       remediation_status: v.remediation_status || 'open', retest_date: v.retest_date || null, retest_notes: notes,
     });
     Object.assign(v, updated);
+    renderCustomVulns();
     showToast('Nota de retest guardada', 'success');
   } catch(err) { showToast(err.message, 'error'); }
 }
@@ -675,13 +950,15 @@ async function toggleCustomItem(vulnId, idx, el) {
     el.classList.toggle('checked', !cur);
     el.innerHTML = !cur ? icon('check',{size:11}) : '';
     el.nextElementSibling?.classList.toggle('done', !cur);
+    renderCustomVulns(); // contador x/y de la fila y del drawer
   } catch(err) { showToast(err.message, 'error'); }
 }
 
-// ── Modal (operational data only) ───────────────────────────────────
+// ── Alta / edición (modo edición del drawer) ─────────────────────────
 function openAddVulnModal() {
   _editingVulnId = null;
-  document.getElementById('modal-title').textContent       = 'Add Vulnerability';
+  document.getElementById('modal-title').textContent       = 'Nuevo hallazgo';
+  document.getElementById('vd-edit-kind').textContent      = 'Nuevo hallazgo';
   document.getElementById('modal-vuln-name').value         = '';
   document.getElementById('modal-vuln-cat').value          = '';
   document.getElementById('modal-vuln-cwe').value          = '';
@@ -689,6 +966,7 @@ function openAddVulnModal() {
   document.getElementById('modal-vuln-notes').value        = '';
   document.getElementById('modal-vuln-desc').value         = '';
   document.getElementById('modal-vuln-rem').value          = '';
+  document.getElementById('tpl-search-input').value        = '';
   populateTargetSelect(null);
   document.getElementById('modal-items-list').innerHTML    = '';
   document.getElementById('modal-payloads-list').innerHTML = '';
@@ -697,15 +975,16 @@ function openAddVulnModal() {
   addModalRow('modal-payloads-list', 'Payload...', true);
   _initCVSS(null);
   renderCompliancePicker([]);
-  document.getElementById('vuln-modal').classList.add('open');
+  _vdEnterEdit(null);
 }
 
 function openEditVuln(id, e) {
-  e.stopPropagation();
+  e?.stopPropagation();
   const v = state.customVulns.find(x => x.id === id);
   if (!v) return;
   _editingVulnId = id;
-  document.getElementById('modal-title').textContent      = 'Edit Vulnerability';
+  document.getElementById('modal-title').textContent      = v.name;
+  document.getElementById('vd-edit-kind').textContent     = 'Editando hallazgo';
   document.getElementById('modal-vuln-name').value        = v.name;
   document.getElementById('modal-vuln-cat').value         = v.category || '';
   document.getElementById('modal-vuln-cwe').value         = v.cwe || '';
@@ -724,7 +1003,7 @@ function openEditVuln(id, e) {
   if (!v.payloads?.length) addModalRow('modal-payloads-list','Payload...',true);
   _initCVSS(v.cvss_vector || null);
   renderCompliancePicker((v.compliance_tags || []).map(t => t.control_id));
-  document.getElementById('vuln-modal').classList.add('open');
+  _vdEnterEdit(id);
 }
 
 function addModalRow(containerId, ph, isTextarea = false) {
@@ -737,9 +1016,16 @@ function addModalRow(containerId, ph, isTextarea = false) {
   document.getElementById(containerId).appendChild(row);
 }
 
+// Cancelar: vuelve al detalle del hallazgo que se editaba (o cierra el
+// drawer si era un alta). Avisa si hay cambios sin guardar.
 function closeVulnModal() {
-  document.getElementById('vuln-modal').classList.remove('open');
+  if (!_vdConfirmDiscard()) return false;
+  const id = _editingVulnId;
   _editingVulnId = null;
+  _tplClose();
+  if (id && state.customVulns.some(v => v.id === id)) openVulnDetail(id);
+  else closeVulnDetail(true);
+  return true;
 }
 
 async function saveVuln() {
@@ -750,6 +1036,7 @@ async function saveVuln() {
   const notes    = document.getElementById('modal-vuln-notes').value;
   const err      = document.getElementById('vuln-error');
   const btn      = document.getElementById('vuln-save-btn');
+  if (btn.disabled) return; // Ctrl+Enter repetido mientras se guarda
   if (!name) { err.textContent = 'Name is required'; err.style.display = 'block'; return; }
   const description = document.getElementById('modal-vuln-desc').value;
   const remediation = document.getElementById('modal-vuln-rem').value;
@@ -768,6 +1055,7 @@ async function saveVuln() {
         payload.cvss_score  = calcCVSSScore(_cvss);
       }
     }
+    let savedId = _editingVulnId;
     if (_editingVulnId) {
       const updated = await api.vulns.update(state.currentProject.id, _editingVulnId, payload);
       const idx = state.customVulns.findIndex(v => v.id === _editingVulnId);
@@ -775,9 +1063,14 @@ async function saveVuln() {
     } else {
       const created = await api.vulns.create(state.currentProject.id, payload);
       state.customVulns.push(created);
+      savedId = created?.id || null;
     }
-    closeVulnModal();
+    // Guardado: se vuelve al detalle de ese hallazgo (también tras un alta).
+    _editingVulnId = null;
+    _tplClose();
     renderCustomVulns();
+    if (savedId && state.customVulns.some(v => v.id === savedId)) openVulnDetail(savedId);
+    else closeVulnDetail(true);
     if (typeof updateDashboard === 'function') updateDashboard();
     showToast('Saved', 'success');
   } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
@@ -859,7 +1152,7 @@ async function aiCWE() {
 }
 
 async function deleteVuln(id, e) {
-  e.stopPropagation();
+  e?.stopPropagation();
   if (!confirm('Delete this vulnerability?')) return;
   try {
     await api.vulns.delete(state.currentProject.id, id);
@@ -968,8 +1261,7 @@ async function addEvidenceFile(vulnId, input, phase) {
     try {
       const updated = await api.vulns.update(state.currentProject.id, vulnId, { evidence });
       Object.assign(v, updated);
-      const card = document.getElementById(`vuln-${vulnId}`);
-      if (card) card.replaceWith(buildVulnCard(v));
+      renderCustomVulns();
       showToast('Evidencia agregada', 'success');
     } catch(err) { showToast(err.message, 'error'); }
   };
@@ -979,9 +1271,16 @@ async function addEvidenceFile(vulnId, input, phase) {
 async function toggleHttpProofInclude(vulnId, idx, checked) {
   const v = state.customVulns.find(x => x.id === vulnId);
   if (!v) return;
+  const prev   = v.http_proofs;
   const proofs = (v.http_proofs || []).map((p, i) => i === idx ? { ...p, include: checked } : p);
   v.http_proofs = proofs;
-  await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
+  try {
+    await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
+  } catch (err) {
+    v.http_proofs = prev;
+    showToast(err.message, 'error');
+  }
+  renderCustomVulns();
 }
 
 function editHttpProof(vulnId, idx) {
@@ -991,6 +1290,7 @@ function editHttpProof(vulnId, idx) {
   if (!proof) return;
 
   const overlay = document.createElement('div');
+  overlay.className = 'hp-edit-ovl'; // el drawer no toma Esc/flechas mientras está abierto
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center';
 
   const modal = document.createElement('div');
@@ -1048,11 +1348,12 @@ function editHttpProof(vulnId, idx) {
     const proofs = (v.http_proofs || []).map((p, i) =>
       i === idx ? { ...p, request: reqTA.value, response: resTA.value, annotation: annTA.value } : p
     );
+    try {
+      await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
+    } catch (err) { showToast(err.message, 'error'); return; }
     v.http_proofs = proofs;
-    await api.vulns.update(state.currentProject.id, vulnId, { http_proofs: proofs });
     overlay.remove();
-    const card = document.getElementById(`vuln-${vulnId}`);
-    if (card) card.replaceWith(buildVulnCard(v));
+    renderCustomVulns();
   };
 }
 
@@ -1061,10 +1362,13 @@ window.toggleCVSSSection  = toggleCVSSSection;
 window.copyCVSSVector     = copyCVSSVector;
 window.clearCVSS          = clearCVSS;
 window.renderCustomVulns  = renderCustomVulns;
+window.openVulnDetail     = openVulnDetail;
+window.closeVulnDetail    = closeVulnDetail;
+window.stepVulnDetail     = stepVulnDetail;
+window.toggleVulnPublish  = toggleVulnPublish;
 window.buildVulnCard      = buildVulnCard;
 window.openEvidenceViewer = openEvidenceViewer;
 window.openImageLightbox  = openImageLightbox;
-window.toggleVulnBody     = toggleVulnBody;
 window.cycleVulnStatus    = cycleVulnStatus;
 window.toggleCustomItem   = toggleCustomItem;
 window.setRemediationStatus = setRemediationStatus;
