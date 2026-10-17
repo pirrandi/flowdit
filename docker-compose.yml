@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pirra -d flowdit_dev"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -44,11 +44,11 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       KIMI_API_KEY: ${KIMI_API_KEY:-}
       KIMI_MODEL: ${KIMI_MODEL:-kimi-k3}
-      # Proveedor "custom" — modelos locales (Ollama, LM Studio, vLLM...).
-      # CUSTOM_API_URL debe ser un endpoint de chat-completions OpenAI-compatible,
-      # p.ej. http://host.docker.internal:11434/v1/chat/completions para Ollama en
-      # el host (puede requerir agregar `extra_hosts` en Linux). Sin CUSTOM_API_KEY
-      # funciona igual — la mayoría de estos servidores no la exigen.
+      # "custom" provider: local models (Ollama, LM Studio, vLLM...).
+      # CUSTOM_API_URL must be an OpenAI-compatible chat-completions endpoint,
+      # e.g. http://host.docker.internal:11434/v1/chat/completions for Ollama on
+      # the host (Linux may need `extra_hosts`). CUSTOM_API_KEY is optional;
+      # most of these servers don't require one.
       CUSTOM_API_URL: ${CUSTOM_API_URL:-}
       CUSTOM_API_KEY: ${CUSTOM_API_KEY:-}
       CUSTOM_MODEL: ${CUSTOM_MODEL:-}

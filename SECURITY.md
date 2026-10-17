@@ -6,7 +6,7 @@ Flowdit is a pentest engagement management platform — it holds sensitive clien
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email **pirrandi.hundur@gmail.com** with:
+Instead, report it privately through [GitHub Security Advisories](https://github.com/Pirrandi/flowdit/security/advisories/new) with:
 
 - A description of the vulnerability and its impact
 - Steps to reproduce (PoC if possible)

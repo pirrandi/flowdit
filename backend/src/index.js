@@ -1,4 +1,9 @@
 const http = require('http');
+
+// Fail before anything listens: a server signing tokens with a public
+// placeholder secret must never come up in production.
+require('./utils/secrets').assertSafeSecrets();
+
 const app  = require('./app');
 
 const wsService  = require('./services/ws');
