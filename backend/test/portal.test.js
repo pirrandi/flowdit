@@ -48,6 +48,14 @@ async function createFinding(ownerToken, projectId, body) {
   return res.body;
 }
 
+async function publish(ownerToken, projectId, vulnId) {
+  const res = await request(app)
+    .patch(`/api/projects/${projectId}/vulns/${vulnId}`)
+    .set(auth(ownerToken))
+    .send({ client_visible: true });
+  assert.equal(res.status, 200);
+}
+
 test('portal session is blocked from internal-only routes', async () => {
   const { project, portalToken } = await setupPortal();
   for (const path of ['ai-scan/sessions', 'whiteboard', 'members']) {
@@ -104,7 +112,10 @@ test('portal findings route is refused when show_findings is off', async () => {
 test('portal activity strips avatars and timestamps when switches are on', async () => {
   const { owner, project, portalToken } = await setupPortal({ show_activity: true, portal_hide_team_avatars: true, portal_hide_log_times: true });
   // Generate an activity entry.
-  await createFinding(owner.accessToken, project.id, { name: 'Logged finding', severity: 'low' });
+  // El feed del portal solo muestra hallazgos publicados (allowlist en
+  // routes/activity.js), así que hay que publicarlo para que aparezca.
+  const f = await createFinding(owner.accessToken, project.id, { name: 'Logged finding', severity: 'low' });
+  await publish(owner.accessToken, project.id, f.id);
 
   const res = await request(app)
     .get(`/api/projects/${project.id}/activity`)
@@ -119,7 +130,8 @@ test('portal activity strips avatars and timestamps when switches are on', async
 
 test('portal activity keeps timestamps when the switch is off', async () => {
   const { owner, project, portalToken } = await setupPortal({ show_activity: true, portal_hide_log_times: false });
-  await createFinding(owner.accessToken, project.id, { name: 'Logged finding', severity: 'low' });
+  const f = await createFinding(owner.accessToken, project.id, { name: 'Logged finding', severity: 'low' });
+  await publish(owner.accessToken, project.id, f.id);
 
   const res = await request(app)
     .get(`/api/projects/${project.id}/activity`)

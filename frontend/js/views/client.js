@@ -264,6 +264,18 @@ function buildStatsRow(proj, vulns, targets, wstgPct) {
 }
 
 // ── FINDINGS ──────────────────────────────────────────────────────────
+// Descripción y remediación se escriben en markdown y las vistas internas
+// (vulns.js, dashboard.js) las muestran con renderMd() de utils.js: el cliente
+// tiene que ver exactamente el mismo formato. renderMd escapa todo el input
+// antes de aplicar el subset de markdown; además pasamos el resultado por
+// DOMPurify porque esto lo ve un tercero externo. Si purify.min.js no cargó,
+// el HTML de renderMd ya es seguro por construcción (todo texto escapado), así
+// que el fallback pierde la segunda capa, no la sanitización.
+function portalMd(text) {
+  const html = renderMd(text);
+  return window.DOMPurify ? window.DOMPurify.sanitize(html) : html;
+}
+
 function buildFindingsSection(vulns) {
   const sorted = [...vulns].sort((a,b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity));
 
@@ -290,12 +302,12 @@ function buildFindingsSection(vulns) {
         <div class="client-finding-body" id="cfbody-${v.id}">
           <div style="height:1px;background:var(--b1);margin-bottom:12px"></div>
           ${v.description
-            ? `<div class="client-finding-desc">${esc(v.description)}</div>`
+            ? `<div class="client-finding-desc md-body" style="white-space:normal">${portalMd(v.description)}</div>`
             : `<div class="client-finding-desc" style="color:var(--t3);font-style:italic">Description not yet written.</div>`}
           ${v.remediation ? `
             <div style="margin-top:12px;padding:10px 12px;background:rgba(5,150,105,.06);border:1px solid rgba(5,150,105,.18);border-radius:var(--r)">
               <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--c-low);margin-bottom:5px;letter-spacing:.08em">Remediation</div>
-              <div class="client-finding-desc">${esc(v.remediation)}</div>
+              <div class="client-finding-desc md-body" style="white-space:normal">${portalMd(v.remediation)}</div>
             </div>` : ''}
           ${v.category ? `<div style="margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--t3)">Category: ${esc(v.category)}</div>` : ''}
         </div>
