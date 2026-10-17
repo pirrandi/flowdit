@@ -23,8 +23,13 @@ async function setupTarget(host = 'app.example.test') {
   return { ctx: { projectId: project.id, startedBy: owner.user.id }, targetId: rows[0].id };
 }
 
+// The soft-404 probe (a random /fd404-<hex> path) answers 404, like a target
+// without a catch-all; otherwise every mocked path would look like a soft 404.
+const isProbe = url => String(url).includes('/fd404-');
+const realCalls = http => http.mock.calls.filter(c => !isProbe(c.arguments[0]));
+
 function mockHttp(body = 'ok', init = { status: 200, headers: { 'content-type': 'text/plain' } }) {
-  return mock.method(globalThis, 'fetch', async () => new Response(body, init));
+  return mock.method(globalThis, 'fetch', async url => (isProbe(url) ? new Response('not found', { status: 404 }) : new Response(body, init)));
 }
 
 test('a non-http(s) scheme is refused before any request', async () => {
@@ -100,7 +105,7 @@ test('search_page_source still finds matches, and rejects oversized patterns bef
   } finally {
     http.mock.restore();
   }
-  assert.equal(http.mock.callCount(), 1);
+  assert.equal(realCalls(http).length, 1);
 });
 
 // ── 15. response size caps ───────────────────────────────────────────────
@@ -117,6 +122,72 @@ test('fetch_page_source caps the page size and the bytes read from the target', 
   assert.equal(res.returned_length, 50000);
   assert.equal(res.total_length, 5 * 1024 * 1024);
   assert.equal(res.body_truncated, true);
+});
+
+// ── only endpoints that exist are recorded (404 / soft 404) ──────────────
+const recordedPaths = async targetId =>
+  (await db.query(`SELECT path, status_code FROM target_endpoints WHERE target_id=$1 ORDER BY path`, [targetId])).rows;
+
+test('a real 404 is not recorded and comes back as not_found http_404', async () => {
+  const { ctx, targetId } = await setupTarget();
+  const http = mockHttp('{"error":"no"}', { status: 404, headers: { 'content-type': 'application/json' } });
+  let res;
+  try {
+    res = await tool('fetch_endpoint').execute({ target_id: targetId, path: '/backup.zip' }, ctx);
+    const src = await tool('fetch_page_source').execute({ target_id: targetId, path: '/old/admin.php' }, ctx);
+    assert.equal(src.reason, 'http_404');
+  } finally {
+    http.mock.restore();
+  }
+  assert.equal(res.status, 404);
+  assert.equal(res.not_found, true);
+  assert.equal(res.reason, 'http_404');
+  assert.deepEqual(await recordedPaths(targetId), []);
+});
+
+test('a soft 404 (SPA answering 200 to everything) is not recorded and the body is withheld', async () => {
+  const { ctx, targetId } = await setupTarget();
+  const index = `<!doctype html><html><body><div id="root"></div>${'<!-- x -->'.repeat(80)}</body></html>`;
+  // No isProbe() branch: the random probe path gets the same index.html.
+  const http = mock.method(globalThis, 'fetch', async () => new Response(index, { status: 200, headers: { 'content-type': 'text/html' } }));
+  let res, search;
+  try {
+    res = await tool('fetch_endpoint').execute({ target_id: targetId, path: '/static/js' }, ctx);
+    search = await tool('search_page_source').execute({ target_id: targetId, path: '/static/js/app.js', pattern: 'root' }, ctx);
+  } finally {
+    http.mock.restore();
+  }
+  assert.equal(res.not_found, true);
+  assert.equal(res.reason, 'soft_404');
+  assert.match(res.note, /any non-existent path/i);
+  assert.equal(res.body_preview, undefined);
+  assert.equal(search.reason, 'soft_404');
+  assert.equal(search.matches, undefined);
+  assert.deepEqual(await recordedPaths(targetId), []);
+});
+
+test('a 403 is recorded, and a real new 200 is recorded once', async () => {
+  const { ctx, targetId } = await setupTarget();
+  const http = mock.method(globalThis, 'fetch', async url => {
+    const { pathname } = new URL(url);
+    if (isProbe(url)) return new Response('nope', { status: 404 });
+    if (pathname === '/admin') return new Response('forbidden', { status: 403, headers: { 'content-type': 'text/plain' } });
+    return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  let forbidden, first, again;
+  try {
+    forbidden = await tool('fetch_endpoint').execute({ target_id: targetId, path: '/admin' }, ctx);
+    first = await tool('fetch_endpoint').execute({ target_id: targetId, path: '/api/health' }, ctx);
+    again = await tool('fetch_endpoint').execute({ target_id: targetId, path: '/api/health?x=1' }, ctx);
+  } finally {
+    http.mock.restore();
+  }
+  assert.equal(forbidden.not_found, undefined);
+  assert.equal(first.not_found, undefined);
+  assert.equal(first.already_recorded, undefined);
+  assert.equal(first.body_preview, '{"ok":true}');
+  assert.equal(again.already_recorded, true);
+  assert.deepEqual(await recordedPaths(targetId), [{ path: '/admin', status_code: 403 }, { path: '/api/health', status_code: 200 }]);
 });
 
 // ── 13. endpoint normalization and uniqueness ────────────────────────────

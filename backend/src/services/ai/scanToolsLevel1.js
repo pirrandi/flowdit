@@ -15,6 +15,7 @@ const dns = require('dns').promises;
 const vm  = require('vm');
 const db  = require('../../db');
 const { assertTargetInScope, describeFetchError, buildTargetUrl, readBodyCapped } = require('./targetScope');
+const { notFoundReason, NOT_FOUND_NOTES } = require('./soft404');
 
 // fetch_page_source: tope de caracteres por página aunque el modelo pida más.
 const MAX_PAGE_LIMIT = 50000;
@@ -107,15 +108,36 @@ function normalizeEndpointPath(path) {
   return collapsed.length > 1 ? collapsed.replace(/\/$/, '') : collapsed;
 }
 
+// Devuelve true si el endpoint es nuevo, false si ya estaba (ON CONFLICT):
+// el freno de "sin progreso" de agentLoop.js cuenta las lecturas que solo
+// re-confirman algo ya conocido.
 async function recordEndpoint(targetId, rawPath, method, statusCode, userId) {
   // Truncar en vez de dejar que el INSERT tire: el request ya se hizo y su
   // resultado tiene que llegarle al modelo igual.
   const path = normalizeEndpointPath(rawPath).slice(0, MAX_ENDPOINT_PATH_LENGTH);
-  await db.query(
+  const { rowCount } = await db.query(
     `INSERT INTO target_endpoints (target_id, path, method, status_code, added_by) VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (target_id, path, method) DO NOTHING`,
     [targetId, path, method, statusCode, userId || null]
   );
+  return rowCount > 0;
+}
+
+// Solo se persiste lo que existe de verdad. Un 404/410, o una respuesta
+// idéntica al catch-all del target (soft 404, ver soft404.js), NO se guarda
+// y le devuelve `not_found` al modelo. Si existe, se guarda y se marca
+// `already_recorded` cuando no era nuevo.
+async function judgeAndRecord(target, input, url, response, body, method, ctx) {
+  const reason = await notFoundReason(target, input.scheme, url, input.path, response, body);
+  if (reason) return { not_found: true, reason, note: NOT_FOUND_NOTES[reason] };
+  const inserted = await recordEndpoint(input.target_id, input.path, method, response.status, ctx.startedBy);
+  return inserted ? {} : { already_recorded: true };
+}
+
+// Un soft 404 es la página catch-all, no el contenido del path: mandarle el
+// cuerpo al modelo solo lo invita a analizarlo como si fuera real.
+function softNotFoundResult(url, response, verdict) {
+  return { url, status: response.status, content_type: response.headers.get('content-type'), ...verdict };
 }
 
 const scanToolsLevel1 = [
@@ -243,6 +265,7 @@ const scanToolsLevel1 = [
       '(GET or HEAD only — for POST/PUT/DELETE or sending a crafted payload, ' +
       'use send_http_request or test_payload instead, which require approval). ' +
       'Returns status code, a few response headers, and a truncated body. ' +
+      "Paths that do not exist (404/410, or the target's catch-all 'soft 404' page) come back with not_found: true and are not saved. " +
       'Results are saved to the target so the pentester sees them in the normal Targets view.',
     input_schema: {
       type: 'object',
@@ -269,13 +292,15 @@ const scanToolsLevel1 = [
         return { error: `request failed: ${describeFetchError(err)}` };
       }
 
-      const body = method === 'GET' ? (await readBodyCapped(response)).text.slice(0, 2000) : null;
-      await recordEndpoint(input.target_id, input.path, method, response.status, ctx.startedBy);
+      const fullBody = method === 'GET' ? (await readBodyCapped(response)).text : null;
+      const verdict = await judgeAndRecord(target, input, url, response, fullBody, method, ctx);
+      if (verdict.reason === 'soft_404') return softNotFoundResult(url, response, verdict);
 
       return {
         url, status: response.status,
         headers: { 'content-type': response.headers.get('content-type'), server: response.headers.get('server'), location: response.headers.get('location') },
-        body_preview: body,
+        body_preview: fullBody === null ? null : fullBody.slice(0, 2000),
+        ...verdict,
       };
     },
   },
@@ -316,6 +341,8 @@ const scanToolsLevel1 = [
       }
 
       const { text: fullText, truncated: bodyTruncated } = await readBodyCapped(response);
+      const verdict = await judgeAndRecord(target, input, url, response, fullText, 'GET', ctx);
+      if (verdict.reason === 'soft_404') return softNotFoundResult(url, response, verdict);
       const offset = Math.max(0, Math.floor(Number(input.offset) || 0));
       const limit  = Math.min(Math.max(1, Math.floor(Number(input.limit) || 20000)), MAX_PAGE_LIMIT);
       const slice  = fullText.slice(offset, offset + limit);
@@ -339,8 +366,7 @@ const scanToolsLevel1 = [
         result.linked_assets = [...new Set([...scriptSrcs, ...linkHrefs])];
       }
 
-      await recordEndpoint(input.target_id, input.path, 'GET', response.status, ctx.startedBy);
-      return result;
+      return { ...result, ...verdict };
     },
   },
 
@@ -391,16 +417,17 @@ const scanToolsLevel1 = [
         return { error: `request failed: ${describeFetchError(err)}` };
       }
       const { text, truncated: bodyTruncated } = await readBodyCapped(response);
+      const verdict = await judgeAndRecord(target, input, url, response, text, 'GET', ctx);
+      if (verdict.reason === 'soft_404') return softNotFoundResult(url, response, verdict);
 
       const matches = searchWithTimeout(text, pattern, flags);
-      await recordEndpoint(input.target_id, input.path, 'GET', response.status, ctx.startedBy);
       if (!matches) {
         return { error: `regex search timed out after ${REGEX_TIMEOUT_MS} ms (likely catastrophic backtracking) — use a simpler pattern without nested quantifiers` };
       }
       const result = { url, status: response.status, total_length: text.length, match_count: matches.length, matches };
       if (bodyTruncated) result.body_truncated = true;
       if (response.headers.get('location')) result.location = response.headers.get('location');
-      return result;
+      return { ...result, ...verdict };
     },
   },
 ];

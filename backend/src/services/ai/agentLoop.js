@@ -114,6 +114,65 @@ function pathReadSignature(name, input) {
   return `${input.target_id}:${normalizeEndpointPath(input.path)}`;
 }
 
+// Freno de "sin progreso": fuerza bruta a ciegas. En prod quedaron guardados
+// endpoints con 404 y rutas inventadas sobre un SPA que contesta 200 a todo —
+// el modelo adivinaba paths uno tras otro y ninguno de los frenos de arriba
+// lo ve: cada path es distinto y se lee una sola vez. Cuenta resultados
+// SEGUIDOS de lecturas de red que no aportan nada: `not_found` (404/410/soft
+// 404), o un endpoint que ya estaba registrado (fetch_endpoint, o un
+// search_page_source sin matches). Lo reinicia cualquier cosa que sí aporte:
+// un endpoint nuevo, un search con matches, leer la fuente de algo que
+// existe (fetch_page_source es justamente la salida que se le sugiere), o un
+// resultado sin error de otra tool que toque el target (tier 1-2). Las de
+// tier 0 (lecturas de la DB de Flowdit) no lo reinician: no dicen nada
+// nuevo del target, y si no, intercalar un get_targets_in_scope cada 19
+// intentos esquivaba el freno. Se cuenta por corrida, igual que
+// MAX_PATH_READS_PER_RUN (un reporte de sub-agente no lo reinicia).
+//
+// 20: un barrido honesto de archivos conocidos (robots.txt, sitemap.xml,
+// .well-known/security.txt, .git/HEAD, .env, swagger/openapi.json,
+// api-docs, graphql...) son ~15 requests y puede fallar entero en un target
+// chico — tiene que poder terminarlo. 20 fallos SEGUIDOS, sin un solo
+// acierto que reinicie la racha, ya es adivinar, no reconocimiento. Una vez
+// disparado queda así hasta el próximo mensaje del pentester: no se
+// "des-dispara" por llamar a otra tool.
+const NETWORK_READ_TOOLS = new Set(['fetch_endpoint', 'fetch_page_source', 'search_page_source']);
+const MAX_FRUITLESS_STREAK = 20;
+// Si después del aviso sigue insistiendo con lecturas de red, a la 3ra
+// (mismo criterio que MAX_DUPLICATE_CALLS_PER_TURN) se fuerza un checkpoint
+// que no se auto-continúa: el aviso como error ya no alcanzó.
+const MAX_CALLS_AFTER_FRUITLESS_TRIP = 3;
+
+// 'fruitless' | 'progress' | null (neutral: errores, bloqueos, tier 0/3).
+function classifyProgress(name, result) {
+  if (!result || typeof result !== 'object') return null;
+  if (NETWORK_READ_TOOLS.has(name)) {
+    if (result.error) return null;
+    if (result.not_found) return 'fruitless';
+    if (result.already_recorded && (name === 'fetch_endpoint' || (name === 'search_page_source' && !result.match_count))) return 'fruitless';
+    return 'progress';
+  }
+  const tier = findTool(name)?.tier;
+  if (tier !== 1 && tier !== 2) return null;
+  if (result.error || result.result?.error || result.decision === 'rejected') return null;
+  return 'progress';
+}
+
+// Recalcula la racha desde el log de eventos de la corrida (igual que los
+// otros frenos: sin estado en memoria que se pierda entre advance()).
+function fruitlessState(eventRows, start) {
+  let streak = 0, tripped = false, callsSinceTrip = 0;
+  for (let i = start; i < eventRows.length; i++) {
+    const ev = eventRows[i];
+    if (ev.type === 'tool.called' && tripped && NETWORK_READ_TOOLS.has(ev.payload.name)) callsSinceTrip++;
+    if (ev.type !== 'tool.result' || tripped) continue;
+    const kind = classifyProgress(ev.payload.name, ev.payload.result);
+    if (kind === 'progress') streak = 0;
+    else if (kind === 'fruitless' && ++streak >= MAX_FRUITLESS_STREAK) tripped = true;
+  }
+  return { streak, tripped, callsSinceTrip };
+}
+
 // Tools de Nivel 0-3 (sin gate hasta tier 2). delegate_to_subagent (abajo)
 // se suma aparte porque solo el thread coordinador puede usarla.
 const BASE_TOOL_REGISTRY = [...scanTools, ...scanToolsLevel1, ...scanToolsLevel2, ...scanToolsLevel3];
@@ -214,11 +273,13 @@ const ATTENTION_MESSAGES = {
     budget: p => `El AI Agent llegó al límite de trabajo autónomo continuo (~${p.calls} tool calls) y necesita que revises la sesión.`,
     cost: p => `El AI Agent paró: se alcanzó el tope de gasto de la sesión ($${p.cap}, gastado $${p.spent}).`,
     approval: p => `El AI Agent quiere ejecutar "${p.tool}" y necesita tu aprobación.`,
+    noProgress: p => `El AI Agent se pausó: ${p.streak}+ lecturas seguidas no encontraron nada nuevo y siguió adivinando rutas. Revisá la sesión.`,
   },
   en: {
     budget: p => `The AI Agent reached its continuous autonomous work limit (~${p.calls} tool calls) and needs you to review the session.`,
     cost: p => `The AI Agent stopped: the session's cost cap was reached ($${p.cap}, spent $${p.spent}).`,
     approval: p => `The AI Agent wants to run "${p.tool}" and needs your approval.`,
+    noProgress: p => `The AI Agent paused: ${p.streak}+ network reads in a row found nothing new and it kept guessing paths. Please review the session.`,
   },
 };
 
@@ -495,6 +556,8 @@ function eventsToMessages(events) {
       emit({ role: 'user', content: `[task assigned by lead]: ${ev.payload.task}` });
     } else if (ev.type === 'subagent.reported') {
       emit({ role: 'user', content: `[sub-agent "${ev.payload.label}" reported back]: ${ev.payload.summary}` });
+    } else if (ev.type === 'turn.checkpoint' && ev.payload.reason === 'no_progress') {
+      emit({ role: 'user', content: `[system checkpoint]: you were paused because ${MAX_FRUITLESS_STREAK}+ network reads in a row found nothing new and you kept guessing paths after being told to stop. Do not resume guessing: summarize what you have actually confirmed, then change strategy (linked assets, JS bundles, sitemap/robots, API docs you actually found) or ask the pentester.` });
     } else if (ev.type === 'turn.checkpoint') {
       emit({ role: 'user', content: ev.payload.auto
         ? `[system checkpoint]: ${ev.payload.calls} tool calls in a row — continuing automatically, no need to acknowledge this, just keep working.`
@@ -874,8 +937,15 @@ async function advance(sessionId, threadId) {
     const duplicateCount = countMatchingCalls(eventRows, runStart, toolCallSignature(call.name, input));
     const pathSig = pathReadSignature(call.name, input);
     const pathReads = pathSig ? countMatchingCalls(eventRows, runStart, pathSig, pathReadSignature) : 0;
+    const fruitless = NETWORK_READ_TOOLS.has(call.name) ? fruitlessState(eventRows, runStart) : null;
     let blockedReason = null;
-    if (duplicateCount >= MAX_DUPLICATE_CALLS_PER_TURN) {
+    if (fruitless?.tripped) {
+      blockedReason = `Blocked: your last ${MAX_FRUITLESS_STREAK} network reads in a row found nothing new (paths that do not exist, or endpoints already recorded), so further fetch_endpoint/fetch_page_source/search_page_source calls are disabled for the rest of this run. Stop guessing paths. Summarize what you have actually confirmed so far, then either change strategy using only leads you really found (linked assets and JS bundles from pages that exist, sitemap.xml/robots.txt entries, API docs you located) with other tools, or ask the pentester how to proceed.`;
+      if (fruitless.callsSinceTrip >= MAX_CALLS_AFTER_FRUITLESS_TRIP) {
+        await pauseForNoProgress(session, project, thread, calledEv, blockedReason, eventRows, turnStart);
+        return;
+      }
+    } else if (duplicateCount >= MAX_DUPLICATE_CALLS_PER_TURN) {
       blockedReason = `Blocked: you already called ${call.name} with these exact same arguments ${duplicateCount} times in this run (not necessarily back to back — alternating with other calls does not reset this), always with the same result. Repeating it again will not produce new information — try a materially different approach (a different path, parameter, or technique), or if you've exhausted what this avenue has to offer, move on to something else or conclude with a summary of what you found.`;
     } else if (pathReads > MAX_PATH_READS_PER_RUN) {
       blockedReason = `Blocked: you already read ${normalizeEndpointPath(input.path)} on this target ${pathReads - 1} times in this run (query-string variants and pagination offsets count as the same path). Changing cache-busters, page sizes or offsets is not new attack surface. To look for something specific in a large file (JS bundle, source map), use search_page_source with a regex instead of paging through it. Otherwise move on to other paths, or conclude with a summary of what you found.`;
@@ -948,6 +1018,9 @@ async function advance(sessionId, threadId) {
     // Si otro loop ya tomó el thread, eventsToMessages ubica o descarta este
     // resultado sin romper el pareo; lo que no se hace es seguir el loop.
     const resultEv = await persistEvent(sessionId, threadId, 'tool.result', { call_id: calledEv.id, name: tool.name, result: output });
+    // El freno de "sin progreso" lee los resultados: varias tool calls de una
+    // misma respuesta del modelo tienen que verse entre sí.
+    eventRows.push(resultEv);
     broadcast(session.project_id, sessionId, session.status, resultEv);
     if (stale()) return;
   }
@@ -980,6 +1053,32 @@ async function loadScopedTargetId(session, threadId) {
     [threadId]
   );
   return scopedTargetIdFor(session, rows);
+}
+
+// Escalada del freno de "sin progreso": el modelo ignoró el aviso y sigue
+// adivinando paths. Mismo cierre que el checkpoint de iteraciones cuando se
+// queda sin auto-continues (thread idle; un sub-agente le reporta al
+// coordinador, el coordinador avisa al pentester), pero nunca se
+// auto-continúa: seguir solo sería volver a la misma racha.
+async function pauseForNoProgress(session, project, thread, calledEv, blockedReason, eventRows, turnStart) {
+  broadcast(session.project_id, session.id, session.status, calledEv);
+  const resultEv = await persistEvent(session.id, thread.id, 'tool.result', {
+    call_id: calledEv.id, name: calledEv.payload.name, result: { error: blockedReason },
+  });
+  broadcast(session.project_id, session.id, session.status, resultEv);
+
+  const calls = eventRows.slice(turnStart).filter(e => e.type === 'tool.called').length;
+  const ev = await persistEvent(session.id, thread.id, 'turn.checkpoint', { calls, auto: false, reason: 'no_progress' });
+  await setThreadStatus(thread.id, 'idle');
+  await recomputeSessionStatus(session.id);
+  const after = await getSession(session.id);
+  broadcast(session.project_id, session.id, after.status, ev);
+
+  if (thread.parent_thread_id) {
+    await reportToParent(session, thread, `[stopped: ${MAX_FRUITLESS_STREAK}+ network reads in a row found nothing new and it kept guessing paths after being told to stop — report what was confirmed so far; treat paths it only guessed as non-existent]`);
+  } else {
+    await notifyNeedsAttention(session, project, attentionMessage(session, 'noProgress', { streak: MAX_FRUITLESS_STREAK }));
+  }
 }
 
 // Un thread que muere en error. Si es un sub-agente, el coordinador se
