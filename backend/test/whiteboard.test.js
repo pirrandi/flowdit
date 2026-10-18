@@ -37,7 +37,13 @@ test('a legit full board round-trips unchanged', async () => {
       ref: { type: 'port', id: '44444444-4444-4444-8444-444444444444', target_id: target.id, label: 'app.example.com:443/tcp' },
       created_by: 'claude_code',
     }],
-    edges: [{ id: 'e1', fromId: card, toId: target.id, label: 'expone', created_by: 'claude_code' }],
+    edges: [
+      { id: 'e1', fromId: card, toId: target.id, label: 'expone', created_by: 'claude_code' },
+      {
+        id: 'e2', fromId: target.id, fromEp: '55555555-5555-4555-8555-555555555555', toId: card,
+        toPort: '44444444-4444-4444-8444-444444444444', label: '', style: 'dotted', arrow: 'both', color: '#1e88e5',
+      },
+    ],
     strokes: [
       { id: 's1', d: 'M 900 50 L 950 60', color: '#e94141', width: 2 },
       { id: 's2', d: 'M-12.5,40.0 L13.1,-2.4', color: 'var(--t1)', width: 8 },
@@ -76,6 +82,24 @@ test('malicious colors, unknown fields and unsafe stroke paths are neutralised',
   assert.deepEqual(d.nodes, []);
   assert.deepEqual(d.view, { panX: 0, panY: 3, zoom: 1 });
   assert.equal(d.evil, undefined);
+});
+
+test('edge style fields and endpoint anchors are kept only when valid', async () => {
+  const { owner, project, target } = await setup();
+  const xss = '"><img src=x onerror=alert(1)>';
+  const res = await put(owner, project, {
+    edges: [
+      { id: 'e1', fromId: target.id, toId: 'n1', fromEp: xss, toEp: 'ep-2', fromPort: 'bad id', toPort: 'p_1',
+        style: xss, arrow: 'sideways', color: 'red' },
+      { id: 'e2', fromId: 'n1', toId: target.id, style: 'dashed', arrow: 'none', color: '#8e24aa' },
+      { id: 'e3', fromId: 'n1', toId: target.id, style: 'DASHED', arrow: ['end'], color: '#E53935' },
+    ],
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const d = res.body.data;
+  assert.deepEqual(d.edges[0], { id: 'e1', fromId: target.id, toId: 'n1', toEp: 'ep-2', toPort: 'p_1' });
+  assert.deepEqual(d.edges[1], { id: 'e2', fromId: 'n1', toId: target.id, style: 'dashed', arrow: 'none', color: '#8e24aa' });
+  assert.deepEqual(d.edges[2], { id: 'e3', fromId: 'n1', toId: target.id });
 });
 
 test('item sizes: notes keep w/h, and w/h of every type are clamped or dropped', async () => {

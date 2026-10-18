@@ -32,8 +32,10 @@ let _wbReady = false;
 
 // Edges / connect mode
 let _edgeSvg;
-let _connectFrom    = null;  // nodeId of first selected node in connect mode
+let _connectFrom    = null;  // first end picked in connect mode: { id, ep?, port?, el }
 let _selectedEdgeId = null;
+let _edgeToolbar    = null;  // floating toolbar of the selected edge
+let _edgeRaf        = 0;     // pending requestAnimationFrame for _scheduleEdgeUpdate
 
 // Remote cursors
 let _cursorLayer;
@@ -53,6 +55,14 @@ const METHOD_COLOR = {
 };
 const NOTE_COLORS  = ['#ffd96a', '#a8edab', '#a8d8f0', '#f7b8b8', '#e0b8f7'];
 const CARD_COLORS  = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e4a4f'];
+// Edge style allowlists, same values as the server (services/mcp/whiteboard.js
+// EDGE_*). No color = the theme color; these mid tones read on light and dark.
+const EDGE_COLORS  = ['#e53935', '#f57c00', '#f9a825', '#43a047', '#1e88e5', '#8e24aa'];
+const EDGE_COLOR_NAMES = ['Rojo', 'Naranja', 'Amarillo', 'Verde', 'Azul', 'Violeta'];
+const EDGE_STYLES  = ['solid', 'dashed', 'dotted'];
+const EDGE_ARROWS  = ['end', 'start', 'both', 'none'];
+const EDGE_DASH    = { solid: '', dashed: '7 5', dotted: '1 4' };
+const ID_RE        = /^[\w-]{1,100}$/;
 
 // The saved board and live wb:patch messages are written by other project
 // members, so colors and numbers are checked before they reach a style,
@@ -62,6 +72,10 @@ const SAFE_PATH_RE  = /^[MLHVCSQTAZmlhvcsqtaz0-9.,eE+\- ]*$/;
 function _cardColor(c) { return CARD_COLORS.includes(c) ? c : CARD_COLORS[0]; }
 function _noteColor(c) { return NOTE_COLORS.includes(c) ? c : NOTE_COLORS[0]; }
 function _safeColor(c, fallback) { return typeof c === 'string' && SAFE_COLOR_RE.test(c) ? c : fallback; }
+function _edgeColor(c) { return EDGE_COLORS.includes(c) ? c : null; }
+function _edgeStyle(v) { return EDGE_STYLES.includes(v) ? v : 'solid'; }
+function _edgeArrow(v) { return EDGE_ARROWS.includes(v) ? v : 'end'; }
+function _validId(v) { return typeof v === 'string' && ID_RE.test(v); }
 function _num(v, fallback = 0) { const n = Number(v); return v !== null && v !== '' && Number.isFinite(n) ? n : fallback; }
 
 // Item sizes. DEFAULT_SIZE is what an item without w/h is drawn with (an
@@ -113,6 +127,7 @@ async function initWhiteboard() {
   _nl          = document.getElementById('wb-nodes-layer');
   _cursorLayer = document.getElementById('wb-cursor-layer');
   _edgeSvg     = document.getElementById('wb-edges-svg');
+  _ensureEdgeMarkers();
 
   // Eraser ring cursor
   _eraserRing = document.createElement('div');
@@ -219,6 +234,11 @@ function _applyTransform() {
 
   _updateStrokeWidths();
   _refreshCursorPositions();
+  if (_selectedEdgeId) {
+    const edge = wbData.edges.find(e => e.id === _selectedEdgeId);
+    const pts = edge && _edgeEndpoints(edge);
+    if (pts) _positionEdgeToolbar(pts);
+  }
 }
 
 function _updateStrokeWidths() {
@@ -268,7 +288,7 @@ function _buildNode(nodeData, target) {
   const portChips = ports.length
     ? `<div class="wb-ports-wrap">`
       + ports.map(p =>
-          `<span class="wb-port-chip ${p.state === 'open' ? 'open' : 'closed'}">
+          `<span class="wb-port-chip ${p.state === 'open' ? 'open' : 'closed'}" data-port-id="${esc(p.id)}">
              <span class="wb-port-num">${p.port}</span>${p.protocol !== 'tcp' ? `<span class="wb-port-svc">/${esc(p.protocol)}</span>` : ''}${p.service ? `<span class="wb-port-svc"> ${esc(p.service)}</span>` : ''}
            </span>`
         ).join('')
@@ -277,7 +297,7 @@ function _buildNode(nodeData, target) {
 
   const epRows = endpoints.length
     ? endpoints.map(e =>
-        `<div class="wb-ep-row" data-ep-host="${esc(target.host)}" data-ep-path="${esc(e.path)}">
+        `<div class="wb-ep-row" data-ep-id="${esc(e.id)}" data-ep-host="${esc(target.host)}" data-ep-path="${esc(e.path)}">
            <span class="wb-ep-method" style="color:${METHOD_COLOR[e.method]||'#aaa'}">${esc(e.method)}</span>
            <span class="wb-ep-path" title="${esc(e.path)}">${esc(e.path)}</span>
            ${e.interesting ? `<span class="wb-ep-star" title="Interesting">${icon('star',{size:10})}</span>` : ''}
@@ -323,8 +343,10 @@ function _buildNode(nodeData, target) {
       </div>
     </div>`;
 
-  // Copy endpoint on click
-  el.querySelector('.wb-node-body').addEventListener('click', e => {
+  // Copy endpoint on click (in connect mode the click picks the row instead)
+  const body = el.querySelector('.wb-node-body');
+  body.addEventListener('click', e => {
+    if (_mode === 'connect') return;
     const row = e.target.closest('.wb-ep-row');
     if (!row) return;
     const host = (row.dataset.epHost || '').replace(/\/$/, '');
@@ -332,6 +354,8 @@ function _buildNode(nodeData, target) {
     const text = host + path;
     navigator.clipboard.writeText(text).then(() => showToast(`Copied: ${text}`, 'success')).catch(() => showToast('Copy failed', 'error'));
   });
+  // Arrows anchored on an endpoint/port row follow it while the body scrolls.
+  body.addEventListener('scroll', _scheduleEdgeUpdate, { passive: true });
 
   _makeNodeDraggable(el, nodeData);
   _makeResizable(el, nodeData, 'node');
@@ -394,14 +418,7 @@ function wbRemoveNode(targetId) {
   _removedIds.add(targetId);
   wbData.nodes = wbData.nodes.filter(n => n.id !== targetId);
   _nl.querySelector(`[data-node-id="${targetId}"]`)?.remove();
-  // Remove all edges connected to this node
-  wbData.edges
-    .filter(e => e.fromId === targetId || e.toId === targetId)
-    .forEach(e => {
-      _edgeSvg.querySelector(`[data-edge-id="${e.id}"]`)?.remove();
-      _broadcast({ op: 'edge_remove', edgeId: e.id });
-    });
-  wbData.edges = wbData.edges.filter(e => e.fromId !== targetId && e.toId !== targetId);
+  _removeItemEdges(targetId, true);
   _broadcast({ op: 'node_remove', nodeId: targetId });
   scheduleSave();
 }
@@ -612,13 +629,7 @@ function wbRemoveCard(id) {
   _removedIds.add(id);
   wbData.cards = wbData.cards.filter(c => c.id !== id);
   _nl.querySelector(`[data-node-id="${id}"]`)?.remove();
-  wbData.edges
-    .filter(e => e.fromId === id || e.toId === id)
-    .forEach(e => {
-      _edgeSvg.querySelector(`[data-edge-id="${e.id}"]`)?.remove();
-      _broadcast({ op: 'edge_remove', edgeId: e.id });
-    });
-  wbData.edges = wbData.edges.filter(e => e.fromId !== id && e.toId !== id);
+  _removeItemEdges(id, true);
   _broadcast({ op: 'card_remove', cardId: id });
   scheduleSave();
 }
@@ -634,33 +645,112 @@ function wbCardColor(id, color) {
 }
 
 // ── Edges ──────────────────────────────────────────────────────────────
-function _nodeInfo(nodeId) {
-  const nd  = wbData.nodes.find(n => n.id === nodeId);
-  const cd  = !nd && wbData.cards.find(c => c.id === nodeId);
-  const src = nd || cd;
-  if (!src) return null;
-  const el  = _nl.querySelector(`[data-node-id="${nodeId}"]`);
-  const h   = el ? el.offsetHeight : 40;
-  const w   = el ? el.offsetWidth  : (_dim(src.w, 1) || DEFAULT_SIZE[nd ? 'node' : 'card'].w);
-  return { cx: src.x + w / 2, cy: src.y + h / 2, w, h };
+// An edge joins two ends. Each end is a board item (target node, card or
+// note: fromId/toId) and, on a target node, optionally one of its endpoint
+// rows (fromEp/toEp) or port chips (fromPort/toPort). Optional style fields:
+// style (line), arrow (which ends get an arrowhead, default end), color.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const EDGE_END_KEYS = ['Id', 'Ep', 'Port'];
+
+function _edgeEl(edgeId) {
+  return _edgeSvg ? _edgeSvg.querySelector(`[data-edge-id="${CSS.escape(String(edgeId))}"]`) : null;
+}
+
+function _findItem(id) {
+  for (const kind of ['node', 'card', 'note']) {
+    const data = wbData[`${kind}s`].find(x => x.id === id);
+    if (data) return { kind, data };
+  }
+  return null;
+}
+
+// side: 'from' | 'to'
+function _edgeEnd(edge, side) {
+  return { id: edge[`${side}Id`], ep: edge[`${side}Ep`], port: edge[`${side}Port`] };
+}
+function _endKey(end) { return `${end.id}|${end.ep || ''}|${end.port || ''}`; }
+// A→B and B→A are the same connection.
+function _pairKey(a, b) { return [_endKey(a), _endKey(b)].sort().join('>'); }
+
+// Why a connection between these ends cannot be made (null when it can).
+// `ignoreId`: the edge being re-pointed, which must not count as its own duplicate.
+function _edgeProblem(from, to, ignoreId = null) {
+  if (from.id === to.id) return 'Un elemento no se puede conectar consigo mismo';
+  const key = _pairKey(from, to);
+  const dup = wbData.edges.some(e => e.id !== ignoreId && _pairKey(_edgeEnd(e, 'from'), _edgeEnd(e, 'to')) === key);
+  return dup ? 'Esa conexión ya existe' : null;
+}
+
+// Board end under a DOM element: a note, card or target node, or the
+// endpoint row / port chip of a target node.
+function _endFromElement(target) {
+  if (!(target instanceof Element) || !_nl.contains(target)) return null;
+  const itemEl = target.closest('.wb-node, .wb-card, .wb-sticky');
+  if (!itemEl) return null;
+  if (itemEl.classList.contains('wb-sticky')) return { id: itemEl.dataset.noteId, el: itemEl };
+  const id = itemEl.dataset.nodeId;
+  if (itemEl.classList.contains('wb-node')) {
+    const row = target.closest('[data-ep-id], [data-port-id]');
+    if (row && itemEl.contains(row)) {
+      return row.dataset.epId ? { id, ep: row.dataset.epId, el: row } : { id, port: row.dataset.portId, el: row };
+    }
+  }
+  return { id, el: itemEl };
+}
+
+// World-space box of the endpoint row / port chip an end points at, or null
+// when the edge should anchor on the whole node instead: no row, the node is
+// collapsed, the endpoint/port no longer exists, or the row is scrolled out
+// of the node body.
+function _rowBox(end) {
+  if (!end.ep && !end.port) return null;
+  const nd = wbData.nodes.find(n => n.id === end.id);
+  const el = nd && !nd.collapsed && _itemEl('node', end.id);
+  if (!el) return null;
+  const row = end.ep
+    ? el.querySelector(`[data-ep-id="${CSS.escape(String(end.ep))}"]`)
+    : el.querySelector(`[data-port-id="${CSS.escape(String(end.port))}"]`);
+  const body = el.querySelector('.wb-node-body');
+  if (!row || !body) return null;
+  const r = row.getBoundingClientRect(), b = body.getBoundingClientRect();
+  const cy = r.top + r.height / 2;
+  if (!r.height || cy < b.top || cy > b.bottom) return null;
+  const p1 = _screenToWorld(r.left, r.top), p2 = _screenToWorld(r.right, r.bottom);
+  return { x: p1.x, y: p1.y, w: p2.x - p1.x, h: p2.y - p1.y };
+}
+
+function _endGeom(end) {
+  const it = _findItem(end.id);
+  if (!it || !_itemEl(it.kind, end.id)) return null;
+  const box = _itemBox(it.kind, it.data);
+  const row = it.kind === 'node' ? _rowBox(end) : null;
+  return { box, row, cx: box.x + box.w / 2, cy: row ? row.y + row.h / 2 : box.y + box.h / 2 };
+}
+
+// Where the line leaves `g` towards `other`: a row anchors on the node's
+// left/right side at the row's height; otherwise the line from the item's
+// center is clipped to its box. `gap` leaves room for an arrowhead.
+function _anchorPoint(g, other, gap) {
+  if (g.row) {
+    const right = other.cx >= g.cx;
+    return { x: right ? g.box.x + g.box.w + 2 + gap : g.box.x - 2 - gap, y: g.cy };
+  }
+  const dx = other.cx - g.cx, dy = other.cy - g.cy;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const t = Math.min((g.box.w / 2 + 2) / (Math.abs(ux) || 0.001), (g.box.h / 2 + 2) / (Math.abs(uy) || 0.001)) + gap;
+  return { x: g.cx + ux * t, y: g.cy + uy * t };
 }
 
 function _edgeEndpoints(edge) {
-  const from = _nodeInfo(edge.fromId);
-  const to   = _nodeInfo(edge.toId);
+  const from = _endGeom(_edgeEnd(edge, 'from'));
+  const to   = _endGeom(_edgeEnd(edge, 'to'));
   if (!from || !to) return null;
 
-  const dx = to.cx - from.cx, dy = to.cy - from.cy;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const ux = dx / len, uy = dy / len;
-
-  const fhw = from.w / 2 + 2, fhh = from.h / 2 + 2;
-  const ft  = Math.min(fhw / (Math.abs(ux) || 0.001), fhh / (Math.abs(uy) || 0.001));
-  const thw = to.w   / 2 + 2, thh = to.h   / 2 + 2;
-  const tt  = Math.min(thw / (Math.abs(ux) || 0.001), thh / (Math.abs(uy) || 0.001)) + 8;
-
-  const sx = from.cx + ux * ft, sy = from.cy + uy * ft;
-  const ex = to.cx   - ux * tt, ey = to.cy   - uy * tt;
+  const arrow = _edgeArrow(edge.arrow);
+  const s = _anchorPoint(from, to, arrow === 'start' || arrow === 'both' ? 8 : 0);
+  const e = _anchorPoint(to, from, arrow === 'end'   || arrow === 'both' ? 8 : 0);
+  const sx = s.x, sy = s.y, ex = e.x, ey = e.y;
 
   // Bezier control points (same logic as _edgeCubic uses)
   const cdx = ex - sx, cdy = ey - sy;
@@ -696,26 +786,53 @@ function _edgeCubic(pts) {
   return `M${pts.sx.toFixed(1)},${pts.sy.toFixed(1)} C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${pts.ex.toFixed(1)},${pts.ey.toFixed(1)}`;
 }
 
+// One arrowhead marker per edge color plus the theme default and the accent
+// (hover/selection of an uncolored edge, see whiteboard.html). Fills are CSS
+// so the default follows the light/dark theme; orient auto-start-reverse lets
+// the same marker serve marker-start and marker-end.
+function _ensureEdgeMarkers() {
+  const defs = _edgeSvg.querySelector('defs') || _edgeSvg.insertBefore(document.createElementNS(SVG_NS, 'defs'), _edgeSvg.firstChild);
+  defs.innerHTML = '';
+  const fills = { default: 'var(--t3)', accent: 'var(--a)' };
+  EDGE_COLORS.forEach(c => { fills[c.slice(1)] = c; });
+  Object.entries(fills).forEach(([key, fill]) => {
+    const m = document.createElementNS(SVG_NS, 'marker');
+    m.id = `wb-arrow-${key}`;
+    m.setAttribute('markerWidth', '10');
+    m.setAttribute('markerHeight', '7');
+    m.setAttribute('refX', '9');
+    m.setAttribute('refY', '3.5');
+    m.setAttribute('orient', 'auto-start-reverse');
+    m.setAttribute('markerUnits', 'userSpaceOnUse');
+    const p = document.createElementNS(SVG_NS, 'path');
+    p.setAttribute('d', 'M0,0 L10,3.5 L0,7 Z');
+    p.style.fill = fill;
+    m.appendChild(p);
+    defs.appendChild(m);
+  });
+}
+
 function _renderEdge(edge) {
-  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  const g = document.createElementNS(SVG_NS, 'g');
   g.dataset.edgeId = edge.id;
   g.classList.add('wb-edge-group');
 
-  const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const title = document.createElementNS(SVG_NS, 'title');
+
+  const hit = document.createElementNS(SVG_NS, 'path');
   hit.classList.add('wb-edge-hit');
 
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const line = document.createElementNS(SVG_NS, 'path');
   line.classList.add('wb-edge-line');
-  line.setAttribute('marker-end', 'url(#wb-arrowhead)');
 
-  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  const dot = document.createElementNS(SVG_NS, 'circle');
   dot.classList.add('wb-edge-dot');
   dot.setAttribute('r', '4');
 
-  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  const label = document.createElementNS(SVG_NS, 'text');
   label.classList.add('wb-edge-label');
-  label.textContent = edge.label || '';
 
+  g.appendChild(title);
   g.appendChild(hit);
   g.appendChild(line);
   g.appendChild(dot);
@@ -733,15 +850,57 @@ function _renderEdge(edge) {
     _editEdgeLabel(edge);
   });
 
+  _applyEdgeStyle(edge);
   _updateEdgePath(edge);
   return g;
 }
 
+// "GET /login" / "443/tcp" for an end pointing at an endpoint/port row.
+function _endRowText(end) {
+  if (end.ep) {
+    const e = (_endpointsMap[end.id] || []).find(x => x.id === end.ep);
+    return e ? `${e.method} ${e.path}` : 'endpoint eliminado';
+  }
+  if (end.port) {
+    const p = (_portsMap[end.id] || []).find(x => x.id === end.port);
+    return p ? `${p.port}/${p.protocol}` : 'puerto eliminado';
+  }
+  return '';
+}
+
+// Label, tooltip, line style, color and arrowheads from the edge's fields.
+// Every value goes through an allowlist: edges come from other members.
+function _applyEdgeStyle(edge) {
+  const g = _edgeEl(edge.id);
+  if (!g) return;
+  const color = _edgeColor(edge.color), arrow = _edgeArrow(edge.arrow), style = _edgeStyle(edge.style);
+  const line = g.querySelector('.wb-edge-line');
+  const marker = `url(#wb-arrow-${color ? color.slice(1) : 'default'})`;
+  line.style.stroke = color || '';
+  if (EDGE_DASH[style]) line.setAttribute('stroke-dasharray', EDGE_DASH[style]);
+  else line.removeAttribute('stroke-dasharray');
+  line.classList.toggle('wb-edge-line--dotted', style === 'dotted');
+  if (arrow === 'end' || arrow === 'both') line.setAttribute('marker-end', marker);
+  else line.removeAttribute('marker-end');
+  if (arrow === 'start' || arrow === 'both') line.setAttribute('marker-start', marker);
+  else line.removeAttribute('marker-start');
+  g.classList.toggle('wb-edge--colored', !!color);
+
+  const dot = g.querySelector('.wb-edge-dot');
+  dot.style.fill = color || '';
+  dot.style.display = arrow === 'start' || arrow === 'both' ? 'none' : '';
+
+  g.querySelector('.wb-edge-label').textContent = edge.label || '';
+  const rows = ['from', 'to'].map(side => _endRowText(_edgeEnd(edge, side)));
+  g.querySelector('title').textContent = [edge.label, rows[0] && `Desde: ${rows[0]}`, rows[1] && `Hasta: ${rows[1]}`]
+    .filter(Boolean).join('\n');
+}
+
 function _updateEdgePath(edge) {
-  const g = _edgeSvg.querySelector(`[data-edge-id="${edge.id}"]`);
+  const g = _edgeEl(edge.id);
   if (!g) return;
   const pts = _edgeEndpoints(edge);
-  if (!pts) { g.style.display = 'none'; return; }
+  if (!pts) { g.style.display = 'none'; if (edge.id === _selectedEdgeId) _hideEdgeToolbar(); return; }
   g.style.display = '';
   const d = _edgeCubic(pts);
   g.querySelector('.wb-edge-line').setAttribute('d', d);
@@ -751,40 +910,245 @@ function _updateEdgePath(edge) {
   const lbl = g.querySelector('.wb-edge-label');
   lbl.setAttribute('x', pts.mx.toFixed(1));
   lbl.setAttribute('y', (pts.my - 8).toFixed(1));
+  g.querySelectorAll('.wb-edge-handle').forEach(h => {
+    const from = h.dataset.end === 'from';
+    h.setAttribute('cx', (from ? pts.sx : pts.ex).toFixed(1));
+    h.setAttribute('cy', (from ? pts.sy : pts.ey).toFixed(1));
+  });
+  if (edge.id === _selectedEdgeId) _positionEdgeToolbar(pts);
 }
 
 function _updateAllEdges() {
   wbData.edges.forEach(e => _updateEdgePath(e));
 }
 
-function _addEdge(fromId, toId) {
-  if (wbData.edges.find(e => e.fromId === fromId && e.toId === toId)) {
-    showToast('Connection already exists', 'info');
+// Coalesces bursts (node body scroll) into one redraw per frame.
+function _scheduleEdgeUpdate() {
+  if (_edgeRaf) return;
+  _edgeRaf = requestAnimationFrame(() => { _edgeRaf = 0; _updateAllEdges(); });
+}
+
+// Removes the edges touching an item that was removed. `broadcast`: local
+// removal (a remote one already reached every tab).
+function _removeItemEdges(itemId, broadcast) {
+  wbData.edges = wbData.edges.filter(e => {
+    if (e.fromId !== itemId && e.toId !== itemId) return true;
+    if (_selectedEdgeId === e.id) _deselectEdge();
+    _edgeEl(e.id)?.remove();
+    if (broadcast) _broadcast({ op: 'edge_remove', edgeId: e.id });
+    return false;
+  });
+}
+
+// Applies edge field changes (local or from a wb:patch) through the
+// allowlists; null/invalid removes an optional field.
+function _mergeEdgeChanges(edge, changes) {
+  if (!changes || typeof changes !== 'object') return;
+  for (const [k, v] of Object.entries(changes)) {
+    if (k === 'label') {
+      if (typeof v === 'string') edge.label = v.slice(0, 500);
+    } else if (k === 'fromId' || k === 'toId') {
+      if (_validId(v)) edge[k] = v;
+    } else if (['fromEp', 'toEp', 'fromPort', 'toPort'].includes(k)) {
+      if (_validId(v)) edge[k] = v; else delete edge[k];
+    } else if (k === 'style' || k === 'arrow' || k === 'color') {
+      const ok = { style: EDGE_STYLES, arrow: EDGE_ARROWS, color: EDGE_COLORS }[k].includes(v);
+      if (ok) edge[k] = v; else delete edge[k];
+    }
+  }
+}
+
+function _setEdgeProps(edge, changes) {
+  _mergeEdgeChanges(edge, changes);
+  _applyEdgeStyle(edge);
+  _updateEdgePath(edge);
+  if (edge.id === _selectedEdgeId) _refreshEdgeToolbar(edge);
+  _broadcast({ op: 'edge_update', edgeId: edge.id, changes });
+  scheduleSave();
+}
+
+function _addEdge(from, to) {
+  const problem = _edgeProblem(from, to);
+  if (problem) {
+    showToast(problem, 'info');
     return;
   }
-  const edge = { id: crypto.randomUUID(), fromId, toId, label: '' };
+  const edge = { id: crypto.randomUUID(), fromId: from.id, toId: to.id, label: '' };
+  if (from.ep) edge.fromEp = from.ep; else if (from.port) edge.fromPort = from.port;
+  if (to.ep)   edge.toEp   = to.ep;   else if (to.port)   edge.toPort   = to.port;
   wbData.edges.push(edge);
   _renderEdge(edge);
   _broadcast({ op: 'edge_add', edge });
   scheduleSave();
-  showToast('Connection created — double-click arrow to label', 'success');
+  showToast('Conexión creada — clic en la flecha para editarla', 'success');
 }
 
 function _removeEdge(edgeId) {
   _removedIds.add(edgeId);
+  if (_selectedEdgeId === edgeId) _deselectEdge();
   wbData.edges = wbData.edges.filter(e => e.id !== edgeId);
-  _edgeSvg.querySelector(`[data-edge-id="${edgeId}"]`)?.remove();
-  if (_selectedEdgeId === edgeId) _selectedEdgeId = null;
+  _edgeEl(edgeId)?.remove();
   _broadcast({ op: 'edge_remove', edgeId });
   scheduleSave();
 }
 
 function _selectEdge(edgeId) {
-  if (_selectedEdgeId && _selectedEdgeId !== edgeId) {
-    _edgeSvg.querySelector(`[data-edge-id="${_selectedEdgeId}"]`)?.classList.remove('selected');
-  }
+  if (_selectedEdgeId === edgeId) return;
+  _deselectEdge();
+  const edge = wbData.edges.find(e => e.id === edgeId);
+  const g = _edgeEl(edgeId);
+  if (!edge || !g) return;
   _selectedEdgeId = edgeId;
-  _edgeSvg.querySelector(`[data-edge-id="${edgeId}"]`)?.classList.add('selected');
+  g.classList.add('selected');
+  // Reconnect handles on both ends (drag one onto another item or row).
+  ['from', 'to'].forEach(side => {
+    const h = document.createElementNS(SVG_NS, 'circle');
+    h.classList.add('wb-edge-handle');
+    h.dataset.end = side;
+    h.setAttribute('r', '6');
+    const t = document.createElementNS(SVG_NS, 'title');
+    t.textContent = 'Arrastrar para reconectar';
+    h.appendChild(t);
+    h.addEventListener('pointerdown', ev => _startEdgeReconnect(ev, edge, side));
+    g.appendChild(h);
+  });
+  _refreshEdgeToolbar(edge);
+  _updateEdgePath(edge);
+}
+
+function _deselectEdge() {
+  if (!_selectedEdgeId) return;
+  const g = _edgeEl(_selectedEdgeId);
+  if (g) {
+    g.classList.remove('selected');
+    g.querySelectorAll('.wb-edge-handle').forEach(h => h.remove());
+  }
+  _selectedEdgeId = null;
+  _hideEdgeToolbar();
+}
+
+// ── Edge toolbar ─────────────────────────────────────────────────────────
+// Static markup: only allowlisted values (EDGE_*) reach it.
+function _buildEdgeToolbar() {
+  const bar = document.createElement('div');
+  bar.className = 'wb-edge-toolbar';
+  const styleTitles = { solid: 'Línea sólida', dashed: 'Línea discontinua', dotted: 'Línea punteada' };
+  const arrowBtns = { end: ['→', 'Flecha al final'], start: ['←', 'Flecha al inicio'], both: ['↔', 'Flecha en ambos extremos'], none: ['—', 'Sin flecha'] };
+  bar.innerHTML = `
+    <div class="wb-et-group">
+      ${EDGE_STYLES.map(st => `
+        <button class="wb-et-btn" data-edge-style="${st}" title="${styleTitles[st]}">
+          <svg width="20" height="8" viewBox="0 0 20 8"><line x1="1" y1="4" x2="19" y2="4" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" ${EDGE_DASH[st] ? `stroke-dasharray="${st === 'dotted' ? '0.5 4' : '5 3'}"` : ''}/></svg>
+        </button>`).join('')}
+    </div>
+    <div class="wb-et-sep"></div>
+    <div class="wb-et-group">
+      ${EDGE_ARROWS.map(a => `<button class="wb-et-btn" data-edge-arrow="${a}" title="${arrowBtns[a][1]}">${arrowBtns[a][0]}</button>`).join('')}
+    </div>
+    <div class="wb-et-sep"></div>
+    <div class="wb-et-group">
+      <button class="wb-et-col wb-et-col--default" data-edge-color="" title="Color por defecto"></button>
+      ${EDGE_COLORS.map((c, i) => `<button class="wb-et-col" data-edge-color="${c}" style="background:${c}" title="${EDGE_COLOR_NAMES[i]}"></button>`).join('')}
+    </div>
+    <div class="wb-et-sep"></div>
+    <button class="wb-et-btn" data-edge-action="label" title="Editar etiqueta">${icon('pencil', { size: 12 })}</button>
+    <button class="wb-et-btn wb-et-del" data-edge-action="delete" title="Eliminar conexión">${icon('trash-2', { size: 12 })}</button>`;
+
+  // Keep clicks on the toolbar from panning/deselecting the board.
+  bar.addEventListener('pointerdown', e => e.stopPropagation());
+  bar.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+  bar.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    const edge = wbData.edges.find(x => x.id === _selectedEdgeId);
+    if (!btn || !edge) return;
+    e.stopPropagation();
+    if (btn.dataset.edgeStyle) _setEdgeProps(edge, { style: btn.dataset.edgeStyle });
+    else if (btn.dataset.edgeArrow) _setEdgeProps(edge, { arrow: btn.dataset.edgeArrow });
+    else if (btn.dataset.edgeColor !== undefined) _setEdgeProps(edge, { color: btn.dataset.edgeColor || null });
+    else if (btn.dataset.edgeAction === 'label') _editEdgeLabel(edge);
+    else if (btn.dataset.edgeAction === 'delete') _removeEdge(edge.id);
+  });
+  _vp.appendChild(bar);
+  return bar;
+}
+
+function _refreshEdgeToolbar(edge) {
+  if (!_edgeToolbar) _edgeToolbar = _buildEdgeToolbar();
+  const style = _edgeStyle(edge.style), arrow = _edgeArrow(edge.arrow), color = _edgeColor(edge.color) || '';
+  _edgeToolbar.querySelectorAll('[data-edge-style]').forEach(b => b.classList.toggle('active', b.dataset.edgeStyle === style));
+  _edgeToolbar.querySelectorAll('[data-edge-arrow]').forEach(b => b.classList.toggle('active', b.dataset.edgeArrow === arrow));
+  _edgeToolbar.querySelectorAll('[data-edge-color]').forEach(b => b.classList.toggle('active', b.dataset.edgeColor === color));
+  _edgeToolbar.classList.add('visible');
+}
+
+function _hideEdgeToolbar() {
+  _edgeToolbar?.classList.remove('visible');
+}
+
+// Above the edge's midpoint, in viewport (screen) coordinates.
+function _positionEdgeToolbar(pts) {
+  if (!_edgeToolbar || !_selectedEdgeId) return;
+  const { panX, panY, zoom } = wbData.view;
+  _edgeToolbar.style.left = (pts.mx * zoom + panX) + 'px';
+  _edgeToolbar.style.top  = ((pts.my - 18) * zoom + panY) + 'px';
+  _edgeToolbar.classList.add('visible');
+}
+
+// Drag one end handle of the selected edge onto another item, endpoint row
+// or port chip to re-point that end.
+function _startEdgeReconnect(e, edge, side) {
+  if (_mode !== 'select' || e.button !== 0) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const handle = e.currentTarget;
+  handle.setPointerCapture(e.pointerId);
+  const g = _edgeEl(edge.id);
+  g?.classList.add('reconnecting');
+  _hideEdgeToolbar();
+
+  const pts = _edgeEndpoints(edge);
+  const fixed = pts ? (side === 'from' ? { x: pts.ex, y: pts.ey } : { x: pts.sx, y: pts.sy }) : null;
+  const ghost = document.createElementNS(SVG_NS, 'path');
+  ghost.classList.add('wb-edge-ghost');
+  _edgeSvg.appendChild(ghost);
+  let hover = null;
+
+  const endAt = ev => {
+    const end = _endFromElement(document.elementFromPoint(ev.clientX, ev.clientY));
+    if (!end) return null;
+    const other = _edgeEnd(edge, side === 'from' ? 'to' : 'from');
+    const [from, to] = side === 'from' ? [end, other] : [other, end];
+    return _edgeProblem(from, to, edge.id) ? null : end;
+  };
+
+  function onMove(ev) {
+    const w = _screenToWorld(ev.clientX, ev.clientY);
+    if (fixed) ghost.setAttribute('d', `M${fixed.x.toFixed(1)},${fixed.y.toFixed(1)} L${w.x.toFixed(1)},${w.y.toFixed(1)}`);
+    const end = endAt(ev);
+    if (hover !== end?.el) {
+      hover?.classList.remove('connect-target');
+      hover = end?.el || null;
+      hover?.classList.add('connect-target');
+    }
+  }
+  function onUp(ev) {
+    handle.removeEventListener('pointermove', onMove);
+    hover?.classList.remove('connect-target');
+    ghost.remove();
+    g?.classList.remove('reconnecting');
+    const end = _endFromElement(document.elementFromPoint(ev.clientX, ev.clientY));
+    const cur = _edgeEnd(edge, side);
+    if (end && _endKey(end) !== _endKey(cur)) {
+      const other = _edgeEnd(edge, side === 'from' ? 'to' : 'from');
+      const problem = side === 'from' ? _edgeProblem(end, other, edge.id) : _edgeProblem(other, end, edge.id);
+      if (problem) showToast(problem, 'info');
+      else _setEdgeProps(edge, { [`${side}Id`]: end.id, [`${side}Ep`]: end.ep || null, [`${side}Port`]: end.port || null });
+    }
+    if (_selectedEdgeId === edge.id) { _refreshEdgeToolbar(edge); _updateEdgePath(edge); }
+  }
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointerup', onUp, { once: true });
 }
 
 function _editEdgeLabel(edge) {
@@ -796,7 +1160,7 @@ function _editEdgeLabel(edge) {
   inp.className = 'wb-label-input';
   inp.type = 'text';
   inp.value = edge.label || '';
-  inp.placeholder = 'Label…';
+  inp.placeholder = 'Etiqueta…';
   inp.style.left = (pts.mx * zoom + panX) + 'px';
   inp.style.top  = ((pts.my - 10) * zoom + panY) + 'px';
   _vp.appendChild(inp);
@@ -808,12 +1172,9 @@ function _editEdgeLabel(edge) {
     if (committed) return;
     committed = true;
     inp.remove();
-    edge.label = inp.value.trim();
-    const textEl = _edgeSvg.querySelector(`[data-edge-id="${edge.id}"] .wb-edge-label`);
-    if (textEl) textEl.textContent = edge.label;
-    _broadcast({ op: 'edge_update', edgeId: edge.id, changes: { label: edge.label } });
-    scheduleSave();
+    _setEdgeProps(edge, { label: inp.value.trim() });
   }
+  inp.addEventListener('pointerdown', e => e.stopPropagation());
   inp.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Enter') commit();
@@ -822,27 +1183,28 @@ function _editEdgeLabel(edge) {
   inp.addEventListener('blur', commit);
 }
 
+function _clearConnectFrom() {
+  _connectFrom?.el?.classList.remove('connect-from');
+  _connectFrom = null;
+}
+
+// Connect mode: the first click picks one end (item, endpoint row or port
+// chip), the second one creates the edge. Runs in the capture phase so item
+// handlers (note editing, endpoint copy) do not also react.
 function _handleConnectClick(e) {
-  const nodeEl = e.target.closest('.wb-node, .wb-card');
-  if (!nodeEl) {
-    if (_connectFrom) {
-      _nl.querySelector(`[data-node-id="${_connectFrom}"]`)?.classList.remove('connect-from');
-      _connectFrom = null;
-    }
-    return;
-  }
+  const end = _endFromElement(e.target);
+  if (!end) { _clearConnectFrom(); return; }
   e.stopPropagation();
-  const nodeId = nodeEl.dataset.nodeId;
+  e.preventDefault();
   if (!_connectFrom) {
-    _connectFrom = nodeId;
-    nodeEl.classList.add('connect-from');
-  } else if (_connectFrom === nodeId) {
-    nodeEl.classList.remove('connect-from');
-    _connectFrom = null;
+    _connectFrom = end;
+    end.el.classList.add('connect-from');
+  } else if (_endKey(_connectFrom) === _endKey(end)) {
+    _clearConnectFrom();
   } else {
-    _nl.querySelector(`[data-node-id="${_connectFrom}"]`)?.classList.remove('connect-from');
-    _addEdge(_connectFrom, nodeId);
-    _connectFrom = null;
+    const from = _connectFrom;
+    _clearConnectFrom();
+    _addEdge(from, end);
   }
 }
 
@@ -958,6 +1320,7 @@ function _buildNote(noteData) {
 
   textEl.addEventListener('pointerdown', e => e.stopPropagation());
   textEl.addEventListener('click', e => {
+    if (_mode === 'connect') return;
     e.stopPropagation();
     if (textEl.contentEditable !== 'true') {
       textEl.contentEditable = 'true';
@@ -967,6 +1330,7 @@ function _buildNote(noteData) {
   textEl.addEventListener('blur', () => {
     textEl.contentEditable = 'false';
     noteData.text = textEl.innerText.trim();
+    _updateAllEdges(); // an unsized note's height follows its text
     _broadcast({ op: 'note_update', noteId: noteData.id, changes: { text: noteData.text } });
     scheduleSave();
   });
@@ -1012,6 +1376,7 @@ function _makeNoteDraggable(el, noteData) {
       noteData.y = origY + dy / wbData.view.zoom;
       el.style.left = noteData.x + 'px';
       el.style.top  = noteData.y + 'px';
+      _updateAllEdges();
     }
     function onUp() {
       head.removeEventListener('pointermove', onMove);
@@ -1041,6 +1406,7 @@ function wbRemoveNote(id) {
   _removedIds.add(id);
   wbData.notes = wbData.notes.filter(n => n.id !== id);
   _nl.querySelector(`[data-note-id="${id}"]`)?.remove();
+  _removeItemEdges(id, true);
   _broadcast({ op: 'note_remove', noteId: id });
   scheduleSave();
 }
@@ -1263,16 +1629,27 @@ function _wireEvents() {
     scheduleSave();
   }, { passive: false });
 
+  // Connect mode picks ends before any item handler sees the event (note
+  // text and card bodies stop pointerdown; endpoint rows copy on click). The
+  // item's own controls (collapse, remove, colors) keep working.
+  const ITEM_CONTROLS = '.wb-node-collapse, .wb-node-remove, .wb-card-rm, .wb-sticky-rm, [data-color], .wb-resize-handle';
+  _vp.addEventListener('pointerdown', e => {
+    if (_mode !== 'connect' || e.button !== 0) return;
+    if (e.target instanceof Element && e.target.closest(ITEM_CONTROLS)) return;
+    _handleConnectClick(e);
+  }, true);
+  _vp.addEventListener('click', e => {
+    if (_mode !== 'connect' || !(e.target instanceof Element) || !_nl.contains(e.target)) return;
+    if (!e.target.closest(ITEM_CONTROLS)) e.stopPropagation();
+  }, true);
+
   // Pan / Draw / Erase / Note placement
   _vp.addEventListener('pointerdown', e => {
     if (_mode === 'draw'   && e.button === 0) { _startDraw(e);  return; }
     if (_mode === 'eraser'  && e.button === 0) { _startErase(e);         return; }
-    if (_mode === 'connect' && e.button === 0) { _handleConnectClick(e); return; }
+    if (_mode === 'connect' && e.button === 0) return; // handled in the capture phase above
     const onBg = e.target === _vp || e.target === _ws || e.target === _svg || e.target === _nl;
-    if (_mode === 'select' && e.button === 0 && onBg && _selectedEdgeId) {
-      _edgeSvg.querySelector(`[data-edge-id="${_selectedEdgeId}"]`)?.classList.remove('selected');
-      _selectedEdgeId = null;
-    }
+    if (_mode === 'select' && e.button === 0 && onBg) _deselectEdge();
     if ((_mode === 'pan' && onBg) || e.button === 1) { _startPan(e); return; }
     if (_mode === 'note' && e.button === 0 && onBg) {
       e.preventDefault();
@@ -1359,14 +1736,8 @@ function _wireKeyboard() {
     }
     if (e.key === 'Escape') {
       if (_searchQuery) { wbSearchClear(); return; }
-      if (_connectFrom) {
-        _nl.querySelector(`[data-node-id="${_connectFrom}"]`)?.classList.remove('connect-from');
-        _connectFrom = null;
-      }
-      if (_selectedEdgeId) {
-        _edgeSvg.querySelector(`[data-edge-id="${_selectedEdgeId}"]`)?.classList.remove('selected');
-        _selectedEdgeId = null;
-      }
+      _clearConnectFrom();
+      _deselectEdge();
     }
   });
 }
@@ -1529,13 +1900,7 @@ function _handleRemotePatch(msg) {
       _removedIds.add(msg.nodeId);
       wbData.nodes = wbData.nodes.filter(n => n.id !== msg.nodeId);
       _nl.querySelector(`[data-node-id="${msg.nodeId}"]`)?.remove();
-      wbData.edges = wbData.edges.filter(e => {
-        if (e.fromId === msg.nodeId || e.toId === msg.nodeId) {
-          _edgeSvg.querySelector(`[data-edge-id="${e.id}"]`)?.remove();
-          return false;
-        }
-        return true;
-      });
+      _removeItemEdges(msg.nodeId, false);
       break;
     case 'nodes_sync':
       (msg.nodes || []).forEach(nd => {
@@ -1544,6 +1909,7 @@ function _handleRemotePatch(msg) {
         const t = state.targets.find(t => t.id === nd.id);
         if (t) _nl.appendChild(_buildNode(nd, t));
       });
+      _updateAllEdges();
       break;
     case 'stroke_add':
       if (!wbData.strokes.find(s => s.id === msg.stroke.id)) {
@@ -1569,6 +1935,7 @@ function _handleRemotePatch(msg) {
       if (!wbData.notes.find(n => n.id === msg.note.id)) {
         wbData.notes.push(msg.note);
         _nl.appendChild(_buildNote(msg.note));
+        _updateAllEdges();
       }
       break;
     case 'note_update': {
@@ -1585,12 +1952,14 @@ function _handleRemotePatch(msg) {
         const textEl = el.querySelector('[data-text]');
         if (textEl && textEl.contentEditable !== 'true') textEl.textContent = msg.changes.text;
       }
+      if (['x', 'y', 'w', 'h', 'text'].some(k => msg.changes[k] !== undefined)) _updateAllEdges();
       break;
     }
     case 'note_remove':
       _removedIds.add(msg.noteId);
       wbData.notes = wbData.notes.filter(n => n.id !== msg.noteId);
       _nl.querySelector(`[data-note-id="${msg.noteId}"]`)?.remove();
+      _removeItemEdges(msg.noteId, false);
       break;
     case 'edge_add':
       if (!wbData.edges.find(e => e.id === msg.edge.id)) {
@@ -1600,37 +1969,31 @@ function _handleRemotePatch(msg) {
       break;
     case 'edge_remove':
       _removedIds.add(msg.edgeId);
+      if (_selectedEdgeId === msg.edgeId) _deselectEdge();
       wbData.edges = wbData.edges.filter(e => e.id !== msg.edgeId);
-      _edgeSvg.querySelector(`[data-edge-id="${msg.edgeId}"]`)?.remove();
-      if (_selectedEdgeId === msg.edgeId) _selectedEdgeId = null;
+      _edgeEl(msg.edgeId)?.remove();
       break;
     case 'edge_update': {
       const ed = wbData.edges.find(e => e.id === msg.edgeId);
       if (!ed) return;
-      Object.assign(ed, msg.changes);
-      if (msg.changes.label !== undefined) {
-        const textEl = _edgeSvg.querySelector(`[data-edge-id="${msg.edgeId}"] .wb-edge-label`);
-        if (textEl) textEl.textContent = msg.changes.label;
-      }
+      _mergeEdgeChanges(ed, msg.changes);
+      _applyEdgeStyle(ed);
+      _updateEdgePath(ed);
+      if (ed.id === _selectedEdgeId) _refreshEdgeToolbar(ed);
       break;
     }
     case 'card_add':
       if (!wbData.cards.find(c => c.id === msg.card.id)) {
         wbData.cards.push(msg.card);
         _nl.appendChild(_buildCard(msg.card));
+        _updateAllEdges();
       }
       break;
     case 'card_remove':
       _removedIds.add(msg.cardId);
       wbData.cards = wbData.cards.filter(c => c.id !== msg.cardId);
       _nl.querySelector(`[data-node-id="${msg.cardId}"]`)?.remove();
-      wbData.edges = wbData.edges.filter(e => {
-        if (e.fromId === msg.cardId || e.toId === msg.cardId) {
-          _edgeSvg.querySelector(`[data-edge-id="${e.id}"]`)?.remove();
-          return false;
-        }
-        return true;
-      });
+      _removeItemEdges(msg.cardId, false);
       break;
     case 'card_update': {
       const cd = wbData.cards.find(c => c.id === msg.cardId);
@@ -1667,10 +2030,8 @@ function _broadcast(patch) {
 
 // ── Mode ───────────────────────────────────────────────────────────────
 function setWbMode(m) {
-  if (_connectFrom && m !== 'connect') {
-    _nl.querySelector(`[data-node-id="${_connectFrom}"]`)?.classList.remove('connect-from');
-    _connectFrom = null;
-  }
+  if (m !== 'connect') _clearConnectFrom();
+  if (m !== 'select') _deselectEdge();
   _mode = m;
   ['select','pan','draw','eraser','note','card','connect'].forEach(k => {
     document.getElementById(`wb-btn-${k}`)?.classList.toggle('active', k === m);
@@ -1803,6 +2164,7 @@ async function exportPng() {
       });
     }
 
+    _deselectEdge(); // the edge toolbar lives in the viewport and would be captured
     // Save current view, then fit to screen for capture
     const savedView = { ...wbData.view };
     fitToScreen();

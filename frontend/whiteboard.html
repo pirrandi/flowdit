@@ -88,7 +88,42 @@
   .wb-edge-label { font-size: 10px; fill: var(--t2); font-family: var(--mono);
                    pointer-events: none; dominant-baseline: middle;
                    paint-order: stroke fill; stroke: var(--bg); stroke-width: 3px; }
+  .wb-edge-line--dotted { stroke-linecap: round; }
+  .wb-edge-group.selected .wb-edge-line { stroke-width: 2.2; }
+  /* Uncolored edges turn accent on hover/selection: so do their arrowheads
+     (markers are built in whiteboard.js, _ensureEdgeMarkers). */
+  .wb-edge-group:not(.wb-edge--colored):hover .wb-edge-line[marker-end],
+  .wb-edge-group:not(.wb-edge--colored).selected .wb-edge-line[marker-end] { marker-end: url(#wb-arrow-accent); }
+  .wb-edge-group:not(.wb-edge--colored):hover .wb-edge-line[marker-start],
+  .wb-edge-group:not(.wb-edge--colored).selected .wb-edge-line[marker-start] { marker-start: url(#wb-arrow-accent); }
+  .wb-edge-handle { fill: var(--bg1); stroke: var(--a); stroke-width: 2; cursor: grab; pointer-events: all; }
+  .wb-edge-group.reconnecting .wb-edge-handle { pointer-events: none; }
+  .wb-edge-ghost  { stroke: var(--a); stroke-width: 1.5; stroke-dasharray: 4 4; fill: none; pointer-events: none; }
   .wb-node.connect-from { outline: 2px solid var(--a); outline-offset: 3px; border-radius: 10px; }
+  .wb-card.connect-from, .wb-sticky.connect-from { outline: 2px solid var(--a); outline-offset: 3px; }
+  .wb-ep-row.connect-from, .wb-port-chip.connect-from { outline: 2px solid var(--a); outline-offset: 1px; }
+  .wb-node.connect-target, .wb-card.connect-target, .wb-sticky.connect-target,
+  .wb-ep-row.connect-target, .wb-port-chip.connect-target { outline: 2px dashed var(--a); outline-offset: 2px; }
+  #wb-viewport.mode-connect .wb-ep-row, #wb-viewport.mode-connect .wb-port-chip { cursor: crosshair; }
+
+  /* Floating toolbar of the selected edge */
+  .wb-edge-toolbar  { position: absolute; transform: translate(-50%, -100%); display: none;
+                      align-items: center; gap: 4px; padding: 4px 6px; z-index: 200;
+                      background: var(--bg2); border: 1px solid var(--b2); border-radius: 8px;
+                      box-shadow: 0 4px 16px rgba(0,0,0,.35); white-space: nowrap; }
+  .wb-edge-toolbar.visible { display: flex; }
+  .wb-et-group      { display: flex; align-items: center; gap: 2px; }
+  .wb-et-sep        { width: 1px; height: 16px; background: var(--b1); margin: 0 2px; }
+  .wb-et-btn        { display: flex; align-items: center; justify-content: center; min-width: 24px; height: 22px;
+                      padding: 0 4px; border: 1px solid transparent; border-radius: 5px; background: none;
+                      color: var(--t2); font-size: 12px; cursor: pointer; }
+  .wb-et-btn:hover  { background: var(--bg3); color: var(--t1); }
+  .wb-et-btn.active { background: var(--bg3); border-color: var(--a); color: var(--a); }
+  .wb-et-del:hover  { background: rgba(255,60,60,.15); color: #ff4040; }
+  .wb-et-col        { width: 14px; height: 14px; border-radius: 50%; border: 2px solid transparent;
+                      padding: 0; cursor: pointer; box-shadow: 0 0 0 1px var(--b1); }
+  .wb-et-col--default { background: var(--t3); }
+  .wb-et-col.active { border-color: var(--bg2); box-shadow: 0 0 0 2px var(--t1); }
 
   .wb-eraser-ring { position: absolute; width: 40px; height: 40px; border-radius: 50%;
                     border: 2px solid rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.5);
@@ -405,12 +440,8 @@
       <div id="wb-workspace">
         <svg id="wb-svg" width="1" height="1"></svg>
         <svg id="wb-edges-svg" width="1" height="1" style="position:absolute;left:0;top:0;overflow:visible">
-          <defs>
-            <marker id="wb-arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5"
-                    orient="auto" markerUnits="userSpaceOnUse">
-              <path d="M0,0 L10,3.5 L0,7 Z" fill="context-stroke"/>
-            </marker>
-          </defs>
+          <!-- Arrowhead markers per edge color: built by whiteboard.js (_ensureEdgeMarkers) -->
+          <defs></defs>
         </svg>
         <div id="wb-nodes-layer"></div>
       </div>
@@ -441,7 +472,7 @@
 <script src="js/services/utils.js?v=4"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/whiteboard.js?v=6"></script>
+<script src="js/views/whiteboard.js?v=7"></script>
 <script src="js/components/notifications.js?v=4"></script>
 <script src="js/page.js?v=4"></script>
 <script>

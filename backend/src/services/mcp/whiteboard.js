@@ -25,6 +25,12 @@ const CREATED_BY = 'claude_code';
 // fuera de la paleta no tiene punto para volver a elegirlo en la UI.
 const NOTE_COLORS = ['#ffd96a', '#a8edab', '#a8d8f0', '#f7b8b8', '#e0b8f7'];
 const CARD_COLORS = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e4a4f'];
+// Estilo de las flechas (whiteboard.js EDGE_COLORS / EDGE_STYLES / EDGE_ARROWS).
+// Sin color, la flecha usa el color del tema; estos tonos medios se leen
+// sobre fondo claro y oscuro. Sin style/arrow: sólida con punta al final.
+const EDGE_COLORS = ['#e53935', '#f57c00', '#f9a825', '#43a047', '#1e88e5', '#8e24aa'];
+const EDGE_STYLES = ['solid', 'dashed', 'dotted'];
+const EDGE_ARROWS = ['end', 'start', 'both', 'none'];
 
 // Tamaños por defecto con los que whiteboard.js dibuja cada cosa (sin w/h
 // propio). La nota no tiene alto fijo en el navegador: 100 es el típico.
@@ -205,7 +211,12 @@ async function getWhiteboard(projectId) {
     notes: board.notes.map(n => ({
       id: n.id, text: clip(n.text || '', 1000), created_by: n.created_by || null, ...geometry('note', n),
     })),
-    edges: board.edges.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label || '' })),
+    edges: board.edges.map(e => ({
+      id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label || '',
+      from_endpoint_id: e.fromEp || null, to_endpoint_id: e.toEp || null,
+      from_port_id: e.fromPort || null, to_port_id: e.toPort || null,
+      style: e.style || 'solid', arrow: e.arrow || 'end', color: e.color || null,
+    })),
     strokes: board.strokes.length,
     targets_not_on_board: targets.filter(t => !board.nodes.some(n => n.id === t.id)).map(t => ({ id: t.id, host: t.host })),
   };
@@ -298,30 +309,90 @@ async function addItems({ projectId, user, nodes = [], cards = [], notes = [] })
   return result;
 }
 
+// Extremo de una flecha: el ítem y, si apunta a una fila de un nodo de
+// target, el endpoint o puerto. Misma clave que _endKey en whiteboard.js.
+const endKey = (id, ep, port) => `${id}|${ep || ''}|${port || ''}`;
+// A→B y B→A son la misma conexión.
+const pairKey = (a, b) => [a, b].sort().join('>');
+
+// Verifica que cada endpoint/puerto pedido sea del target cuyo nodo es ese
+// extremo y que el target sea de este proyecto.
+async function checkSubAnchors(projectId, edges) {
+  const want = { endpoint: new Set(), port: new Set() };
+  for (const e of edges) {
+    for (const side of ['from', 'to']) {
+      if (e[`${side}_endpoint_id`] && e[`${side}_port_id`]) {
+        throw new WhiteboardError(`pass either ${side}_endpoint_id or ${side}_port_id, not both`);
+      }
+      if (e[`${side}_endpoint_id`]) want.endpoint.add(e[`${side}_endpoint_id`]);
+      if (e[`${side}_port_id`]) want.port.add(e[`${side}_port_id`]);
+    }
+  }
+  const found = { endpoint: new Map(), port: new Map() };
+  for (const [kind, table] of [['endpoint', 'target_endpoints'], ['port', 'target_ports']]) {
+    if (!want[kind].size) continue;
+    const { rows } = await db.query(
+      `SELECT x.id, x.target_id FROM ${table} x JOIN targets t ON t.id = x.target_id
+       WHERE x.id = ANY($1::uuid[]) AND t.project_id = $2`,
+      [[...want[kind]], projectId]
+    );
+    rows.forEach(r => found[kind].set(r.id, r.target_id));
+  }
+  for (const e of edges) {
+    for (const side of ['from', 'to']) {
+      for (const kind of ['endpoint', 'port']) {
+        const id = e[`${side}_${kind}_id`];
+        if (!id) continue;
+        const targetId = found[kind].get(id);
+        if (!targetId) throw new WhiteboardError(`${kind} "${id}" does not belong to this project — call list_${kind}s`);
+        if (targetId !== e[`${side}_id`]) {
+          throw new WhiteboardError(`${kind} "${id}" is not on target node "${e[`${side}_id`]}" — ${side}_id must be the node of the target that owns it`);
+        }
+      }
+    }
+  }
+}
+
 async function connectItems({ projectId, user, edges }) {
   if (!edges.length) throw new WhiteboardError('pass at least one edge');
   if (edges.length > MAX_EDGES_PER_CALL) throw new WhiteboardError(`at most ${MAX_EDGES_PER_CALL} edges per call`);
+  await checkSubAnchors(projectId, edges);
   const result = await inTransaction(async client => {
     const board = await lockBoard(client, projectId);
     if (itemCount(board) + edges.length > MAX_BOARD_ITEMS) {
       throw new WhiteboardError(`the whiteboard already has ${itemCount(board)} items — it cannot grow past ${MAX_BOARD_ITEMS}`);
     }
-    // whiteboard.js solo dibuja flechas entre nodos de target y tarjetas
-    // (_nodeInfo): las notas adhesivas no tienen anclas.
-    const ids = new Set([...board.nodes.map(n => n.id), ...board.cards.map(c => c.id)]);
-    const noteIds = new Set(board.notes.map(n => n.id));
+    const ids = new Set([...board.nodes, ...board.cards, ...board.notes].map(it => it.id));
+    const nodeIds = new Set(board.nodes.map(n => n.id));
+    const existing = new Set(board.edges.map(x => pairKey(
+      endKey(x.fromId, x.fromEp, x.fromPort), endKey(x.toId, x.toEp, x.toPort)
+    )));
     const added = [], skipped = [];
     for (const e of edges) {
-      for (const id of [e.from_id, e.to_id]) {
-        if (!ids.has(id)) {
-          throw new WhiteboardError(noteIds.has(id)
-            ? `"${id}" is a sticky note — arrows can only connect target nodes and cards`
-            : `"${id}" is not a target node or card on this whiteboard — call get_whiteboard`);
+      for (const side of ['from', 'to']) {
+        const id = e[`${side}_id`];
+        if (!ids.has(id)) throw new WhiteboardError(`"${id}" is not a target node, card or note on this whiteboard — call get_whiteboard`);
+        // El endpoint/puerto ya se verificó contra el target; además el
+        // target tiene que estar en el tablero como nodo.
+        if ((e[`${side}_endpoint_id`] || e[`${side}_port_id`]) && !nodeIds.has(id)) {
+          throw new WhiteboardError(`"${id}" is not a target node — endpoints and ports can only anchor on target nodes`);
         }
       }
       if (e.from_id === e.to_id) { skipped.push({ ...e, reason: 'an item cannot connect to itself' }); continue; }
-      if (board.edges.some(x => x.fromId === e.from_id && x.toId === e.to_id)) { skipped.push({ ...e, reason: 'connection already exists' }); continue; }
-      const edge = { id: crypto.randomUUID(), fromId: e.from_id, toId: e.to_id, label: e.label || '', created_by: CREATED_BY };
+      const key = pairKey(
+        endKey(e.from_id, e.from_endpoint_id, e.from_port_id), endKey(e.to_id, e.to_endpoint_id, e.to_port_id)
+      );
+      if (existing.has(key)) { skipped.push({ ...e, reason: 'connection already exists' }); continue; }
+      existing.add(key);
+      const edge = { id: crypto.randomUUID(), fromId: e.from_id, toId: e.to_id, label: e.label || '' };
+      if (e.from_endpoint_id) edge.fromEp = e.from_endpoint_id;
+      if (e.to_endpoint_id) edge.toEp = e.to_endpoint_id;
+      if (e.from_port_id) edge.fromPort = e.from_port_id;
+      if (e.to_port_id) edge.toPort = e.to_port_id;
+      if (EDGE_STYLES.includes(e.style)) edge.style = e.style;
+      if (EDGE_ARROWS.includes(e.arrow)) edge.arrow = e.arrow;
+      if (EDGE_COLORS.includes(e.color)) edge.color = e.color;
+      edge.created_by = CREATED_BY;
       board.edges.push(edge);
       added.push(edge);
     }
@@ -340,5 +411,6 @@ async function connectItems({ projectId, user, edges }) {
 module.exports = {
   getWhiteboard, addItems, connectItems, geometry, WhiteboardError,
   MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
+  EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS,
   SIZE, MIN_SIZE, MAX_ITEM_SIZE,
 };

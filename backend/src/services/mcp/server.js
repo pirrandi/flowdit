@@ -545,7 +545,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   server.registerTool('get_whiteboard', {
     description:
       'Get a compact summary of the project whiteboard: target nodes, cards (with what they link to), ' +
-      'sticky notes and arrows, with their ids, plus the targets not yet on the board. Every node, card and ' +
+      'sticky notes and arrows (with the endpoint/port each end points at and their style), with their ids, plus the targets not yet on the board. Every node, card and ' +
       'note includes its geometry (x, y, w, h in board px; y grows downwards). Items without an explicit ' +
       `size report the default they are drawn with (node ${whiteboard.SIZE.node.w}×${whiteboard.SIZE.node.h}, ` +
       `card ${whiteboard.SIZE.card.w}×${whiteboard.SIZE.card.h}, note ${whiteboard.SIZE.note.w}×${whiteboard.SIZE.note.h}); ` +
@@ -617,8 +617,12 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   server.registerTool('connect_whiteboard_items', {
     description:
       `Draw arrows between items already on the whiteboard (max ${whiteboard.MAX_EDGES_PER_CALL} per call). ` +
-      'Arrows can connect target nodes (id = target id) and cards; sticky notes cannot be connected. ' +
-      'Existing connections are skipped. ADD-ONLY: nothing existing changes.' +
+      'Arrows can connect target nodes (id = target id), cards and sticky notes. An end on a target node can ' +
+      'point at one of that target\'s endpoints or ports (from_endpoint_id / from_port_id, to_endpoint_id / ' +
+      'to_port_id; ids from list_endpoints / list_ports); the arrow then anchors on that row of the node. ' +
+      'Optional style (line), arrow (which end gets the arrowhead, default end) and color. A connection that ' +
+      'already exists in either direction (same items and endpoints/ports) is skipped, as is an item connected ' +
+      'to itself. ADD-ONLY: nothing existing changes.' +
       ' ' + LANGUAGE_RULE,
     inputSchema: {
       project_id: uuid,
@@ -626,13 +630,28 @@ function buildMcpServer({ user, token, uploadsUrl }) {
         from_id: z.string().uuid(),
         to_id: z.string().uuid(),
         label: z.string().trim().max(100).optional(),
+        from_endpoint_id: uuid.optional().describe('Endpoint of the target whose node is from_id'),
+        to_endpoint_id: uuid.optional().describe('Endpoint of the target whose node is to_id'),
+        from_port_id: uuid.optional().describe('Port of the target whose node is from_id'),
+        to_port_id: uuid.optional().describe('Port of the target whose node is to_id'),
+        style: z.enum(whiteboard.EDGE_STYLES).optional().describe('Line style, default solid'),
+        arrow: z.enum(whiteboard.EDGE_ARROWS).optional().describe('Arrowhead position, default end'),
+        color: z.enum(whiteboard.EDGE_COLORS).optional().describe('Line color; omit for the theme default'),
       })).min(1).max(whiteboard.MAX_EDGES_PER_CALL),
     },
     annotations: { ...ADD_ONLY, idempotentHint: true },
   }, guarded(async ({ project_id, edges }) => {
     await projectFor(project_id, { propose: true });
     const r = await whiteboard.connectItems({ projectId: project_id, user, edges });
-    return ok({ added: r.added.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label })), skipped: r.skipped });
+    return ok({
+      added: r.added.map(e => ({
+        id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label,
+        ...(e.fromEp ? { from_endpoint_id: e.fromEp } : {}), ...(e.toEp ? { to_endpoint_id: e.toEp } : {}),
+        ...(e.fromPort ? { from_port_id: e.fromPort } : {}), ...(e.toPort ? { to_port_id: e.toPort } : {}),
+        style: e.style || 'solid', arrow: e.arrow || 'end', color: e.color || null,
+      })),
+      skipped: r.skipped,
+    });
   }));
 
   server.registerTool('get_upload_instructions', {

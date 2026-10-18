@@ -3,7 +3,9 @@
 // fields survive: colors go through the same allowlists the MCP tools use,
 // numbers are coerced to finite values and strings are capped. Invalid values
 // fall back to a default instead of rejecting the whole save.
-const { NOTE_COLORS, CARD_COLORS, MAX_BOARD_ITEMS, MAX_ITEM_SIZE } = require('./mcp/whiteboard');
+const {
+  NOTE_COLORS, CARD_COLORS, EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS, MAX_BOARD_ITEMS, MAX_ITEM_SIZE,
+} = require('./mcp/whiteboard');
 
 const MAX_STROKES = 5000;
 const MAX_PATH_LEN = 200000;
@@ -77,7 +79,16 @@ function sanitizeNote(n) {
 function sanitizeEdge(e) {
   if (!validId(e.fromId) || !validId(e.toId)) return null;
   const out = { id: e.id, fromId: e.fromId, toId: e.toId };
+  // Optional endpoint/port of a target node each end points at.
+  for (const key of ['fromEp', 'toEp', 'fromPort', 'toPort']) {
+    if (validId(e[key])) out[key] = e[key];
+  }
   setIf(out, 'label', str(e.label, 500));
+  // Style fields have no default worth storing: an invalid value is dropped
+  // and the browser draws the default (solid, arrow at the end, theme color).
+  if (EDGE_STYLES.includes(e.style)) out.style = e.style;
+  if (EDGE_ARROWS.includes(e.arrow)) out.arrow = e.arrow;
+  if (EDGE_COLORS.includes(e.color)) out.color = e.color;
   setIf(out, 'created_by', str(e.created_by, 50));
   return out;
 }

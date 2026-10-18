@@ -942,24 +942,39 @@ test('whiteboard additions keep existing items intact and consecutive batches do
   const firstRight = Math.max(...a.data.added.cards.map(c => c.x + 240), ...a.data.added.notes.map(n => n.x + 170));
   assert.ok(b.data.added.notes[0].x >= firstRight, 'second batch starts right of the first');
 
-  // Flechas: entre nodo y tarjeta sí; a una nota no; repetida se saltea.
+  // Flechas: entre nodo y tarjeta sí, también a una nota; repetida (en
+  // cualquier sentido) se saltea.
   const humanCard = '22222222-2222-4222-8222-222222222222';
   const c1 = await callTool(ownerToken.token, 'connect_whiteboard_items', {
-    project_id: project.id, edges: [{ from_id: card.id, to_id: target.id }, { from_id: target.id, to_id: card.id, label: 'expone' }],
+    project_id: project.id, edges: [{ from_id: card.id, to_id: target.id }, { from_id: target.id, to_id: humanCard, label: 'expone' }],
   });
   assert.equal(c1.isError, false, c1.text);
   assert.equal(c1.data.skipped.length, 1, 'card→target already existed (auto-linked)');
   assert.equal(c1.data.added.length, 1);
-  const toNote = await callTool(ownerToken.token, 'connect_whiteboard_items', {
-    project_id: project.id, edges: [{ from_id: humanCard, to_id: a.data.added.notes[0].id }],
+  const reverse = await callTool(ownerToken.token, 'connect_whiteboard_items', {
+    project_id: project.id, edges: [{ from_id: target.id, to_id: card.id }, { from_id: humanCard, to_id: target.id }],
   });
-  assert.equal(toNote.isError, true);
-  assert.match(toNote.text, /sticky note/);
+  assert.equal(reverse.isError, false, reverse.text);
+  assert.equal(reverse.data.added.length, 0, 'B→A is the same connection as A→B');
+  assert.deepEqual(reverse.data.skipped.map(x => x.reason), ['connection already exists', 'connection already exists']);
+  const noteId = a.data.added.notes[0].id;
+  const toNote = await callTool(ownerToken.token, 'connect_whiteboard_items', {
+    project_id: project.id, edges: [{ from_id: humanCard, to_id: noteId, style: 'dashed', arrow: 'both', color: '#43a047' }],
+  });
+  assert.equal(toNote.isError, false, toNote.text);
+  assert.deepEqual(
+    [toNote.data.added[0].to_id, toNote.data.added[0].style, toNote.data.added[0].arrow, toNote.data.added[0].color],
+    [noteId, 'dashed', 'both', '#43a047']
+  );
 
   const summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
   assert.equal(summary.data.nodes[0].host, 'app.example.com');
   assert.equal(summary.data.notes.length, 4);
-  assert.equal(summary.data.edges.length, 2);
+  assert.equal(summary.data.edges.length, 3);
+  const noteEdge = summary.data.edges.find(e => e.to_id === noteId);
+  assert.deepEqual([noteEdge.style, noteEdge.arrow, noteEdge.color], ['dashed', 'both', '#43a047']);
+  const plain = summary.data.edges.find(e => e.from_id === card.id);
+  assert.deepEqual([plain.style, plain.arrow, plain.color, plain.from_endpoint_id], ['solid', 'end', null, null]);
 });
 
 test('whiteboard items can be sized on creation, sizes are clamped and reported, and sized batches do not overlap', async () => {
@@ -1036,4 +1051,69 @@ test('whiteboard additions on a project without a board create it, and foreign l
   const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
   assert.equal(wb.data.notes.length, 1);
   assert.deepEqual(wb.data.nodes, []);
+});
+
+test('whiteboard arrows can anchor on a target endpoint or port; foreign or mismatched ones and bad styles are refused', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const t2 = await createTarget(owner.accessToken, project.id, { host: 'api.example.com' });
+  const other = await createProject(owner.accessToken);
+  await enableClaudeCode(owner.accessToken, other.id);
+  const foreignT = await createTarget(owner.accessToken, other.id, { host: 'foreign.example.com' });
+
+  const ep = (await callTool(ownerToken.token, 'add_endpoints', { project_id: project.id, target_id: target.id, endpoints: [{ path: '/login', method: 'POST' }] })).data.added[0].id;
+  const ep2 = (await callTool(ownerToken.token, 'add_endpoints', { project_id: project.id, target_id: t2.id, endpoints: [{ path: '/v1' }] })).data.added[0].id;
+  const port = (await callTool(ownerToken.token, 'add_ports', { project_id: project.id, target_id: t2.id, ports: [{ port: 443 }] })).data.added[0].id;
+  const foreignEp = (await callTool(ownerToken.token, 'add_endpoints', { project_id: other.id, target_id: foreignT.id, endpoints: [{ path: '/x' }] })).data.added[0].id;
+
+  const added = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id, nodes: [{ target_id: target.id }, { target_id: t2.id }], notes: [{ text: 'Credenciales' }],
+  });
+  assert.equal(added.isError, false, added.text);
+  const noteId = added.data.added.notes[0].id;
+  const { rows: [before] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+
+  const connect = edges => callTool(ownerToken.token, 'connect_whiteboard_items', { project_id: project.id, edges });
+  // Endpoint de otro proyecto, endpoint de otro target, endpoint en una nota.
+  for (const edges of [
+    [{ from_id: target.id, from_endpoint_id: foreignEp, to_id: noteId }],
+    [{ from_id: target.id, from_endpoint_id: ep2, to_id: noteId }],
+    [{ from_id: noteId, from_endpoint_id: ep, to_id: target.id }],
+    [{ from_id: target.id, from_endpoint_id: ep, from_port_id: port, to_id: noteId }],
+  ]) {
+    const r = await connect(edges);
+    assert.equal(r.isError, true, JSON.stringify(edges));
+  }
+  // Un style fuera de la lista lo rechaza el schema, sin escribir nada.
+  const badStyle = await connect([{ from_id: target.id, to_id: noteId, style: 'wavy' }]);
+  assert.equal(badStyle.isError, true);
+  const badColor = await connect([{ from_id: target.id, to_id: noteId, color: 'red;x' }]);
+  assert.equal(badColor.isError, true);
+  const { rows: [unchanged] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  assert.deepEqual(unchanged.data.edges, before.data.edges);
+
+  const ok = await connect([
+    { from_id: target.id, from_endpoint_id: ep, to_id: t2.id, to_port_id: port, label: 'pivot' },
+    { from_id: noteId, to_id: target.id, to_endpoint_id: ep },
+    // Mismo par sin endpoint: es otra conexión (al nodo, no a la fila).
+    { from_id: noteId, to_id: target.id },
+  ]);
+  assert.equal(ok.isError, false, ok.text);
+  assert.equal(ok.data.added.length, 3);
+  assert.equal(ok.data.added[0].from_endpoint_id, ep);
+  assert.equal(ok.data.added[0].to_port_id, port);
+
+  // Al revés y con los mismos endpoints: duplicada.
+  const dup = await connect([
+    { from_id: t2.id, from_port_id: port, to_id: target.id, to_endpoint_id: ep },
+    { from_id: target.id, from_endpoint_id: ep, to_id: noteId },
+  ]);
+  assert.equal(dup.data.added.length, 0);
+  assert.equal(dup.data.skipped.length, 2);
+
+  const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  const stored = wb.data.edges.find(e => e.label === 'pivot');
+  assert.deepEqual([stored.fromId, stored.fromEp, stored.toId, stored.toPort], [target.id, ep, t2.id, port]);
+  const summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
+  const s = summary.data.edges.find(e => e.label === 'pivot');
+  assert.deepEqual([s.from_endpoint_id, s.to_port_id, s.to_endpoint_id], [ep, port, null]);
 });
