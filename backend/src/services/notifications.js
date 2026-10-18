@@ -1,6 +1,7 @@
 const db = require('../db');
 const ws = require('./ws');
 const { userBelongsToProject } = require('./ownership');
+const { WRITER_ROLES } = require('../middleware/project');
 
 /**
  * Create one notification per recipient and push each live to its recipient.
@@ -47,4 +48,47 @@ async function notify({ recipients, actor, projectId, type, entityType, entityId
   return created;
 }
 
-module.exports = { notify };
+// Ids de quienes pueden aprobar trabajo en el proyecto: el mismo rol
+// efectivo que calcula findProjectForUser (middleware/project.js) — la
+// membership directa gana; si no hay, owner/admin de la organización mapean
+// a owner/editor — filtrado por WRITER_ROLES. Las cuentas viewer (el
+// cliente) quedan afuera: nunca ven propuestas de IA.
+async function projectWriterIds(projectId) {
+  const { rows } = await db.query(
+    `SELECT pm.user_id AS id
+     FROM project_members pm
+     WHERE pm.project_id = $1 AND pm.role = ANY($2)
+     UNION
+     SELECT om.user_id
+     FROM projects p
+     JOIN organization_members om ON om.organization_id = p.organization_id AND om.role IN ('owner','admin')
+     WHERE p.id = $1
+       AND NOT EXISTS (SELECT 1 FROM project_members x WHERE x.project_id = p.id AND x.user_id = om.user_id)`,
+    [projectId, WRITER_ROLES]
+  );
+  return rows.map(r => r.id);
+}
+
+// Avisos que no los dispara una persona sino la IA (Claude Code, AI Agent):
+// van a TODOS los writers, incluido quien inició el trabajo — él también
+// tiene que revisar. Por eso no hay actor humano (notify() siempre descarta
+// al actor); el origen viaja en payload.source. Fire-and-forget: nunca
+// rechaza, así que el caller no puede romperse por un aviso que falló.
+async function notifyProjectWriters({ projectId, type, entityType, entityId, payload }) {
+  try {
+    const recipients = await projectWriterIds(projectId);
+    if (!recipients.length) return [];
+    // El nombre del proyecto va en el payload como en el resto de los avisos
+    // (la campana lo muestra debajo del texto).
+    const { rows } = await db.query('SELECT name FROM projects WHERE id = $1', [projectId]);
+    return await notify({
+      recipients, actor: null, projectId, type, entityType, entityId,
+      payload: { ...payload, project_name: rows[0]?.name || null },
+    });
+  } catch (err) {
+    console.error('Notification error:', err.message);
+    return [];
+  }
+}
+
+module.exports = { notify, notifyProjectWriters, projectWriterIds };

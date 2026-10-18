@@ -112,7 +112,7 @@ function actionLabel(action, entityType, entityName, meta) {
         ? `<span style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--a);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 7px;margin-left:6px;display:inline-flex;align-items:center;gap:3px" title="Propuesto por el AI Agent">${icon('sparkles',{size:10})}AI</span>`
         : '');
     case 'vuln_deleted':  return `deleted ${name}`;
-    case 'target_added': return `added target ${name}`
+    case 'target_added': return `added target ${name}` + (meta?.via === 'claude-code' ? ` (proposed by Claude Code, ${meta?.scope === 'in' ? 'in scope' : 'out of scope'})` : '');
     case 'target_removed': return `deleted target ${name}`
     case 'target_updated': return `updated target ${name}`
     case 'task_created':   return `created task ${name}` + (meta?.assignee ? ` for <span class="hl">${esc(meta.assignee)}</span>` : '');
@@ -131,7 +131,16 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'portal_link_revoked': return `revoked the client portal link for ${name}`;
     // Propuestas que llegan por el servidor MCP (Claude Code del pentester).
     case 'claude_code_proposed':
-      return meta?.kind === 'note' ? `proposed a note on ${name} via Claude Code` : `proposed finding ${name} via Claude Code`;
+      if (meta?.kind === 'note')   return `proposed a note on ${name} via Claude Code`;
+      if (meta?.kind === 'target') return `proposed target ${name} via Claude Code`;
+      return `proposed finding ${name} via Claude Code`;
+    // Altas directas de Claude Code (sin aprobación): un evento por lote.
+    case 'claude_code_ports_added':
+      return `added ${meta?.count || 0} port${meta?.count === 1 ? '' : 's'} to ${name} via Claude Code`;
+    case 'claude_code_endpoints_added':
+      return `added ${meta?.count || 0} endpoint${meta?.count === 1 ? '' : 's'} to ${name} via Claude Code`;
+    case 'claude_code_whiteboard_added':
+      return `added ${meta?.count || 0} item${meta?.count === 1 ? '' : 's'} to the whiteboard via Claude Code`;
     case 'claude_code_proposal_approved': return `approved a Claude Code note on ${name}`;
     case 'claude_code_proposal_rejected': return `rejected the Claude Code proposal ${name}`;
     case 'claude_code_proposal_updated':  return `updated the Claude Code proposal ${name}`;

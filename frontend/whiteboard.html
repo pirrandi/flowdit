@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Whiteboard</title>
-<link rel="stylesheet" href="css/main.css?v=3">
+<link rel="stylesheet" href="css/main.css?v=9">
 <link rel="stylesheet" href="css/transitions.css?v=3">
 <link rel="expect" href="#fd-document-end" blocking="render">
 <link rel="icon" type="image/x-icon" href="img/favicon.ico">
@@ -211,6 +211,10 @@
   .wb-card-text[contenteditable="true"] { white-space: pre-wrap; }
   .wb-card-text:empty::before { content: attr(data-placeholder); color: var(--t4); font-style: italic; }
   .wb-card-hint     { font-size: 9px; color: var(--t4); margin-top: 5px; font-family: var(--mono); }
+  /* Ítems agregados por Claude Code (servidor MCP) */
+  .wb-card-ref      { font-size: 10px; color: var(--t3); font-family: var(--mono); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wb-cc-tag        { color: var(--a); font-weight: 600; }
+  .wb-sticky-by     { font-size: 9px; font-family: var(--mono); opacity: .6; padding: 0 8px 4px; text-align: right; }
   /* Markdown rendered inside card body */
   .wb-card-text p   { margin: 0 0 4px; }
   .wb-card-text p:last-child { margin-bottom: 0; }
@@ -427,15 +431,15 @@
 
 <script src="js/data.js?v=3"></script>
 <script src="js/services/state.js?v=3"></script>
-<script src="js/services/api.js?v=3"></script>
+<script src="js/services/api.js?v=4"></script>
 <script src="js/services/ws.js?v=3"></script>
 <script src="js/services/icons.js?v=3"></script>
-<script src="js/services/utils.js?v=3"></script>
+<script src="js/services/utils.js?v=4"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/whiteboard.js?v=3"></script>
-<script src="js/components/notifications.js?v=3"></script>
-<script src="js/page.js?v=3"></script>
+<script src="js/views/whiteboard.js?v=4"></script>
+<script src="js/components/notifications.js?v=4"></script>
+<script src="js/page.js?v=4"></script>
 <script>
 function pageInit() {
   initWhiteboard();

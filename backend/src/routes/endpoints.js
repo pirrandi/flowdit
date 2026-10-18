@@ -59,7 +59,7 @@ router.post('/', requireWriter, [
       entityType: 'endpoint',
       entityId:   rows[0].id,
       entityName: `${method} ${t[0]?.host}${path}`,
-      meta:       { interesting, status_code },
+      meta:       { interesting, status_code, target_id: req.params.targetId },
     });
     res.status(201).json(rows[0]);
   } catch (err) {

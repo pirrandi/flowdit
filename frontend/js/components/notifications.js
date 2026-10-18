@@ -10,13 +10,18 @@ const NOTIF_TEXT = {
   task_assigned: (actor, title) => `<strong>${actor}</strong> te asignó la tarea <span class="hl">${title}</span>`,
   task_comment:  (actor, title) => `<strong>${actor}</strong> comentó en <span class="hl">${title}</span>`,
   task_done:     (actor, title) => `<strong>${actor}</strong> completó <span class="hl">${title}</span>`,
+  // Avisos de la IA: no hay actor humano (llegan también a quien inició el
+  // trabajo), el "actor" es la fuente fija.
+  ai_finding_proposed: (_, title) => `<strong>Claude Code</strong> propuso el hallazgo <span class="hl">${title}</span>`,
+  ai_finding_gate:     (_, title) => `<strong>AI Agent</strong> espera aprobación para <span class="hl">${title}</span>`,
+  ai_target_proposed:  (_, title) => `<strong>Claude Code</strong> propuso el target <span class="hl">${title}</span>`,
 };
 
 // Every interpolated value is user-controlled (usernames, task titles) and
 // goes through esc() before reaching innerHTML.
 function notifText(n) {
   const actor = esc(displayName(n, 'actor_', 'Alguien'));
-  const title = esc(n.payload?.task_title || '');
+  const title = esc(n.payload?.task_title || n.payload?.finding_title || n.payload?.target_host || '');
   const fn = NOTIF_TEXT[n.type];
   return fn ? fn(actor, title) : `Nueva notificación de <strong>${actor}</strong>`;
 }
@@ -30,6 +35,11 @@ function notifPlainText(n) {
 function notifHref(n) {
   if (n.entity_type === 'task' && n.project_id && n.entity_id)
     return `tasks?pid=${encodeURIComponent(n.project_id)}&task=${encodeURIComponent(n.entity_id)}`;
+  // El inbox de propuestas vive arriba de todo en la página de Findings.
+  if (n.entity_type === 'mcp_proposal' && n.project_id)
+    return `vulns?pid=${encodeURIComponent(n.project_id)}`;
+  if (n.entity_type === 'ai_scan_session' && n.project_id)
+    return `ai-agent?pid=${encodeURIComponent(n.project_id)}`;
   return null;
 }
 

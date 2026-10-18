@@ -23,6 +23,13 @@ let _eraserRing;
 // Search
 let _searchQuery = '';
 
+// Ids que ESTA pestaña vio borrar (local o remoto) en la sesión. Al
+// reconectar el socket se re-lee el tablero del servidor y se suma lo que
+// falte (lo que agregaron otros o Claude Code mientras no llegaban los
+// patches); esto evita resucitar lo que acá ya se borró.
+const _removedIds = new Set();
+let _wbReady = false;
+
 // Edges / connect mode
 let _edgeSvg;
 let _connectFrom    = null;  // nodeId of first selected node in connect mode
@@ -89,8 +96,13 @@ async function initWhiteboard() {
   } else {
     wbData.strokes = saved.strokes || [];
     wbData.notes   = saved.notes   || [];
+    // Tarjetas y flechas también: Claude Code puede haber agregado tarjetas
+    // a un tablero que todavía no tenía nodos, y este primer guardado las
+    // borraba.
+    wbData.cards   = saved.cards   || [];
+    wbData.edges   = saved.edges   || [];
     wbData.view    = saved.view    || { panX: 0, panY: 0, zoom: 1 };
-    _autoLayout(state.targets);
+    _autoLayout(state.targets, _itemsBottom());
     scheduleSave();
   }
 
@@ -99,6 +111,7 @@ async function initWhiteboard() {
   _wireEvents();
   _wireKeyboard();
   _wireWs();
+  _wbReady = true;
 }
 
 // ── Remote data loading ────────────────────────────────────────────────
@@ -125,12 +138,22 @@ async function _loadPortsAndEndpoints(pid, targets) {
   }
 }
 
-function _autoLayout(targets) {
+// Borde inferior de las notas/tarjetas existentes (80 si no hay), para que
+// el auto-layout inicial de nodos no las tape.
+function _itemsBottom() {
+  const bottoms = [
+    ...wbData.notes.map(n => n.y + 100),
+    ...wbData.cards.map(c => c.y + (c.h || 110)),
+  ].filter(Number.isFinite);
+  return bottoms.length ? Math.max(...bottoms) + 50 : 80;
+}
+
+function _autoLayout(targets, top = 80) {
   const cols = 3, nodeW = 290, nodeH = 380, gapX = 60, gapY = 50;
   wbData.nodes = targets.map((t, i) => ({
     id:        t.id,
     x:         80 + (i % cols) * (nodeW + gapX),
-    y:         80 + Math.floor(i / cols) * (nodeH + gapY),
+    y:         top + Math.floor(i / cols) * (nodeH + gapY),
     collapsed: false,
   }));
 }
@@ -329,6 +352,7 @@ function wbToggleCollapse(targetId) {
 }
 
 function wbRemoveNode(targetId) {
+  _removedIds.add(targetId);
   wbData.nodes = wbData.nodes.filter(n => n.id !== targetId);
   _nl.querySelector(`[data-node-id="${targetId}"]`)?.remove();
   // Remove all edges connected to this node
@@ -365,9 +389,10 @@ function _buildCard(cardData) {
       <span class="wb-card-rm">×</span>
     </div>
     <div class="wb-card-body">
+      ${cardData.ref ? `<div class="wb-card-ref" title="${esc(cardData.ref.type)}">↳ ${esc(cardData.ref.label || '')}</div>` : ''}
       <div class="wb-card-text" data-text contenteditable="false"
            data-placeholder="Double-click to add notes…">${renderMd(cardData.body)}</div>
-      <div class="wb-card-hint">dbl-click to edit · drag header to move</div>
+      <div class="wb-card-hint">${cardData.created_by === 'claude_code' ? '<span class="wb-cc-tag">Claude Code</span> · ' : ''}dbl-click to edit · drag header to move</div>
     </div>`;
 
   const titleEl = el.querySelector('[data-title]');
@@ -540,6 +565,7 @@ function _addCard(x, y) {
 }
 
 function wbRemoveCard(id) {
+  _removedIds.add(id);
   wbData.cards = wbData.cards.filter(c => c.id !== id);
   _nl.querySelector(`[data-node-id="${id}"]`)?.remove();
   wbData.edges
@@ -701,6 +727,7 @@ function _addEdge(fromId, toId) {
 }
 
 function _removeEdge(edgeId) {
+  _removedIds.add(edgeId);
   wbData.edges = wbData.edges.filter(e => e.id !== edgeId);
   _edgeSvg.querySelector(`[data-edge-id="${edgeId}"]`)?.remove();
   if (_selectedEdgeId === edgeId) _selectedEdgeId = null;
@@ -866,7 +893,8 @@ function _buildNote(noteData) {
       <div class="wb-sticky-colors">${colorDots}</div>
       <span class="wb-sticky-rm">×</span>
     </div>
-    <div class="wb-sticky-text" data-text contenteditable="false">${esc(noteData.text || '')}</div>`;
+    <div class="wb-sticky-text" data-text contenteditable="false">${esc(noteData.text || '')}</div>
+    ${noteData.created_by === 'claude_code' ? '<div class="wb-sticky-by">Claude Code</div>' : ''}`;
 
   const textEl = el.querySelector('[data-text]');
 
@@ -954,6 +982,7 @@ function _addNote(wx, wy) {
 }
 
 function wbRemoveNote(id) {
+  _removedIds.add(id);
   wbData.notes = wbData.notes.filter(n => n.id !== id);
   _nl.querySelector(`[data-note-id="${id}"]`)?.remove();
   _broadcast({ op: 'note_remove', noteId: id });
@@ -1264,6 +1293,8 @@ function _wireKeyboard() {
 function _wireWs() {
   wsClient.on('wb:cursor', _handleRemoteCursor);
   wsClient.on('wb:patch',  _handleRemotePatch);
+  // 'connected' se emite en cada auth_ok, también al reconectar.
+  wsClient.on('connected', _resyncFromServer);
   // Remove cursor when user goes offline
   wsClient.on('presence', ({ online = [] }) => {
     const onlineIds = new Set(online.map(u => u.id));
@@ -1322,8 +1353,60 @@ function _memberColor(userId) {
   return m?.avatar_color || '#7c3aed';
 }
 
+// Suma ítems que no están en wbData (por id) ni se borraron acá. Devuelve
+// cuántos agregó. Compartido por el patch 'items_add' del servidor y por la
+// re-lectura al reconectar.
+// `explicit`: altas nuevas del servidor (items_add). Un nodo de target usa el
+// id del target, así que si acá se había quitado ese nodo y Claude Code lo
+// vuelve a agregar, es un alta nueva y se respeta.
+async function _mergeItems({ nodes = [], cards = [], notes = [], edges = [] }, { explicit = false } = {}) {
+  const fresh = (list, item) => item?.id && (explicit || !_removedIds.has(item.id)) && !list.some(x => x.id === item.id);
+  if (explicit) [...nodes, ...cards, ...notes, ...edges].forEach(it => it?.id && _removedIds.delete(it.id));
+  let n = 0;
+  // Un nodo de un target que esta pestaña todavía no conoce (agregado
+  // después de cargarla): se recargan los targets para poder dibujarlo.
+  const newNodes = nodes.filter(nd => fresh(wbData.nodes, nd));
+  if (newNodes.some(nd => !state.targets.find(t => t.id === nd.id))) {
+    try { state.targets = await api.targets.list(state.currentProject.id); } catch {}
+  }
+  const missing = newNodes.map(nd => state.targets.find(t => t.id === nd.id)).filter(Boolean);
+  if (missing.length) await _loadPortsAndEndpoints(state.currentProject.id, missing);
+  newNodes.forEach(nd => {
+    if (!fresh(wbData.nodes, nd)) return; // llegó por otro lado mientras se esperaba
+    wbData.nodes.push(nd);
+    const t = state.targets.find(t => t.id === nd.id);
+    if (t) _nl.appendChild(_buildNode(nd, t));
+    n++;
+  });
+  cards.filter(c => fresh(wbData.cards, c)).forEach(c => { wbData.cards.push(c); _nl.appendChild(_buildCard(c)); n++; });
+  notes.filter(x => fresh(wbData.notes, x)).forEach(x => { wbData.notes.push(x); _nl.appendChild(_buildNote(x)); n++; });
+  edges.filter(e => fresh(wbData.edges, e)).forEach(e => { wbData.edges.push(e); _renderEdge(e); n++; });
+  if (n) _updateAllEdges();
+  return n;
+}
+
+// Re-lectura al reconectar: los patches que se emitieron con el socket
+// caído no llegan nunca, y el próximo autosave (PUT del blob entero) los
+// borraría del servidor.
+async function _resyncFromServer() {
+  if (!_wbReady) return;
+  try {
+    const res = await api.whiteboard.get(state.currentProject.id);
+    const n = await _mergeItems(res.data || {});
+    if (n) scheduleSave();
+  } catch {}
+}
+
 function _handleRemotePatch(msg) {
   switch (msg.op) {
+    // Altas que hizo el servidor (Claude Code vía MCP), ya guardadas en la
+    // base. Se mezclan en wbData y se agenda un guardado: así un autosave de
+    // esta pestaña que viajaba con datos viejos (un PUT en vuelo cuando
+    // Claude Code escribió) no deja al servidor sin estos ítems. No entran
+    // al undo: no son acciones locales.
+    case 'items_add':
+      _mergeItems(msg, { explicit: true }).then(n => { if (n) scheduleSave(); });
+      break;
     case 'node_move': {
       const nd = wbData.nodes.find(n => n.id === msg.nodeId);
       if (!nd) return;
@@ -1356,6 +1439,7 @@ function _handleRemotePatch(msg) {
       break;
     }
     case 'node_remove':
+      _removedIds.add(msg.nodeId);
       wbData.nodes = wbData.nodes.filter(n => n.id !== msg.nodeId);
       _nl.querySelector(`[data-node-id="${msg.nodeId}"]`)?.remove();
       wbData.edges = wbData.edges.filter(e => {
@@ -1416,6 +1500,7 @@ function _handleRemotePatch(msg) {
       break;
     }
     case 'note_remove':
+      _removedIds.add(msg.noteId);
       wbData.notes = wbData.notes.filter(n => n.id !== msg.noteId);
       _nl.querySelector(`[data-note-id="${msg.noteId}"]`)?.remove();
       break;
@@ -1426,6 +1511,7 @@ function _handleRemotePatch(msg) {
       }
       break;
     case 'edge_remove':
+      _removedIds.add(msg.edgeId);
       wbData.edges = wbData.edges.filter(e => e.id !== msg.edgeId);
       _edgeSvg.querySelector(`[data-edge-id="${msg.edgeId}"]`)?.remove();
       if (_selectedEdgeId === msg.edgeId) _selectedEdgeId = null;
@@ -1447,6 +1533,7 @@ function _handleRemotePatch(msg) {
       }
       break;
     case 'card_remove':
+      _removedIds.add(msg.cardId);
       wbData.cards = wbData.cards.filter(c => c.id !== msg.cardId);
       _nl.querySelector(`[data-node-id="${msg.cardId}"]`)?.remove();
       wbData.edges = wbData.edges.filter(e => {

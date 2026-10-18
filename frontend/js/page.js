@@ -55,6 +55,7 @@ function _saveShellSnapshot() {
     },
     pct: total ? Math.round(done / total * 100) : 0,
     aiBadge: state.navAiBadge || null,
+    proposalsBadge: !!state.navProposalsBadge,
   };
   try { sessionStorage.setItem(SHELL_SNAPSHOT_KEY, JSON.stringify(snap)); } catch {}
 }
@@ -71,6 +72,7 @@ function _paintShellFromSnapshot() {
   if (wantedPid !== snap.project.id) return false;
   _shellSnap = { user, project: snap.project, pct: snap.pct };
   if (state.navAiBadge == null) state.navAiBadge = snap.aiBadge || null;
+  if (state.navProposalsBadge == null) state.navProposalsBadge = !!snap.proposalsBadge;
   renderTopbar();
   renderSidenav();
   mountAiChat();
@@ -146,6 +148,7 @@ async function bootPage(viewName) {
   if (typeof pageInit === 'function') pageInit();
   refreshTopbarProgress();
   initNavAiBadge(); // no await — punto vivo en "AI Agent" del nav, visible desde cualquier página
+  initNavProposalsBadge(); // no await — punto en "Findings" si hay propuestas de IA pendientes
   if (typeof initNotifications === 'function') initNotifications(); // no await — badge de la campana
 }
 
@@ -195,6 +198,37 @@ function setNavAiBadge(status) {
 // badge refleja la última que emitió un evento, no un agregado de todas.
 wsClient.on('ai_scan:event', (msg) => {
   setNavAiBadge(['running', 'waiting_approval'].includes(msg.status) ? msg.status : null);
+});
+
+// ── Punto de propuestas en "Findings" ─────────────────────────────
+// Claude Code deja hallazgos como propuestas pendientes (mcp_proposals) que
+// solo se ven en el inbox de la página de Findings: sin este punto nadie se
+// entera hasta entrar ahí. Mismo esquema que el badge del AI Agent: chequeo
+// inicial por REST + vivo por WS (mcp_proposals:changed trae la cantidad
+// pendiente), persistido en state y en el snapshot del shell.
+async function initNavProposalsBadge() {
+  if (!state.currentProject) return;
+  try {
+    const pending = await api.mcpProposals.list(state.currentProject.id);
+    setNavProposalsBadge(pending.length);
+  } catch {}
+}
+
+function setNavProposalsBadge(pending) {
+  state.navProposalsBadge = pending > 0;
+  _saveShellSnapshot();
+  const badge = document.getElementById('nav-proposals-badge');
+  if (!badge) return;
+  badge.style.display = state.navProposalsBadge ? 'inline-block' : 'none';
+  badge.title = state.navProposalsBadge
+    ? `${pending} propuesta${pending > 1 ? 's' : ''} de IA pendiente${pending > 1 ? 's' : ''} de revisión`
+    : '';
+}
+
+wsClient.on('mcp_proposals:changed', (msg) => {
+  setNavProposalsBadge(Number(msg.pending) || 0);
+  // Con la página de Findings abierta, el inbox se refresca solo.
+  if (typeof renderClaudeProposals === 'function') renderClaudeProposals();
 });
 
 // ── PROJECT LOADING ───────────────────────────────────────────────
@@ -360,7 +394,10 @@ function renderSidenav() {
       const badgeStatus = state.navAiBadge;
       const aiBadge = item.href.split('?')[0] === 'ai-agent'
         ? `<span class="nav-ai-badge${badgeStatus ? ' '+badgeStatus : ''}" id="nav-ai-badge" style="${badgeStatus ? '' : 'display:none'}"></span>` : '';
-      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${navIcon}<span>${item.label}</span>${aiBadge}</a>`;
+      // Punto de propuestas de IA pendientes — ver setNavProposalsBadge().
+      const proposalsBadge = item.href.split('?')[0] === 'vulns'
+        ? `<span class="nav-ai-badge waiting" id="nav-proposals-badge" style="${state.navProposalsBadge ? '' : 'display:none'}"></span>` : '';
+      html += `<a href="${item.href}" class="nav-item ${active?'active':''}">${navIcon}<span>${item.label}</span>${aiBadge}${proposalsBadge}</a>`;
     });
   });
   html += `</div>`;
@@ -957,8 +994,68 @@ async function doLogout() {
 }
 
 // ── WEBSOCKET EVENTS ──────────────────────────────────────────────
+// Lista de hallazgos en vivo: cualquier alta/cambio/baja de un custom_vuln
+// (de otro miembro, de una propuesta de Claude Code aprobada o del AI
+// Agent) re-pide GET /vulns. Llega por dos lados: el evento de Activity
+// (entity_type 'custom_vuln') y 'vulns:changed' para los caminos que no van
+// al feed. Debounce porque un mismo cambio puede disparar los dos, o el
+// agente crear varios seguidos. Incluye eventos propios: un hallazgo del
+// agente aprobado por mí tampoco existe todavía en esta pestaña.
+let _vulnsRefreshTimer = null;
+function scheduleVulnsRefresh() {
+  if (!state.currentProject) return;
+  clearTimeout(_vulnsRefreshTimer);
+  _vulnsRefreshTimer = setTimeout(async () => {
+    const pid = state.currentProject?.id;
+    if (!pid) return;
+    try {
+      const vulns = await api.vulns.list(pid);
+      if (state.currentProject?.id !== pid) return;
+      state.customVulns = vulns;
+    } catch { return; }
+    // renderCustomVulns() conserva el drawer: en vista lo redibuja con los
+    // datos nuevos (scroll y borrador de notas incluidos), en edición no lo toca.
+    if (state.currentView === 'custom' && typeof renderCustomVulns === 'function') renderCustomVulns();
+    if (typeof updateDashboard === 'function') updateDashboard();
+  }, 300);
+}
+
+wsClient.on('vulns:changed', scheduleVulnsRefresh);
+
+// Lo mismo para targets / puertos / endpoints. Eventos propios se ignoran
+// (esta pestaña ya se actualizó sola) salvo los de Claude Code, que actúa
+// con la cuenta del dueño del token pero no pasó por esta pestaña.
+const _targetsRefreshIds = new Set();
+let _targetsRefreshTimer = null;
+function scheduleTargetsRefresh(targetId) {
+  if (!state.currentProject) return;
+  if (targetId) _targetsRefreshIds.add(targetId);
+  clearTimeout(_targetsRefreshTimer);
+  _targetsRefreshTimer = setTimeout(async () => {
+    const pid = state.currentProject?.id;
+    const ids = [..._targetsRefreshIds];
+    _targetsRefreshIds.clear();
+    if (!pid) return;
+    try {
+      const targets = await api.targets.list(pid);
+      if (state.currentProject?.id !== pid) return;
+      state.targets = targets;
+    } catch { return; }
+    if (state.currentView === 'targets' && typeof refreshTargetsLive === 'function') {
+      if (!ids.length) refreshTargetsLive(null);
+      else ids.forEach(id => refreshTargetsLive(id));
+    }
+    if (typeof updateDashboard === 'function') updateDashboard();
+  }, 300);
+}
+
 wsClient.on('activity', (event) => {
   prependActivity(event);
+  if (event.entity_type === 'custom_vuln') scheduleVulnsRefresh();
+  if (['target', 'port', 'endpoint'].includes(event.entity_type)
+      && (event.user?.id !== state.user?.id || event.meta?.via === 'claude-code')) {
+    scheduleTargetsRefresh(event.entity_type === 'target' ? event.entity_id : event.meta?.target_id);
+  }
   if (event.user?.id !== state.user?.id) {
     const label = actionLabel(event.action, event.entity_type, event.entity_name, event.meta)
       .replace(/<[^>]+>/g, '');

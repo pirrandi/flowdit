@@ -425,3 +425,59 @@ test('reasoning_content from a thinking model is sent back with its tool call', 
   assert.equal(toOpenAIMessages([assistantCall])[0].reasoning_content, 'I should list the scope first.');
   assert.equal(toOpenAIMessages([{ role: 'assistant', toolCalls: [{ id: '1', name: 'x', input: {} }] }])[0].reasoning_content, undefined);
 });
+
+// ── propose_finding en el gate avisa a los writers ───────────────────────
+test('a propose_finding waiting for approval notifies the writers, the starter included', async () => {
+  const { session, threadId, targetId, owner, project } = await setupSession({ autonomous: false });
+  // Un hallazgo solo llega al gate citando una respuesta real de la sesión:
+  // primero un fetch exitoso, después la propuesta que lo cita.
+  let n = 0;
+  const model = mock.method(ai, 'chatWithTools', async () => {
+    n++;
+    if (n === 1) return toolUse('fetch_endpoint', { target_id: targetId, path: '/api/orders/2' });
+    if (n === 2) {
+      const [res] = await events(session.id, 'tool.result');
+      return toolUse('propose_finding', {
+        name: 'IDOR on /api/orders', category: 'Access Control', severity: 'high', description: 'd',
+        target_id: targetId, evidence_refs: [`ev_${res.id}`],
+      });
+    }
+    return text('ok');
+  });
+  const http = mockHttp(async (url) => new URL(String(url)).pathname === '/api/orders/2'
+    ? new Response('{"order":2,"owner":"someone-else"}', { status: 200, headers: { 'content-type': 'application/json' } })
+    : new Response('Not Found', { status: 404, headers: { 'content-type': 'text/plain' } }));
+  try {
+    await agentLoop.advance(session.id, threadId);
+  } finally {
+    model.mock.restore();
+    http.mock.restore();
+  }
+  assert.equal(await threadStatus(threadId), 'waiting_approval');
+  const notif = await waitFor(async () => (await db.query(
+    `SELECT * FROM notifications WHERE type='ai_finding_gate' AND user_id=$1`, [owner.user.id]
+  )).rows[0], 'ai_finding_gate notification');
+  assert.equal(notif.entity_type, 'ai_scan_session');
+  assert.equal(notif.entity_id, session.id);
+  assert.equal(notif.project_id, project.id);
+  assert.equal(notif.payload.source, 'ai_agent');
+  assert.equal(notif.payload.finding_title, 'IDOR on /api/orders');
+  assert.equal(notif.payload.severity, 'high');
+});
+
+test('a gated HTTP tool does not raise an ai_finding_gate notification', async () => {
+  const { session, threadId, targetId } = await setupSession({ autonomous: false });
+  let n = 0;
+  const model = mock.method(ai, 'chatWithTools', async () => (++n === 1
+    ? toolUse('send_http_request', { target_id: targetId, method: 'POST', path: '/login' })
+    : text('ok')));
+  try {
+    await agentLoop.advance(session.id, threadId);
+  } finally {
+    model.mock.restore();
+  }
+  assert.equal(await threadStatus(threadId), 'waiting_approval');
+  await sleep(150);
+  const { rows } = await db.query(`SELECT 1 FROM notifications WHERE type='ai_finding_gate'`);
+  assert.equal(rows.length, 0);
+});

@@ -259,7 +259,7 @@ const api = {
   // Inbox de propuestas de Claude Code (hallazgos/notas pendientes de revisión).
   mcpProposals: {
     list:    (pid, status = 'pending') => request('GET',  `/projects/${pid}/mcp-proposals?status=${status}`),
-    approve: (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/approve`),
+    approve: (pid, id, body)           => request('POST', `/projects/${pid}/mcp-proposals/${id}/approve`, body),
     reject:  (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/reject`),
     // Capturas adjuntas como data URLs; el listado solo trae metadatos.
     evidence: (pid, id)                => request('GET',  `/projects/${pid}/mcp-proposals/${id}/evidence`),

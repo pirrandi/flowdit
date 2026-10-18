@@ -26,6 +26,7 @@ const { targetBelongsToProject } = require('../ownership');
 const { logUsage } = require('./usage');
 const activity = require('../activity');
 const mailer = require('../mailer');
+const { notifyProjectWriters } = require('../notifications');
 const pentestKnowledge = require('./pentestKnowledge');
 
 // Valor de arranque, ajustable — evita que un modelo (sobre todo uno local
@@ -998,6 +999,17 @@ async function advance(sessionId, threadId) {
         notifyNeedsAttention(session, project, attentionMessage(session, 'approval', { tool: tool.name }))
           .catch(err => console.error('notifyNeedsAttention failed:', err.message));
       }
+      // Un hallazgo propuesto (no las tools HTTP de nivel 2) es lo que el
+      // equipo tiene que revisar: campana para todos los writers, incluido
+      // quien arrancó la sesión. Vale también para sub-agentes: su
+      // propuesta espera la misma aprobación. Sin await y nunca rechaza.
+      if (tool.name === 'propose_finding') {
+        notifyProjectWriters({
+          projectId: session.project_id, type: 'ai_finding_gate',
+          entityType: 'ai_scan_session', entityId: session.id,
+          payload: { source: 'ai_agent', finding_title: input.name || '', severity: input.severity || null },
+        });
+      }
       return; // frena este thread — se retoma vía resolveGatedCall()
     }
 
@@ -1358,6 +1370,9 @@ async function createFindingFromProposal(projectId, input, approvedBy, sessionId
         entityId: rows[0].id, entityName: input.name, meta: { severity: input.severity, ai_generated: true },
       });
     }).catch(err => console.error('activity.log (finding del agente) failed:', err.message));
+  } else {
+    // Sin actor no hay evento de Activity: la lista se entera por acá.
+    ws.broadcastVulnsChanged(projectId);
   }
 
   return rows[0].id;
@@ -1438,6 +1453,9 @@ async function updateFindingFromProposal(projectId, input, approvedBy) {
         meta: { remediation_status: input.remediation_status, ai_generated: true },
       });
     }).catch(err => console.error('activity.log (remediación del agente) failed:', err.message));
+  } else {
+    // Cambio de campos sin evento de Activity: aviso silencioso a la lista.
+    ws.broadcastVulnsChanged(projectId);
   }
   return input.finding_id;
 }
@@ -1498,6 +1516,9 @@ async function resolveGatedCall(sessionId, callId, decision, userId, extra = {})
           `UPDATE custom_vulns SET http_proofs = COALESCE(http_proofs, '[]'::jsonb) || $1::jsonb WHERE id=$2 AND project_id=$3`,
           [JSON.stringify(proofs), extra.created_vuln_id, session.project_id]
         );
+        // Sin evento de Activity (el alta ya lo tuvo): aviso silencioso para
+        // que la lista abierta muestre los proofs recién agregados.
+        ws.broadcastVulnsChanged(session.project_id);
       }
       output = { decision: 'accepted', created_vuln_id: extra.created_vuln_id };
     } else {

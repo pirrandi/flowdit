@@ -1411,6 +1411,11 @@ let _ccProposals  = [];
 let _ccpOpenId    = null;  // propuesta abierta en el drawer
 let _ccpBusy      = false; // aprobación/rechazo en curso desde el drawer
 const _ccpEvidence = {};   // capturas ya descargadas, por id de propuesta
+// Scope elegido para cada propuesta de TARGET. Sin valor por defecto a
+// propósito: Claude Code no decide el alcance y aprobar sin elegir no se
+// puede (el backend también lo exige).
+const _ccpScope = {};
+const CCP_SCOPE_LABELS = { in: 'In scope', out: 'Out of scope' };
 
 const CCP_IMG_RE = /^data:image\/(png|jpeg|webp);base64,/;
 
@@ -1420,9 +1425,15 @@ function _ccpCanReview() {
 
 function _ccpTitle(pr) {
   const pl = pr.payload || {};
-  return pr.kind === 'finding'
-    ? esc(pl.title || 'Hallazgo sin título')
-    : `Nota en ${esc(pl.entity_name || pr.entity_type)}`;
+  if (pr.kind === 'finding') return esc(pl.title || 'Hallazgo sin título');
+  if (pr.kind === 'target')  return esc(pl.host || 'Target sin host');
+  return `Nota en ${esc(pl.entity_name || pr.entity_type)}`;
+}
+
+function _ccpKindLabel(pr) {
+  if (pr.kind === 'finding') return 'Hallazgo';
+  if (pr.kind === 'target')  return `Target (${esc(pr.payload?.type || 'domain')})`;
+  return `Nota (${esc(pr.entity_type)})`;
 }
 
 async function renderClaudeProposals() {
@@ -1443,14 +1454,22 @@ async function renderClaudeProposals() {
         <span class="ccp-inbox-title">${icon('sparkles', { size: 13 })} Propuestas de Claude Code</span>
         <span class="vuln-severity-count">${_ccProposals.length} pendiente${_ccProposals.length > 1 ? 's' : ''} de revisión</span>
       </div>
+      ${canReview ? `<div class="ccp-shortcuts">Atajos con una propuesta enfocada:
+        <kbd class="ccp-kbd">↑</kbd><kbd class="ccp-kbd">↓</kbd> moverse ·
+        <kbd class="ccp-kbd">A</kbd> aprobar ·
+        <kbd class="ccp-kbd">I</kbd> in scope ·
+        <kbd class="ccp-kbd">O</kbd> out of scope ·
+        <kbd class="ccp-kbd">R</kbd> rechazar ·
+        <kbd class="ccp-kbd">Enter</kbd> abrir</div>` : ''}
       ${_ccProposals.map(pr => {
         const pl = pr.payload || {};
         const isFinding = pr.kind === 'finding';
         const id = esc(pr.id);
         const shots  = (pr.evidence_uploads || []).length;
         const proofs = isFinding ? (pl.http_proofs || []).length : 0;
+        const isTarget = pr.kind === 'target';
         const meta = [
-          isFinding ? 'Hallazgo' : `Nota (${esc(pr.entity_type)})`,
+          _ccpKindLabel(pr),
           pr.target_host ? esc(pr.target_host) : '',
           `por ${esc(displayName(pr, 'proposed_by_'))}`,
           esc(timeAgo(pr.created_at)),
@@ -1458,9 +1477,11 @@ async function renderClaudeProposals() {
         return `
         <div class="vuln-card ccp-row" id="ccp-${id}" tabindex="0" role="button"
           onclick="openClaudeProposal('${id}')"
-          onkeydown="if(event.key==='Enter'&&event.target===this)openClaudeProposal('${id}')">
+          onkeydown="_ccpRowKey(event,'${id}')">
           <div class="ccp-row-main">
-            ${isFinding ? severityBadge(pl.severity) : `<span class="ccp-kind-note">${icon('sticky-note', { size: 11 })} Nota</span>`}
+            ${isFinding ? severityBadge(pl.severity)
+              : isTarget ? `<span class="ccp-kind-note">${icon('circle-plus', { size: 11 })} Target</span>`
+              : `<span class="ccp-kind-note">${icon('sticky-note', { size: 11 })} Nota</span>`}
             <div class="ccp-row-text">
               <div class="ccp-row-title">${_ccpTitle(pr)}</div>
               <div class="ccp-row-meta">
@@ -1473,7 +1494,11 @@ async function renderClaudeProposals() {
           ${canReview ? `
           <div class="ccp-row-actions" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
             <button class="btn btn-ghost ccp-btn ccp-btn-reject" onclick="reviewClaudeProposal('${id}','reject')">Rechazar</button>
-            <button class="btn btn-prim ccp-btn" onclick="reviewClaudeProposal('${id}','approve')">Aprobar</button>
+            ${isTarget
+              // Elegir el botón ES elegir el scope: un clic aprueba con ese
+              // scope, sin default ni paso previo por el drawer.
+              ? _ccpScopeButtons(id, 'ccp-btn')
+              : `<button class="btn btn-prim ccp-btn" onclick="reviewClaudeProposal('${id}','approve')" title="Aprobar (A)">Aprobar</button>`}
           </div>` : ''}
         </div>`;
       }).join('')}
@@ -1543,7 +1568,7 @@ function openClaudeProposal(id) {
   document.getElementById('ccp-drw-head').innerHTML = `
     <button class="drw-close" onclick="closeClaudeProposal()" title="Cerrar (Esc)">${icon('x', { size: 16 })}</button>
     <div class="drw-id">
-      <span class="ccp-drw-kind">${icon('sparkles', { size: 11 })} ${isFinding ? 'Hallazgo propuesto' : `Nota propuesta (${esc(pr.entity_type)})`}</span>
+      <span class="ccp-drw-kind">${icon('sparkles', { size: 11 })} ${isFinding ? 'Hallazgo propuesto' : pr.kind === 'target' ? `Target propuesto (${esc(pl.type || 'domain')})` : `Nota propuesta (${esc(pr.entity_type)})`}</span>
       ${isFinding ? severityBadge(pl.severity) : ''}
     </div>
     <div class="drw-title">${_ccpTitle(pr)}</div>
@@ -1564,6 +1589,16 @@ function openClaudeProposal(id) {
         shots ? `<div class="ccp-shots" id="ccp-shots"><span class="ccp-muted">Cargando capturas…</span></div>` : '') +
       _ccpSection('Remediación', pl.remediation ? `<div class="drw-prose md-body">${renderMd(pl.remediation)}</div>` : '') +
       _ccpSection('Vector CVSS', pl.cvss_vector ? `<code class="ccp-vector">${esc(pl.cvss_vector)}</code>` : '');
+  } else if (pr.kind === 'target') {
+    html =
+      _ccpSection('Host', `<code class="ccp-vector">${esc(pl.host || '')}</code>`) +
+      _ccpSection('Tipo', `<span class="ccp-chip">${esc(pl.type || 'domain')}</span>`) +
+      _ccpSection('Notas', pl.notes ? `<div class="drw-prose md-body">${renderMd(pl.notes)}</div>` : '') +
+      (_ccpCanReview() ? _ccpSection('Scope al aprobar <span class="ccp-sec-hint">· obligatorio, lo decidís vos</span>', `
+        <div class="ccp-scope">
+          <div class="ccp-scope-help is-in">${icon('circle-check', { size: 13 })}<span><strong>In scope</strong> — autorizado: el AI Agent y Claude Code pueden trabajar sobre él.</span></div>
+          <div class="ccp-scope-help is-out">${icon('eye-off', { size: 13 })}<span><strong>Out of scope</strong> — queda registrado, pero no se ataca.</span></div>
+        </div>`) : '');
   } else {
     html =
       _ccpSection('Aplica a', `<div class="ccp-entity"><span class="ccp-chip">${esc(pr.entity_type)}</span> ${esc(pl.entity_name || '')}</div>`) +
@@ -1594,6 +1629,7 @@ function _ccpRenderFoot() {
   const n = _ccProposals.length;
   const dis = _ccpBusy ? 'disabled' : '';
   const id = esc(_ccpOpenId);
+  const pr = _ccProposals[idx];
   foot.innerHTML = `
     <div class="ccp-foot-nav">
       <button class="btn btn-ghost ccp-btn" onclick="stepClaudeProposal(-1)" ${idx <= 0 ? 'disabled' : ''} title="Anterior (←)">‹ anterior</button>
@@ -1602,9 +1638,55 @@ function _ccpRenderFoot() {
     </div>
     ${_ccpCanReview() ? `
     <div class="ccp-foot-actions">
-      <button class="btn btn-ghost ccp-btn-reject" ${dis} onclick="reviewClaudeProposal('${id}','reject')">Rechazar</button>
-      <button class="btn btn-prim" ${dis} onclick="reviewClaudeProposal('${id}','approve')">Aprobar</button>
+      <button class="btn btn-ghost ccp-btn-reject" ${dis} onclick="reviewClaudeProposal('${id}','reject')" title="Rechazar (R)">Rechazar <kbd class="ccp-kbd">R</kbd></button>
+      ${pr?.kind === 'target'
+        ? _ccpScopeButtons(id, '', dis, true)
+        : `<button class="btn btn-prim" ${dis} onclick="reviewClaudeProposal('${id}','approve')" title="Aprobar (A)">Aprobar <kbd class="ccp-kbd">A</kbd></button>`}
     </div>` : ''}`;
+}
+
+// Los dos botones de aprobación de un target: cada uno aprueba con su scope.
+function _ccpScopeButtons(id, cls = '', dis = '', withKbd = false) {
+  return ['in', 'out'].map(v => `
+    <button class="btn ${cls} ccp-scope-btn is-${v}" ${dis}
+      onclick="approveTargetProposal('${id}','${v}')" title="Aprobar como ${CCP_SCOPE_LABELS[v]} (${v === 'in' ? 'I' : 'O'})">
+      ${icon(v === 'in' ? 'circle-check' : 'eye-off', { size: 12 })} ${CCP_SCOPE_LABELS[v]}${withKbd ? ` <kbd class="ccp-kbd">${v === 'in' ? 'I' : 'O'}</kbd>` : ''}
+    </button>`).join('');
+}
+
+function approveTargetProposal(id, scope) {
+  if (!CCP_SCOPE_LABELS[scope]) return;
+  _ccpScope[id] = scope;
+  reviewClaudeProposal(id, 'approve');
+}
+
+// Atajo de teclado compartido por la fila enfocada y el drawer. Devuelve
+// true si la tecla era una acción de revisión (y la ejecutó).
+function _ccpReviewKey(e, id) {
+  if (!_ccpCanReview() || _ccpBusy) return false;
+  const pr = _ccProposals.find(x => x.id === id);
+  if (!pr) return false;
+  const k = e.key.toLowerCase();
+  if (pr.kind === 'target' && (k === 'i' || k === 'o')) approveTargetProposal(id, k === 'i' ? 'in' : 'out');
+  else if (pr.kind !== 'target' && k === 'a') reviewClaudeProposal(id, 'approve');
+  else if (k === 'r') reviewClaudeProposal(id, 'reject');
+  else return false;
+  e.preventDefault();
+  return true;
+}
+
+function _ccpRowKey(e, id) {
+  // Con el drawer abierto, la fila que lo abrió sigue enfocada: las teclas
+  // son del drawer (_ccpOnKey), si no la acción se ejecutaría dos veces.
+  if (_ccpOpenId || e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === 'Enter') { e.preventDefault(); openClaudeProposal(id); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const rows = [...document.querySelectorAll('#cc-proposals .ccp-row')];
+    rows[rows.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
+    return;
+  }
+  _ccpReviewKey(e, id);
 }
 
 function stepClaudeProposal(delta) {
@@ -1628,6 +1710,7 @@ function _ccpOnKey(e) {
   if (e.key === 'Escape') { e.preventDefault(); closeClaudeProposal(); }
   else if (e.key === 'ArrowLeft'  || e.key === 'k') { e.preventDefault(); stepClaudeProposal(-1); }
   else if (e.key === 'ArrowRight' || e.key === 'j') { e.preventDefault(); stepClaudeProposal(1); }
+  else if (_ccpOpenId) _ccpReviewKey(e, _ccpOpenId);
 }
 
 // Las capturas se piden recién al abrir la propuesta: pueden ser varias
@@ -1670,9 +1753,15 @@ async function reviewClaudeProposal(id, action) {
   const pr = _ccProposals.find(x => x.id === id);
   if (!pr || _ccpBusy) return;
   if (action === 'reject' && !confirm('¿Rechazar esta propuesta?')) return;
+  if (action === 'approve' && pr.kind === 'target' && !_ccpScope[id]) {
+    showToast('Elegí el scope del target antes de aprobar', 'error');
+    openClaudeProposal(id);
+    return;
+  }
   const pid = state.currentProject.id;
   // Si se revisa desde el drawer, después se avanza a la siguiente pendiente.
   const fromDrawer = _ccpOpenId === id;
+  const fromRow = !fromDrawer && !!document.activeElement?.closest?.('#cc-proposals');
   const oldIdx = _ccProposals.findIndex(x => x.id === id);
   const nextId = (_ccProposals[oldIdx + 1] || _ccProposals[oldIdx - 1])?.id || null;
   let ok = false;
@@ -1680,13 +1769,19 @@ async function reviewClaudeProposal(id, action) {
   if (fromDrawer) _ccpRenderFoot();
   try {
     if (action === 'approve') {
-      await api.mcpProposals.approve(pid, id);
+      await api.mcpProposals.approve(pid, id, pr.kind === 'target' ? { scope: _ccpScope[id] } : undefined);
       if (pr.kind === 'finding') {
         const fresh = await api.vulns.list(pid);
         state.customVulns = fresh.vulns || fresh;
         renderCustomVulns();
+      } else if (pr.kind === 'target') {
+        // El selector de target del formulario de hallazgos lee state.targets.
+        state.targets = await api.targets.list(pid).catch(() => state.targets);
       }
-      showToast(pr.kind === 'finding' ? 'Hallazgo creado (sin publicar al cliente)' : 'Nota agregada', 'success');
+      showToast(pr.kind === 'finding' ? 'Hallazgo creado (sin publicar al cliente)'
+        : pr.kind === 'target' ? `Target creado (${CCP_SCOPE_LABELS[_ccpScope[id]]})`
+        : 'Nota agregada', 'success');
+      delete _ccpScope[id];
     } else {
       await api.mcpProposals.reject(pid, id);
       showToast('Propuesta rechazada', 'success');
@@ -1698,7 +1793,13 @@ async function reviewClaudeProposal(id, action) {
   await renderClaudeProposals();
   _ccpBusy = false;
   delete _ccpEvidence[id];
-  if (!_ccpOpenId) return; // drawer cerrado (revisión desde la lista)
+  if (!_ccpOpenId) {
+    // Revisión desde la lista: el foco pasa a la siguiente fila para poder
+    // seguir aprobando con el teclado sin volver al mouse.
+    const row = document.getElementById(`ccp-${ok ? nextId : id}`) || document.querySelector('#cc-proposals .ccp-row');
+    if (fromRow) row?.focus();
+    return;
+  }
   if (!_ccProposals.length) { closeClaudeProposal(); return; }
   const has = x => x && _ccProposals.some(p => p.id === x);
   if (_ccpOpenId !== id) {
@@ -1719,3 +1820,5 @@ window.closeClaudeProposal    = closeClaudeProposal;
 window.stepClaudeProposal     = stepClaudeProposal;
 window.openClaudeProposalShot = openClaudeProposalShot;
 window.reviewClaudeProposal   = reviewClaudeProposal;
+window.approveTargetProposal  = approveTargetProposal;
+window._ccpRowKey             = _ccpRowKey;

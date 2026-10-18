@@ -109,9 +109,10 @@ test('valid token authenticates /mcp and initialize works', async () => {
   const tools = await mcp(ownerToken.token, 'tools/list');
   const names = tools.body.result.tools.map(t => t.name).sort();
   assert.deepEqual(names, [
-    'get_finding', 'get_project', 'get_upload_instructions', 'list_endpoints', 'list_findings',
+    'add_endpoints', 'add_ports', 'add_whiteboard_items', 'connect_whiteboard_items',
+    'get_finding', 'get_project', 'get_upload_instructions', 'get_whiteboard', 'list_endpoints', 'list_findings',
     'list_my_proposals', 'list_ports', 'list_projects', 'list_targets', 'propose_finding',
-    'propose_note', 'update_proposal', 'withdraw_proposal',
+    'propose_note', 'propose_target', 'update_proposal', 'withdraw_proposal',
   ]);
 });
 
@@ -716,4 +717,264 @@ test('get_upload_instructions returns the public URL and never the token', async
   const tools = await mcp(ownerToken.token, 'tools/list');
   const pf = tools.body.result.tools.find(t => t.name === 'propose_finding');
   assert.match(pf.description, /mcp\/uploads/);
+});
+
+// El aviso se manda sin await (no debe demorar la respuesta a Claude Code):
+// se espera a que aparezca en vez de leerlo al toque.
+async function waitForRows(sql, params, min, timeoutMs = 5000) {
+  const start = Date.now();
+  for (;;) {
+    const { rows } = await db.query(sql, params);
+    if (rows.length >= min || Date.now() - start > timeoutMs) return rows;
+    await new Promise(r => setTimeout(r, 25));
+  }
+}
+
+test('a finding proposal notifies every writer, the proposer included, but never a viewer', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const viewer    = await addMember(owner.accessToken, project.id, 'viewer');
+
+  const prop = await callTool(ownerToken.token, 'propose_finding', { project_id: project.id, target_id: target.id, ...FINDING });
+  assert.equal(prop.isError, false, prop.text);
+
+  const rows = await waitForRows(
+    `SELECT * FROM notifications WHERE type = 'ai_finding_proposed' AND project_id = $1`, [project.id], 2
+  );
+  // Un margen para que un aviso de más (al viewer) también llegue a escribirse.
+  await new Promise(r => setTimeout(r, 100));
+  const all = (await db.query(`SELECT * FROM notifications WHERE type = 'ai_finding_proposed'`)).rows;
+  const to = new Set(all.map(n => n.user_id));
+  assert.ok(to.has(owner.user.id), 'the proposer (token owner) is notified');
+  assert.ok(to.has(pentester.user.id), 'another writer is notified');
+  assert.ok(!to.has(viewer.user.id), 'a viewer (client account) is never notified');
+  assert.equal(all.length, 2);
+  const n = rows[0];
+  assert.equal(n.entity_type, 'mcp_proposal');
+  const { rows: [proposal] } = await db.query(`SELECT id FROM mcp_proposals WHERE project_id = $1`, [project.id]);
+  assert.equal(n.entity_id, proposal.id);
+  assert.equal(n.actor_id, null);
+  assert.equal(n.payload.source, 'claude_code');
+  assert.equal(n.payload.finding_title, FINDING.title);
+  assert.equal(n.payload.severity, FINDING.severity);
+  assert.equal(n.payload.project_name, project.name);
+});
+
+
+// ── Targets propuestos, puertos/endpoints directos, whiteboard add-only ──
+
+test('propose_target needs a human approval that explicitly picks the scope', async () => {
+  const { owner, project, ownerToken } = await setup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+
+  const prop = await callTool(ownerToken.token, 'propose_target', {
+    project_id: project.id, host: 'api.example.com', type: 'domain', notes: 'Visto en el bundle JS',
+  });
+  assert.equal(prop.isError, false, prop.text);
+  // Nada en targets hasta aprobar.
+  const before = await db.query(`SELECT 1 FROM targets WHERE project_id = $1 AND host = 'api.example.com'`, [project.id]);
+  assert.equal(before.rows.length, 0);
+
+  const url = `/api/projects/${project.id}/mcp-proposals/${prop.data.proposal_id}/approve`;
+  // Sin scope (o con uno inválido) no se aprueba y la propuesta sigue pendiente.
+  for (const body of [{}, { scope: 'maybe' }]) {
+    const res = await request(app).post(url).set(auth(pentester.accessToken)).send(body);
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+  }
+  const pending = await db.query(`SELECT status FROM mcp_proposals WHERE id = $1`, [prop.data.proposal_id]);
+  assert.equal(pending.rows[0].status, 'pending');
+
+  const ok = await request(app).post(url).set(auth(pentester.accessToken)).send({ scope: 'out' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const { rows: [t] } = await db.query(`SELECT * FROM targets WHERE id = $1`, [ok.body.resulting_target_id]);
+  assert.equal(t.host, 'api.example.com');
+  assert.equal(t.scope, 'out');
+  assert.equal(t.added_by, pentester.user.id, 'added_by is the approver');
+  assert.equal(t.source, 'claude_code');
+  const act = await db.query(`SELECT meta FROM activity_log WHERE action = 'target_added' AND entity_id = $1`, [t.id]);
+  assert.equal(act.rows.length, 1);
+  assert.equal(act.rows[0].meta.via, 'claude-code');
+  const { rows: [mp] } = await db.query(`SELECT status, resulting_target_id FROM mcp_proposals WHERE id = $1`, [prop.data.proposal_id]);
+  assert.equal(mp.status, 'approved');
+  assert.equal(mp.resulting_target_id, t.id);
+
+  // La propuesta avisó a los writers (incluido quien propuso).
+  const notif = await waitForRows(`SELECT user_id FROM notifications WHERE type = 'ai_target_proposed'`, [], 2);
+  assert.deepEqual(new Set(notif.map(n => n.user_id)), new Set([owner.user.id, pentester.user.id]));
+});
+
+test('propose_target refuses hosts already in the project, ignoring scheme, case and trailing slash', async () => {
+  const { project, ownerToken } = await setup(); // setup() crea app.example.com
+  const dup = await callTool(ownerToken.token, 'propose_target', { project_id: project.id, host: 'https://APP.example.com/', type: 'url' });
+  assert.equal(dup.isError, true);
+  assert.match(dup.text, /already exists/);
+  const first = await callTool(ownerToken.token, 'propose_target', { project_id: project.id, host: 'new.example.com', type: 'domain' });
+  assert.equal(first.isError, false, first.text);
+  const again = await callTool(ownerToken.token, 'propose_target', { project_id: project.id, host: 'NEW.example.com', type: 'domain' });
+  assert.equal(again.isError, true);
+  assert.match(again.text, /already pending/);
+
+  // update_proposal no acepta scope ni campos de otro tipo, y sí host.
+  const upd = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: first.data.proposal_id, host: 'new2.example.com' });
+  assert.equal(upd.isError, false, upd.text);
+  const wrong = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: first.data.proposal_id, title: 'x x x' });
+  assert.equal(wrong.isError, true);
+  const mine = await callTool(ownerToken.token, 'list_my_proposals', { project_id: project.id });
+  assert.equal(mine.data.proposals[0].host, 'new2.example.com');
+});
+
+test('add_ports / add_endpoints write directly only to in-scope active targets and skip duplicates', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const out = await createTarget(owner.accessToken, project.id, { host: 'out.example.com', scope: 'out' });
+  const other = await createProject(owner.accessToken);
+  const foreign = await createTarget(owner.accessToken, other.id, { host: 'foreign.example.com' });
+
+  for (const tid of [out.id, foreign.id]) {
+    const r = await callTool(ownerToken.token, 'add_ports', { project_id: project.id, target_id: tid, ports: [{ port: 22 }] });
+    assert.equal(r.isError, true, r.text);
+    const e = await callTool(ownerToken.token, 'add_endpoints', { project_id: project.id, target_id: tid, endpoints: [{ path: '/x' }] });
+    assert.equal(e.isError, true, e.text);
+  }
+  assert.equal((await db.query(`SELECT 1 FROM target_ports`)).rows.length, 0);
+  assert.equal((await db.query(`SELECT 1 FROM target_endpoints`)).rows.length, 0);
+
+  const ports = await callTool(ownerToken.token, 'add_ports', {
+    project_id: project.id, target_id: target.id,
+    ports: [{ port: 443, service: 'https' }, { port: 22, service: 'ssh' }, { port: 443 }],
+  });
+  assert.equal(ports.isError, false, ports.text);
+  assert.equal(ports.data.added.length, 2);
+  assert.equal(ports.data.skipped.length, 1);
+  const again = await callTool(ownerToken.token, 'add_ports', { project_id: project.id, target_id: target.id, ports: [{ port: 22 }, { port: 22, protocol: 'udp' }] });
+  assert.deepEqual(again.data.added.map(p => `${p.port}/${p.protocol}`), ['22/udp']);
+  assert.equal(again.data.skipped[0].reason, 'already recorded');
+  const { rows: pr } = await db.query(`SELECT added_by, source FROM target_ports WHERE target_id = $1`, [target.id]);
+  assert.equal(pr.length, 3);
+  assert.ok(pr.every(p => p.added_by === owner.user.id && p.source === 'claude_code'));
+
+  const eps = await callTool(ownerToken.token, 'add_endpoints', {
+    project_id: project.id, target_id: target.id,
+    endpoints: [{ path: '/api//users/?page=2' }, { path: 'api/users' }, { path: '/api/users', method: 'POST' }],
+  });
+  assert.equal(eps.isError, false, eps.text);
+  assert.deepEqual(eps.data.added.map(e => `${e.method} ${e.path}`), ['GET /api/users', 'POST /api/users']);
+  assert.equal(eps.data.skipped.length, 1);
+  const eps2 = await callTool(ownerToken.token, 'add_endpoints', { project_id: project.id, target_id: target.id, endpoints: [{ path: '/api/users/' }] });
+  assert.equal(eps2.data.added.length, 0);
+  assert.equal(eps2.data.skipped[0].reason, 'already recorded');
+
+  // Un evento de Activity por lote, como entity 'target'.
+  const act = await db.query(`SELECT action, entity_type, entity_id FROM activity_log WHERE action LIKE 'claude_code_%_added' ORDER BY created_at`);
+  assert.deepEqual(act.rows.map(r => r.action), ['claude_code_ports_added', 'claude_code_ports_added', 'claude_code_endpoints_added']);
+  assert.ok(act.rows.every(r => r.entity_type === 'target' && r.entity_id === target.id));
+
+  // Un token de solo lectura no escribe.
+  const ro = await createToken(owner.accessToken, { scopes: 'read' });
+  const roRes = await callTool(ro.token, 'add_ports', { project_id: project.id, target_id: target.id, ports: [{ port: 8080 }] });
+  assert.equal(roRes.isError, true);
+  assert.match(roRes.text, /read-only/);
+});
+
+test('viewers cannot add ports, endpoints, whiteboard items or propose targets', async () => {
+  const { owner, project, target } = await setup();
+  const viewer = await addMember(owner.accessToken, project.id, 'viewer');
+  const tok = await createToken(viewer.accessToken);
+  for (const [name, args] of [
+    ['add_ports', { target_id: target.id, ports: [{ port: 80 }] }],
+    ['add_endpoints', { target_id: target.id, endpoints: [{ path: '/' }] }],
+    ['add_whiteboard_items', { notes: [{ text: 'hola' }] }],
+    ['get_whiteboard', {}],
+    ['propose_target', { host: 'x.example.com', type: 'domain' }],
+  ]) {
+    const r = await callTool(tok.token, name, { project_id: project.id, ...args });
+    assert.equal(r.isError, true, name);
+    assert.match(r.text, /not found or Claude Code access is not enabled/, name);
+  }
+  assert.equal((await db.query(`SELECT 1 FROM target_ports`)).rows.length, 0);
+  assert.equal((await db.query(`SELECT 1 FROM whiteboard_state`)).rows.length, 0);
+});
+
+test('whiteboard additions keep existing items intact and consecutive batches do not overlap', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const existing = {
+    nodes: [{ id: target.id, x: 80, y: 80, collapsed: false }],
+    notes: [{ id: '11111111-1111-4111-8111-111111111111', x: 500, y: 100, text: 'humano', color: '#ffd96a' }],
+    cards: [{ id: '22222222-2222-4222-8222-222222222222', x: 100, y: 600, title: 'Card humana', body: 'b', color: '#1e3a5f' }],
+    edges: [], strokes: [{ id: 's1', d: 'M 900 50 L 950 60', color: '#e94141', width: 2 }],
+    view: { panX: 0, panY: 0, zoom: 1 },
+  };
+  const put = await request(app).put(`/api/projects/${project.id}/whiteboard`).set(auth(owner.accessToken)).send({ data: existing });
+  assert.equal(put.status, 200);
+  const portRes = await callTool(ownerToken.token, 'add_ports', { project_id: project.id, target_id: target.id, ports: [{ port: 443 }] });
+  const portId = portRes.data.added[0].id;
+
+  const a = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id,
+    nodes: [{ target_id: target.id }], // ya está: se saltea
+    cards: [{ title: 'TLS', body: 'Revisar cifrados', link: { type: 'port', id: portId } }],
+    notes: [{ text: 'Probar IDOR' }, { text: 'Revisar CORS' }],
+  });
+  assert.equal(a.isError, false, a.text);
+  assert.equal(a.data.skipped.length, 1);
+  assert.equal(a.data.added.cards.length, 1);
+  assert.equal(a.data.added.notes.length, 2);
+  assert.equal(a.data.added.edges.length, 1, 'linked card is connected to its target node');
+
+  const b = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, notes: [{ text: 'Segundo lote' }] });
+  assert.equal(b.isError, false, b.text);
+
+  const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  const d = wb.data;
+  // Lo existente, intacto.
+  assert.deepEqual(d.nodes, existing.nodes);
+  assert.deepEqual(d.strokes, existing.strokes);
+  assert.deepEqual(d.notes.find(n => n.id === '11111111-1111-4111-8111-111111111111'), existing.notes[0]);
+  assert.deepEqual(d.cards.find(c => c.id === '22222222-2222-4222-8222-222222222222'), existing.cards[0]);
+  // Lo nuevo, marcado y a la derecha de todo lo que había (sin solaparse).
+  const ai = [...d.notes, ...d.cards].filter(i => i.created_by === 'claude_code');
+  assert.equal(ai.length, 4);
+  const card = d.cards.find(c => c.created_by === 'claude_code');
+  assert.equal(card.ref.type, 'port');
+  assert.match(card.ref.label, /:443\/tcp$/);
+  const existingRight = Math.max(80 + 290, 500 + 170, 100 + 240, 950);
+  const firstBatch = [...a.data.added.cards, ...a.data.added.notes];
+  assert.ok(firstBatch.every(i => i.x >= existingRight), 'first batch starts right of the existing board');
+  const firstRight = Math.max(...a.data.added.cards.map(c => c.x + 240), ...a.data.added.notes.map(n => n.x + 170));
+  assert.ok(b.data.added.notes[0].x >= firstRight, 'second batch starts right of the first');
+
+  // Flechas: entre nodo y tarjeta sí; a una nota no; repetida se saltea.
+  const humanCard = '22222222-2222-4222-8222-222222222222';
+  const c1 = await callTool(ownerToken.token, 'connect_whiteboard_items', {
+    project_id: project.id, edges: [{ from_id: card.id, to_id: target.id }, { from_id: target.id, to_id: card.id, label: 'expone' }],
+  });
+  assert.equal(c1.isError, false, c1.text);
+  assert.equal(c1.data.skipped.length, 1, 'card→target already existed (auto-linked)');
+  assert.equal(c1.data.added.length, 1);
+  const toNote = await callTool(ownerToken.token, 'connect_whiteboard_items', {
+    project_id: project.id, edges: [{ from_id: humanCard, to_id: a.data.added.notes[0].id }],
+  });
+  assert.equal(toNote.isError, true);
+  assert.match(toNote.text, /sticky note/);
+
+  const summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
+  assert.equal(summary.data.nodes[0].host, 'app.example.com');
+  assert.equal(summary.data.notes.length, 4);
+  assert.equal(summary.data.edges.length, 2);
+});
+
+test('whiteboard additions on a project without a board create it, and foreign links are refused', async () => {
+  const { owner, project, ownerToken } = await setup();
+  const other = await createProject(owner.accessToken);
+  const foreign = await createTarget(owner.accessToken, other.id, { host: 'foreign.example.com' });
+  const bad = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, cards: [{ title: 'x', link: { type: 'target', id: foreign.id } }] });
+  assert.equal(bad.isError, true);
+  const badNode = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, nodes: [{ target_id: foreign.id }] });
+  assert.equal(badNode.isError, true);
+  assert.equal((await db.query(`SELECT 1 FROM whiteboard_state`)).rows.length, 0);
+
+  const okRes = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, notes: [{ text: 'primera' }] });
+  assert.equal(okRes.isError, false, okRes.text);
+  const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  assert.equal(wb.data.notes.length, 1);
+  assert.deepEqual(wb.data.nodes, []);
 });

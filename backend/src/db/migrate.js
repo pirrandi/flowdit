@@ -1018,6 +1018,20 @@ const migrations = [
      CHECK (mime IN ('image/png','image/jpeg','image/webp'))`,
   `CREATE INDEX IF NOT EXISTS idx_mcp_uploads_user_unused ON mcp_uploads(user_id, created_at) WHERE used_by_proposal_id IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_mcp_uploads_proposal ON mcp_uploads(used_by_proposal_id)`,
+  // + 'target': Claude Code puede PROPONER targets (propose_target). Nunca
+  // los crea: el humano aprueba y elige el scope. Mismo patrón DROP + ADD
+  // con el nombre que Postgres le dio al CHECK inline del CREATE TABLE.
+  `ALTER TABLE mcp_proposals DROP CONSTRAINT IF EXISTS mcp_proposals_kind_check`,
+  `ALTER TABLE mcp_proposals ADD CONSTRAINT mcp_proposals_kind_check
+     CHECK (kind IN ('finding','note','target'))`,
+  `ALTER TABLE mcp_proposals ADD COLUMN IF NOT EXISTS resulting_target_id UUID REFERENCES targets(id) ON DELETE SET NULL`,
+  // De dónde salió la fila ('claude_code' = escrita por el servidor MCP).
+  // Sin CHECK ni backfill: NULL = cargada a mano o antes de la columna. Los
+  // puertos/endpoints que Claude Code agrega van directo (add_ports /
+  // add_endpoints), sin aprobación, y la UI de Targets los marca con esto.
+  `ALTER TABLE targets ADD COLUMN IF NOT EXISTS source VARCHAR(20)`,
+  `ALTER TABLE target_ports ADD COLUMN IF NOT EXISTS source VARCHAR(20)`,
+  `ALTER TABLE target_endpoints ADD COLUMN IF NOT EXISTS source VARCHAR(20)`,
 
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`

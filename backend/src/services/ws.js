@@ -220,6 +220,46 @@ function broadcastScanEvent(projectId, data) {
   });
 }
 
+// Cantidad de propuestas de Claude Code pendientes en el proyecto, para el
+// punto en "Findings" del nav (page.js) y para refrescar el inbox abierto.
+// Las propuestas son trabajo interno: no llega a sockets de cliente.
+function broadcastProposalsChanged(projectId, pending) {
+  const room = rooms.get(projectId);
+  if (!room) return;
+  const msg = JSON.stringify({ type: 'mcp_proposals:changed', pending });
+  room.forEach(ws => {
+    if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
+// Aviso silencioso de que la lista de hallazgos cambió, para los caminos que
+// NO pasan por activity.log (editar campos sin cambiar status, el agente
+// agregando proofs, ...): sin esto otra pestaña no se entera hasta recargar.
+// Sin payload — el cliente vuelve a pedir GET /vulns. Interno: no llega a
+// sockets de cliente (la vista cliente ya se refresca con el ping de activity).
+function broadcastVulnsChanged(projectId) {
+  const room = rooms.get(projectId);
+  if (!room) return;
+  const msg = JSON.stringify({ type: 'vulns:changed' });
+  room.forEach(ws => {
+    if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
+// Cambios del whiteboard que origina el SERVIDOR (Claude Code agregando
+// notas/tarjetas, ver services/mcp/whiteboard.js). Mismo tipo 'wb:patch' que
+// el relay entre navegadores para que whiteboard.js los mezcle en su estado
+// y su próximo autosave no los pise. Sin userId: no es un cursor de nadie.
+// El whiteboard es interno: nunca a un socket de cliente.
+function broadcastWhiteboardPatch(projectId, patch) {
+  const room = rooms.get(projectId);
+  if (!room) return;
+  const msg = JSON.stringify({ type: 'wb:patch', ...patch });
+  room.forEach(ws => {
+    if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
 // Send online users list to the whole room (deduplicated by user id)
 function broadcastPresence(projectId) {
   const room = rooms.get(projectId);
@@ -234,4 +274,4 @@ function broadcastPresence(projectId) {
   });
 }
 
-module.exports = { setup, broadcastActivity, broadcastScanEvent, disconnectUser, sendToUser, canOperateAiScan };
+module.exports = { setup, broadcastActivity, broadcastScanEvent, broadcastProposalsChanged, broadcastVulnsChanged, broadcastWhiteboardPatch, disconnectUser, sendToUser, canOperateAiScan };

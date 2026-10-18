@@ -52,7 +52,7 @@ router.post('/', requireWriter, [
       entityType: 'port',
       entityId:   rows[0].id,
       entityName: `${t[0]?.host}:${port}/${protocol}`,
-      meta:       { state, service },
+      meta:       { state, service, target_id: req.params.targetId },
     });
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }

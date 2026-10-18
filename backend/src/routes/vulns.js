@@ -2,6 +2,7 @@ const router   = require('express').Router({ mergeParams: true });
 const { body, validationResult } = require('express-validator');
 const db       = require('../db');
 const activity = require('../services/activity');
+const ws       = require('../services/ws');
 const { requireAuth } = require('../middleware/auth');
 const { requireProjectAccess, requireWriter, isLeadRole, isClientSession, clientRequiresFlag } = require('../middleware/project');
 const { targetBelongsToProject } = require('../services/ownership');
@@ -162,6 +163,10 @@ router.patch('/:vulnId', requireWriter, async (req, res, next) => {
         entityId: req.params.vulnId, entityName: rows[0].name,
         meta: { status: req.body.status },
       });
+    } else {
+      // Edición de campos: no va al feed de Activity (sería ruido), pero las
+      // demás pestañas igual tienen que ver el hallazgo actualizado.
+      ws.broadcastVulnsChanged(req.params.projectId);
     }
     res.json(rows[0]);
   } catch (err) { next(err); }

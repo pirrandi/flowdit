@@ -1,7 +1,8 @@
 // Propuestas de Claude Code (tabla mcp_proposals). Claude Code nunca escribe
-// directo en custom_vulns ni en las notas: deja una propuesta, y recién
-// cuando un writer del proyecto la aprueba desde el inbox se crea el
-// hallazgo o se agrega la nota. Compartido entre las tools MCP (crear) y
+// directo en custom_vulns, en las notas ni en targets: deja una propuesta, y
+// recién cuando un writer del proyecto la aprueba desde el inbox se crea el
+// hallazgo, se agrega la nota o se crea el target (con el scope que elige
+// el humano al aprobar: Claude Code nunca decide qué está en alcance). Compartido entre las tools MCP (crear) y
 // routes/mcp-proposals.js (listar/aprobar/rechazar). Quien propuso puede
 // editar o retirar su propuesta mientras siga pendiente.
 const db       = require('../../db');
@@ -9,6 +10,8 @@ const activity = require('../activity');
 const { targetBelongsToProject } = require('../ownership');
 const { assertTargetInScope } = require('../ai/targetScope');
 const uploads  = require('./uploads');
+const ws       = require('../ws');
+const { notifyProjectWriters } = require('../notifications');
 
 // Tope de propuestas pendientes por proyecto: un Claude Code en loop no debe
 // poder enterrar el inbox (ni la base) con miles de borradores.
@@ -104,6 +107,53 @@ async function findDuplicate(projectId, targetId, title, excludeProposalId = nul
   return null;
 }
 
+// Avisa a la sala del proyecto cuántas propuestas quedan pendientes (punto en
+// "Findings" del nav + refresco del inbox). Se llama después de cada cambio
+// de status ya confirmado; best-effort: si falla, la acción ya ocurrió y la
+// próxima carga de página corrige el punto.
+async function announcePending(projectId) {
+  try {
+    const { rows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM mcp_proposals WHERE project_id = $1 AND status = 'pending'`,
+      [projectId]
+    );
+    ws.broadcastProposalsChanged(projectId, rows[0].n);
+  } catch (err) {
+    console.error('announcePending failed:', err.message);
+  }
+}
+
+// Mismo criterio que normalizeHost() (ai/targetScope.js) más minúsculas:
+// "https://App.example.com/" y "app.example.com" son el mismo target.
+const HOST_NORM_SQL = col =>
+  `lower(regexp_replace(regexp_replace(btrim(${col}), '^[a-z][a-z0-9+.-]*://', '', 'i'), '/+$', ''))`;
+
+async function findDuplicateTarget(projectId, host, excludeProposalId = null) {
+  const { rows: targets } = await db.query(
+    `SELECT id, host, scope FROM targets
+     WHERE project_id = $1 AND ${HOST_NORM_SQL('host')} = ${HOST_NORM_SQL('$2')} LIMIT 1`,
+    [projectId, host]
+  );
+  if (targets.length) return `a target "${targets[0].host}" already exists in this project (target_id ${targets[0].id}, scope "${targets[0].scope}") — do not propose it again`;
+  const { rows: props } = await db.query(
+    `SELECT id FROM mcp_proposals
+     WHERE project_id = $1 AND kind = 'target' AND status = 'pending'
+       AND ($3::uuid IS NULL OR id <> $3::uuid)
+       AND ${HOST_NORM_SQL("payload->>'host'")} = ${HOST_NORM_SQL('$2')}
+     LIMIT 1`,
+    [projectId, host, excludeProposalId]
+  );
+  if (props.length) return `an identical target proposal is already pending review (proposal_id ${props[0].id}) — do not propose it again`;
+  return null;
+}
+
+// Nombre legible de una propuesta, para Activity.
+function proposalName(kind, payload) {
+  if (kind === 'finding') return payload.title;
+  if (kind === 'target') return payload.host;
+  return payload.entity_name;
+}
+
 async function insertProposal(queryable, { projectId, kind, payload, targetId, entityType = null, entityId = null, user, tokenId }) {
   const { rows } = await queryable.query(
     `INSERT INTO mcp_proposals (project_id, kind, payload, target_id, entity_type, entity_id, proposed_by, token_id)
@@ -140,6 +190,13 @@ async function createFindingProposal({ projectId, user, tokenId, input }) {
     entityId: proposal.id, entityName: input.title,
     meta: { via: 'claude-code', kind: 'finding', severity: input.severity, evidence_images: attached.length },
   });
+  // Sin await: ni el aviso ni la campana deben demorar (o romper) la
+  // respuesta a Claude Code. notifyProjectWriters nunca rechaza.
+  announcePending(projectId);
+  notifyProjectWriters({
+    projectId, type: 'ai_finding_proposed', entityType: 'mcp_proposal', entityId: proposal.id,
+    payload: { source: 'claude_code', finding_title: input.title, severity: input.severity },
+  });
   return { ...proposal, target_host: target.host, evidence_images: attached.length };
 }
 
@@ -175,14 +232,44 @@ async function createNoteProposal({ projectId, user, tokenId, input }) {
     entityId: proposal.id, entityName: entity.name,
     meta: { via: 'claude-code', kind: 'note', entity_type: input.entity_type },
   });
+  announcePending(projectId);
   return { ...proposal, entity_name: entity.name };
 }
 
+// Propuesta de target: SIN scope. El scope lo elige el humano al aprobar
+// (approveProposal), así Claude Code no puede poner nada en alcance.
+async function createTargetProposal({ projectId, user, tokenId, input }) {
+  await assertPendingCapacity(projectId);
+  const dup = await findDuplicateTarget(projectId, input.host);
+  if (dup) throw new ProposalError(409, dup);
+
+  const payload = { host: input.host, type: input.type || 'domain', notes: input.notes || null };
+  const proposal = await insertProposal(db, { projectId, kind: 'target', payload, targetId: null, user, tokenId });
+  await activity.log({
+    projectId, user, action: 'claude_code_proposed', entityType: 'mcp_proposal',
+    entityId: proposal.id, entityName: input.host,
+    meta: { via: 'claude-code', kind: 'target', type: payload.type },
+  });
+  announcePending(projectId);
+  notifyProjectWriters({
+    projectId, type: 'ai_target_proposed', entityType: 'mcp_proposal', entityId: proposal.id,
+    payload: { source: 'claude_code', target_host: input.host, target_type: payload.type },
+  });
+  return { ...proposal, host: input.host };
+}
+
 // Campos editables por tipo: los mismos que acepta la tool de propuesta
-// correspondiente (propose_finding / propose_note).
+// correspondiente (propose_finding / propose_note / propose_target).
 const FINDING_FIELDS = ['title', 'severity', 'category', 'description', 'remediation', 'cvss_vector', 'cvss_score', 'cwe', 'evidence', 'http_proofs'];
 const FINDING_EXTRA  = ['target_id', 'evidence_upload_ids'];
 const NOTE_FIELDS    = ['text', 'entity_type', 'entity_id'];
+const TARGET_FIELDS  = ['host', 'type', 'notes'];
+const FIELDS_BY_KIND = {
+  finding: [...FINDING_FIELDS, ...FINDING_EXTRA],
+  note:    NOTE_FIELDS,
+  target:  TARGET_FIELDS,
+};
+const ALL_FIELDS = [...new Set(Object.values(FIELDS_BY_KIND).flat())];
 
 // Carga la propuesta del usuario EN este proyecto. Una propuesta ajena se
 // reporta igual que una inexistente: no se confirma que exista.
@@ -210,14 +297,20 @@ async function updateProposal({ projectId, proposalId, user, input }) {
   if (current.status !== 'pending') throw notPending(current.status);
 
   const given = k => input[k] !== undefined;
-  const isFinding = current.kind === 'finding';
-  const foreign = (isFinding ? NOTE_FIELDS : [...FINDING_FIELDS, ...FINDING_EXTRA]).filter(given);
+  const own = FIELDS_BY_KIND[current.kind];
+  const foreign = ALL_FIELDS.filter(k => !own.includes(k)).filter(given);
   if (foreign.length) throw new ProposalError(400, `${foreign.join(', ')} cannot be set on a ${current.kind} proposal`);
-  const changed = (isFinding ? [...FINDING_FIELDS, ...FINDING_EXTRA] : NOTE_FIELDS).filter(given);
+  const changed = own.filter(given);
   if (!changed.length) throw new ProposalError(400, 'nothing to update — pass at least one field to change');
 
   let payload, targetId = current.target_id, entityType = current.entity_type, entityId = current.entity_id, entityName;
-  if (isFinding) {
+  if (current.kind === 'target') {
+    payload = { ...current.payload };
+    for (const k of TARGET_FIELDS) if (given(k)) payload[k] = input[k];
+    const dup = await findDuplicateTarget(projectId, payload.host, current.id);
+    if (dup) throw new ProposalError(409, dup);
+    entityName = payload.host;
+  } else if (current.kind === 'finding') {
     payload = { ...current.payload };
     for (const k of FINDING_FIELDS) if (given(k)) payload[k] = input[k];
     if (given('target_id') && input.target_id !== current.target_id) {
@@ -279,9 +372,10 @@ async function withdrawProposal({ projectId, proposalId, user }) {
   const r = rows[0];
   await activity.log({
     projectId, user, action: 'claude_code_proposal_withdrawn', entityType: 'mcp_proposal',
-    entityId: r.id, entityName: r.kind === 'finding' ? r.payload.title : r.payload.entity_name,
+    entityId: r.id, entityName: proposalName(r.kind, r.payload),
     meta: { via: 'claude-code', kind: r.kind },
   });
+  announcePending(projectId);
   return { id: r.id, kind: r.kind, status: 'withdrawn' };
 }
 
@@ -296,7 +390,7 @@ async function getProposalEvidence(projectId, proposalId) {
 
 const PROPOSAL_SELECT = `
   SELECT mp.id, mp.kind, mp.payload, mp.target_id, mp.entity_type, mp.entity_id, mp.status,
-         mp.created_at, mp.updated_at, mp.reviewed_at, mp.resulting_vuln_id,
+         mp.created_at, mp.updated_at, mp.reviewed_at, mp.resulting_vuln_id, mp.resulting_target_id,
          ${uploads.UPLOADS_META_SQL} AS evidence_uploads,
          t.host AS target_host,
          pu.username AS proposed_by_username, pu.display_name AS proposed_by_display_name,
@@ -317,10 +411,16 @@ async function listProposals(projectId, status = 'pending') {
 // Aprobación atómica: el UPDATE condicionado a status='pending' es el que
 // gana la carrera — dos aprobaciones simultáneas se serializan en el lock de
 // la fila y la segunda ya no la encuentra pendiente (409, sin hallazgo
-// duplicado). Si crear el hallazgo/nota falla, el ROLLBACK la deja pendiente.
-async function approveProposal({ projectId, proposalId, user }) {
+// duplicado). Si crear el hallazgo/nota/target falla, el ROLLBACK la deja
+// pendiente.
+// `scope` ('in' | 'out') es obligatorio para una propuesta de target y no
+// tiene default a propósito: poner algo en alcance es una decisión humana
+// explícita, ni Claude Code ni un valor por omisión la toman.
+const TARGET_SCOPES = ['in', 'out'];
+
+async function approveProposal({ projectId, proposalId, user, scope }) {
   const client = await db.pool.connect();
-  let proposal, vulnId = null;
+  let proposal, vulnId = null, targetId = null;
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
@@ -362,6 +462,25 @@ async function approveProposal({ projectId, proposalId, user }) {
       );
       vulnId = ins.rows[0].id;
       await client.query(`UPDATE mcp_proposals SET resulting_vuln_id = $1 WHERE id = $2`, [vulnId, proposal.id]);
+    } else if (proposal.kind === 'target') {
+      if (!TARGET_SCOPES.includes(scope)) {
+        throw new ProposalError(400, 'Choose the scope for this target: "in" or "out"');
+      }
+      // Pudo crearse a mano mientras la propuesta esperaba.
+      const { rows: dup } = await client.query(
+        `SELECT host FROM targets WHERE project_id = $1 AND ${HOST_NORM_SQL('host')} = ${HOST_NORM_SQL('$2')} LIMIT 1`,
+        [projectId, p.host]
+      );
+      if (dup.length) throw new ProposalError(409, `A target "${dup[0].host}" already exists in this project`);
+      // Mismo INSERT que POST /targets (routes/targets.js), con quien aprueba
+      // como added_by y el origen marcado.
+      const ins = await client.query(
+        `INSERT INTO targets (project_id, host, type, scope, notes, added_by, source)
+         VALUES ($1,$2,$3,$4,$5,$6,'claude_code') RETURNING id`,
+        [projectId, p.host, p.type || 'domain', scope, p.notes || '', user.id]
+      );
+      targetId = ins.rows[0].id;
+      await client.query(`UPDATE mcp_proposals SET resulting_target_id = $1, target_id = $1 WHERE id = $2`, [targetId, proposal.id]);
     } else {
       const def = NOTE_ENTITIES[proposal.entity_type];
       const params = [proposal.entity_id, projectId, `[Claude Code] ${p.text}`];
@@ -386,14 +505,26 @@ async function approveProposal({ projectId, proposalId, user }) {
       entityName: proposal.payload.title,
       meta: { severity: proposal.payload.severity, ai_generated: true, via: 'claude-code' },
     });
+  } else if (proposal.kind === 'target') {
+    // Mismo evento que un target agregado a mano (target_added), así el feed,
+    // los toasts y el refresco en vivo de Targets lo tratan igual.
+    await activity.log({
+      projectId, user, action: 'target_added', entityType: 'target', entityId: targetId,
+      entityName: proposal.payload.host,
+      meta: { type: proposal.payload.type || 'domain', scope, via: 'claude-code' },
+    });
   } else {
     await activity.log({
       projectId, user, action: 'claude_code_proposal_approved', entityType: 'mcp_proposal',
       entityId: proposal.id, entityName: proposal.payload.entity_name,
       meta: { via: 'claude-code', kind: 'note', entity_type: proposal.entity_type },
     });
+    // Una nota aprobada sobre un hallazgo cambia custom_vulns.notes, pero el
+    // evento de arriba es de la propuesta: avisar también a la lista.
+    if (proposal.entity_type === 'finding') ws.broadcastVulnsChanged(projectId);
   }
-  return { id: proposal.id, kind: proposal.kind, status: 'approved', resulting_vuln_id: vulnId };
+  announcePending(projectId);
+  return { id: proposal.id, kind: proposal.kind, status: 'approved', resulting_vuln_id: vulnId, resulting_target_id: targetId };
 }
 
 async function rejectProposal({ projectId, proposalId, user }) {
@@ -411,14 +542,15 @@ async function rejectProposal({ projectId, proposalId, user }) {
   const r = rows[0];
   await activity.log({
     projectId, user, action: 'claude_code_proposal_rejected', entityType: 'mcp_proposal',
-    entityId: r.id, entityName: r.kind === 'finding' ? r.payload.title : r.payload.entity_name,
+    entityId: r.id, entityName: proposalName(r.kind, r.payload),
     meta: { via: 'claude-code', kind: r.kind },
   });
+  announcePending(projectId);
   return { id: r.id, kind: r.kind, status: 'rejected' };
 }
 
 module.exports = {
-  createFindingProposal, createNoteProposal, updateProposal, withdrawProposal,
+  createFindingProposal, createNoteProposal, createTargetProposal, updateProposal, withdrawProposal,
   listProposals, approveProposal, rejectProposal, getProposalEvidence,
   ProposalError, NOTE_ENTITY_TYPES, MAX_PENDING_PER_PROJECT,
 };

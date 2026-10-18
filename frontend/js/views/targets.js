@@ -115,6 +115,7 @@ function buildTargetRow(t) {
     `<span class="tr-counts" id="tr-counts-${id}">${_trCountsHtml(t.id)}</span>`,
     findings.length ? `<span class="tr-findings" title="Peor severidad">${_trSevBadge(_trSev(findings[0]))}${_trPlural(findings.length, 'hallazgo', 'hallazgos')}</span>` : '',
     t.notes ? `<span class="vr-flag" title="Tiene notas">${icon('sticky-note',{size:10})}Notas</span>` : '',
+    t.source === 'claude_code' ? `<span class="cc-src" title="Propuesto por Claude Code">Claude Code</span>` : '',
   ].filter(Boolean).join('');
 
   row.innerHTML = `
@@ -151,6 +152,20 @@ async function loadTargetDetail(targetId) {
   _targetCache[targetId] = { ports, endpoints, loaded: true };
   _trUpdateCounts(targetId);
   if (_tdMode === 'view' && _tdOpenId === targetId) _tdRenderView(true);
+}
+
+// Refresco en vivo (lo llama page.js al llegar un evento de Activity de
+// targets/puertos/endpoints de otro miembro o de Claude Code): la lista se
+// redibuja con state.targets ya actualizado y, si el evento trae el target,
+// se recargan sus puertos/endpoints. renderTargets() conserva el drawer
+// (en vista lo redibuja con scroll/filtros/foco; en edición no lo toca).
+async function refreshTargetsLive(targetId) {
+  if (targetId && _targetCache[targetId]) {
+    _tdLoading.add(targetId);
+    try { await loadTargetDetail(targetId); } finally { _tdLoading.delete(targetId); }
+  }
+  renderTargets();
+  prefetchTargetCounts(); // targets nuevos: sus conteos
 }
 
 async function _tdEnsureDetail(targetId) {
@@ -273,6 +288,7 @@ function portRowHtml(targetId, p) {
       <span class="port-num">${esc(String(p.port))}/${esc(p.protocol)}</span>
       <span class="td-state" style="color:${PORT_STATE_COLORS[p.state] || 'var(--t3)'}">${esc(p.state)}</span>
       <span class="td-svc">${esc(p.service || '')}${p.version ? ` <span class="td-ver">${esc(p.version)}</span>` : ''}</span>
+      ${p.source === 'claude_code' ? `<span class="cc-src" title="Agregado por Claude Code">Claude Code</span>` : ''}
       <span class="td-row-actions">
         <button class="btn-icon edit"   onclick="editPort('${tid}','${pid}',event)" title="Editar">${icon('square-pen',{size:12})}</button>
         <button class="btn-icon delete" onclick="deletePort('${tid}','${pid}',event)" title="Eliminar">${icon('trash-2',{size:12})}</button>
@@ -343,6 +359,7 @@ function endpointRowHtml(targetId, ep) {
       <span class="td-path" title="${esc(ep.path)}">${esc(ep.path)}</span>
       ${ep.status_code ? `<span class="td-code">${esc(String(ep.status_code))}</span>` : ''}
       ${ep.interesting ? `<span class="td-star" title="Interesante">${icon('star',{size:10})}</span>` : ''}
+      ${ep.source === 'claude_code' ? `<span class="cc-src" title="Agregado por Claude Code">Claude Code</span>` : ''}
       <span class="td-row-actions">
         <button class="btn-icon edit"   onclick="editEndpoint('${tid}','${eid}',event)" title="Editar">${icon('square-pen',{size:12})}</button>
         <button class="btn-icon delete" onclick="deleteEndpoint('${tid}','${eid}',event)" title="Eliminar">${icon('trash-2',{size:12})}</button>

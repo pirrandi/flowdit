@@ -37,10 +37,14 @@ router.get('/:proposalId/evidence', [param('proposalId').isUUID()], async (req, 
 });
 
 // POST /projects/:projectId/mcp-proposals/:proposalId/approve
+// Body { scope: 'in' | 'out' } obligatorio solo para propuestas de target
+// (ver approveProposal); las demás lo ignoran.
 router.post('/:proposalId/approve', requireWriter, [param('proposalId').isUUID()], async (req, res, next) => {
   if (!validationResult(req).isEmpty()) return res.status(404).json({ error: 'Proposal not found' });
   try {
-    res.json(await proposals.approveProposal({ projectId: req.params.projectId, proposalId: req.params.proposalId, user: req.user }));
+    res.json(await proposals.approveProposal({
+      projectId: req.params.projectId, proposalId: req.params.proposalId, user: req.user, scope: req.body?.scope,
+    }));
   } catch (err) { sendProposalError(err, res, next); }
 });
 

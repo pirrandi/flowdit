@@ -3,11 +3,17 @@
 // por requireApiToken, así cada tool cierra sobre quién llama sin estado
 // compartido entre requests.
 //
-// v1 es SOLO lectura + propuestas: ninguna tool edita, borra, cambia estados
-// ni crea targets. Proponer deja una fila en mcp_proposals que un humano
-// aprueba desde el inbox (services/mcp/proposals.js). Lo único que se puede
-// cambiar son las PROPIAS propuestas mientras siguen pendientes
-// (update_proposal / withdraw_proposal).
+// Política de escritura (aprobada explícitamente):
+//   - Hallazgos, notas y TARGETS: solo propuestas. Proponer deja una fila en
+//     mcp_proposals que un humano aprueba desde el inbox
+//     (services/mcp/proposals.js); un target recién entra al proyecto con el
+//     scope que elige el humano al aprobar. Lo único que se puede cambiar son
+//     las PROPIAS propuestas pendientes (update_proposal / withdraw_proposal).
+//   - Puertos y endpoints: escritura directa (add_ports / add_endpoints),
+//     solo sobre targets en scope y activos, solo agregar (services/mcp/recon.js).
+//   - Whiteboard: escritura directa SOLO de altas (notas, tarjetas, nodos,
+//     flechas); nunca mueve, edita ni borra lo existente (services/mcp/whiteboard.js).
+// Ninguna tool borra ni cambia estados/scope de datos del proyecto.
 //
 // Las descripciones y los errores van en inglés a propósito: los lee el
 // modelo, no el usuario, igual que las tools del AI Agent.
@@ -17,6 +23,8 @@ const db = require('../../db');
 const { findProjectForUser, WRITER_ROLES } = require('../../middleware/project');
 const { projectAccessSql } = require('../ownership');
 const proposals = require('./proposals');
+const recon = require('./recon');
+const whiteboard = require('./whiteboard');
 const { MAX_UPLOADS_PER_PROPOSAL, MAX_UPLOAD_BYTES } = require('./uploads');
 const { version } = require('../../../package.json');
 
@@ -27,24 +35,44 @@ const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const PROPOSE   = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+// Altas directas e idempotentes (lo repetido se saltea).
+const ADD_ONLY  = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const TARGET_TYPES = ['domain', 'ip', 'cidr', 'url', 'other'];
+const PORT_STATES  = ['open', 'filtered', 'closed'];
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'];
+
+// El equipo entrega los informes en español: todo texto que termina en un
+// hallazgo o nota (título, descripción, remediación, evidencia narrada) tiene
+// que llegar ya en español, no traducirse después a mano al aprobar.
+// Identificadores técnicos (CWE, CVSS, HTTP crudo, nombres de producto) no
+// se traducen.
+const LANGUAGE_RULE =
+  'ALWAYS write every proposal in Spanish (español): title, description, remediation, ' +
+  'category, evidence narrative, http_proofs annotations and note text. Keep technical ' +
+  'identifiers untranslated (CWE ids, CVSS vectors, raw HTTP requests/responses, code, ' +
+  'product and parameter names). This applies even if the conversation is in another language.';
 
 const INSTRUCTIONS =
   'Flowdit is a pentest management platform. These tools let you READ project data ' +
-  '(projects, targets, ports, endpoints, findings) and PROPOSE new findings or notes. ' +
+  '(projects, targets, ports, endpoints, findings, whiteboard), PROPOSE new findings, notes ' +
+  'or targets, and directly ADD observed ports/endpoints and whiteboard items. ' +
   'Proposals are drafts: a human must approve them in Flowdit before they become real ' +
-  'findings/notes, and nothing here can edit, delete or publish anything. Only propose ' +
+  'findings/notes/targets (a human also decides the scope of a proposed target). Ports and ' +
+  'endpoints can only be added to targets with scope "in" and status "active". Nothing here can ' +
+  'edit, delete or publish existing data, or change any scope. Only propose ' +
   'findings against targets that are in scope (list_targets shows scope/status), and ' +
   'check list_findings first to avoid duplicates. While a proposal is still pending you can ' +
   'fix it with update_proposal or withdraw it with withdraw_proposal. Screenshots are ' +
-  'uploaded out of band (get_upload_instructions) and attached by id.';
+  'uploaded out of band (get_upload_instructions) and attached by id. ' +
+  LANGUAGE_RULE;
 
 // Campos de un hallazgo, compartidos por propose_finding (obligatorios los
 // básicos) y update_proposal (todos opcionales).
 const FINDING_FIELDS = {
-  title: z.string().trim().min(3).max(300).describe('Short finding title, e.g. "Reflected XSS in search parameter"'),
+  title: z.string().trim().min(3).max(300).describe('Short finding title in Spanish, e.g. "XSS reflejado en el parámetro de búsqueda"'),
   severity: z.enum(SEVERITIES),
-  description: z.string().trim().min(1).max(20000).describe('What the issue is and its impact (markdown)'),
-  remediation: z.string().trim().min(1).max(20000).describe('How to fix it (markdown)'),
+  description: z.string().trim().min(1).max(20000).describe('What the issue is and its impact, in Spanish (markdown)'),
+  remediation: z.string().trim().min(1).max(20000).describe('How to fix it, in Spanish (markdown)'),
   category: z.string().trim().max(100).optional().describe('e.g. "XSS", "SQL Injection", "IDOR"'),
   cvss_vector: z.string().trim().regex(/^CVSS:3\.[01]\/[A-Z:/]+$/, 'must be a CVSS v3.x vector, e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H').max(200).optional(),
   cvss_score: z.number().min(0).max(10).optional(),
@@ -58,6 +86,14 @@ const FINDING_FIELDS = {
   })).max(10).optional().describe('Raw HTTP request/response proofs'),
   evidence_upload_ids: z.array(uuid).max(MAX_UPLOADS_PER_PROPOSAL).optional()
     .describe(`Screenshots to attach (max ${MAX_UPLOADS_PER_PROPOSAL}): upload_id values returned by POST /mcp/uploads. See get_upload_instructions.`),
+};
+
+// Campos de un target propuesto. NO hay scope a propósito: lo elige el
+// humano al aprobar (ver approveProposal en proposals.js).
+const TARGET_FIELDS = {
+  host: z.string().trim().min(1).max(500).describe('Hostname, IP, CIDR or URL exactly as it should appear in the target list, e.g. "api.example.com"'),
+  type: z.enum(TARGET_TYPES).describe('domain, ip, cidr, url or other'),
+  notes: z.string().trim().max(10000).optional().describe('Why this target is relevant / how it was discovered (in Spanish)'),
 };
 
 // Instrucciones de subida. NUNCA llevan el token: el modelo ya lo tiene en
@@ -120,11 +156,13 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       throw new Error(`project "${projectId}" not found or Claude Code access is not enabled for it — call list_projects to see the projects you can use`);
     }
     if (propose) {
+      // `propose` cubre toda escritura (propuestas y altas directas de
+      // puertos/endpoints/whiteboard): el único scope que escribe es read_propose.
       if (token.scopes !== 'read_propose') {
-        throw new Error('this API token is read-only (scope "read") — the user must create a token with scope "read_propose" in Flowdit to propose findings or notes');
+        throw new Error('this API token is read-only (scope "read") — the user must create a token with scope "read_propose" in Flowdit to propose or add data');
       }
       if (!WRITER_ROLES.includes(project.member_role)) {
-        throw new Error(`your role in this project is "${project.member_role}" — only owner, editor or pentester can propose findings or notes`);
+        throw new Error(`your role in this project is "${project.member_role}" — only owner, editor or pentester can propose or add data`);
       }
     }
     return project;
@@ -304,7 +342,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   }));
 
   server.registerTool('list_my_proposals', {
-    description: 'List the findings/notes you proposed through Claude Code and their review status (pending, approved, rejected, withdrawn). Only pending ones can be changed with update_proposal or withdrawn with withdraw_proposal.',
+    description: 'List the findings/notes/targets you proposed through Claude Code and their review status (pending, approved, rejected, withdrawn). Only pending ones can be changed with update_proposal or withdrawn with withdraw_proposal.',
     inputSchema: {
       project_id: uuid.optional().describe('Limit to one project'),
       status: z.enum(['pending', 'approved', 'rejected', 'withdrawn']).optional(),
@@ -328,6 +366,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     const { rows } = await db.query(
       `SELECT mp.id, mp.project_id, p.name AS project_name, mp.kind, mp.status,
               mp.payload->>'title' AS title, mp.payload->>'severity' AS severity,
+              mp.payload->>'host' AS host, mp.resulting_target_id,
               mp.entity_type, mp.entity_id, mp.payload->>'entity_name' AS entity_name,
               mp.target_id, mp.created_at, mp.updated_at, mp.reviewed_at, mp.resulting_vuln_id,
               (SELECT COUNT(*)::int FROM mcp_uploads u WHERE u.used_by_proposal_id = mp.id) AS evidence_images
@@ -348,7 +387,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       'first — proposing the same title for the same target again is rejected as a duplicate. ' +
       'To attach screenshots, first upload each image out of band with ' +
       '`curl -sS -H "Authorization: Bearer $FLOWDIT_TOKEN" -F "file=@shot.png" <flowdit>/mcp/uploads` ' +
-      '(call get_upload_instructions for the exact URL) and pass the returned upload_id values in evidence_upload_ids.',
+      '(call get_upload_instructions for the exact URL) and pass the returned upload_id values in evidence_upload_ids.' +
+      ' ' + LANGUAGE_RULE,
     inputSchema: {
       project_id: uuid,
       target_id: uuid.describe('Target the finding applies to (must be scope "in" and active)'),
@@ -368,7 +408,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     description:
       'Propose a note to append to a target, port, endpoint or finding of the project. Like ' +
       'propose_finding, it is only added after a team member approves it. Notes on targets, ports ' +
-      'and endpoints require the target to be in scope and active.',
+      'and endpoints require the target to be in scope and active.' +
+      ' ' + LANGUAGE_RULE,
     inputSchema: {
       project_id: uuid,
       entity_type: z.enum(proposals.NOTE_ENTITY_TYPES),
@@ -390,16 +431,21 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       'Change one of YOUR proposals while it is still pending review (not yet approved, rejected or ' +
       'withdrawn). Only the fields you pass change. Finding proposals accept the propose_finding ' +
       'fields (plus target_id; evidence_upload_ids REPLACES the attached screenshots, [] removes ' +
-      'them); note proposals accept text, entity_type and entity_id. Scope and duplicate checks run ' +
-      'again as when proposing.',
+      'them); note proposals accept text, entity_type and entity_id; target proposals accept host, ' +
+      'type and notes (never scope). Scope and duplicate checks run ' +
+      'again as when proposing.' +
+      ' ' + LANGUAGE_RULE,
     inputSchema: {
       project_id: uuid,
-      proposal_id: uuid.describe('From propose_finding/propose_note or list_my_proposals'),
+      proposal_id: uuid.describe('From propose_finding/propose_note/propose_target or list_my_proposals'),
       target_id: uuid.optional().describe('Finding proposals only: move it to another in-scope target'),
       ...Object.fromEntries(Object.entries(FINDING_FIELDS).map(([k, v]) => [k, v.optional()])),
       entity_type: z.enum(proposals.NOTE_ENTITY_TYPES).optional().describe('Note proposals only'),
       entity_id: uuid.optional().describe('Note proposals only'),
       text: z.string().trim().min(1).max(10000).optional().describe('Note proposals only'),
+      host: TARGET_FIELDS.host.optional().describe('Target proposals only'),
+      type: TARGET_FIELDS.type.optional().describe('Target proposals only'),
+      notes: TARGET_FIELDS.notes.describe('Target proposals only'),
     },
     annotations: { ...PROPOSE, idempotentHint: true },
   }, guarded(async ({ project_id, proposal_id, ...fields }) => {
@@ -421,6 +467,157 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     await projectFor(project_id, { propose: true });
     const r = await proposals.withdrawProposal({ projectId: project_id, proposalId: proposal_id, user });
     return ok({ proposal_id: r.id, kind: r.kind, status: r.status, message: 'Proposal withdrawn.' });
+  }));
+
+  server.registerTool('propose_target', {
+    description:
+      'Propose a new target (host, IP, CIDR or URL) discovered during testing, e.g. a subdomain or an API ' +
+      'host. This does NOT create the target: it goes to the project\'s proposals inbox and a team member ' +
+      'approves it AND decides its scope (in or out) — you cannot set the scope and must not assume a ' +
+      'proposed target is in scope. Until it is approved, do not test it. Check list_targets first: a host ' +
+      'that already exists (ignoring scheme, case and trailing slash) is rejected as a duplicate.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: { project_id: uuid, ...TARGET_FIELDS },
+    annotations: PROPOSE,
+  }, guarded(async (input) => {
+    await projectFor(input.project_id, { propose: true });
+    const prop = await proposals.createTargetProposal({ projectId: input.project_id, user, tokenId: token.id, input });
+    return ok({
+      proposal_id: prop.id, status: prop.status, host: prop.host,
+      message: 'Target proposed. It is pending human review in Flowdit; the reviewer decides its scope. Do not test it until it appears in list_targets with scope "in" and status "active".',
+    });
+  }));
+
+  // ── Altas directas (sin aprobación) ────────────────────────────────────
+  server.registerTool('add_ports', {
+    description:
+      `Record ports/services you observed on a target (max ${recon.MAX_PORTS_PER_CALL} per call). Written ` +
+      'directly, without review, so only record what you actually observed. The target must have scope ' +
+      '"in" and status "active". Ports already recorded (same port + protocol) are skipped and reported, ' +
+      'not an error, so retrying a batch is safe. Cannot edit or delete existing ports.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      target_id: uuid.describe('Target (scope "in", status "active") from list_targets'),
+      ports: z.array(z.object({
+        port: z.number().int().min(1).max(65535),
+        protocol: z.enum(['tcp', 'udp']).optional().describe('Default tcp'),
+        state: z.enum(PORT_STATES).optional().describe('Default open'),
+        service: z.string().trim().max(100).optional().describe('e.g. "http", "ssh"'),
+        version: z.string().trim().max(200).optional().describe('e.g. "nginx 1.24.0"'),
+        notes: z.string().trim().max(5000).optional(),
+      })).min(1).max(recon.MAX_PORTS_PER_CALL),
+    },
+    annotations: ADD_ONLY,
+  }, guarded(async ({ project_id, target_id, ports }) => {
+    await projectFor(project_id, { propose: true });
+    const r = await recon.addPorts({ projectId: project_id, user, targetId: target_id, ports });
+    return ok({ target: r.target, added: r.added, skipped: r.skipped });
+  }));
+
+  server.registerTool('add_endpoints', {
+    description:
+      `Record HTTP endpoints you observed on a target (max ${recon.MAX_ENDPOINTS_PER_CALL} per call). Written ` +
+      'directly, without review. The target must have scope "in" and status "active". Paths are ' +
+      'normalized (no query string or fragment, no duplicate or trailing slashes); an endpoint already ' +
+      'recorded (same normalized path + method) is skipped and reported, not an error. Cannot edit or ' +
+      'delete existing endpoints.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      target_id: uuid.describe('Target (scope "in", status "active") from list_targets'),
+      endpoints: z.array(z.object({
+        path: z.string().trim().min(1).max(1000).describe('Path on the target, e.g. "/api/v1/users"'),
+        method: z.enum(HTTP_METHODS).optional().describe('Default GET'),
+        status_code: z.number().int().min(100).max(599).optional(),
+        interesting: z.boolean().optional().describe('Flag endpoints worth a closer look'),
+        notes: z.string().trim().max(5000).optional(),
+      })).min(1).max(recon.MAX_ENDPOINTS_PER_CALL),
+    },
+    annotations: ADD_ONLY,
+  }, guarded(async ({ project_id, target_id, endpoints }) => {
+    await projectFor(project_id, { propose: true });
+    const r = await recon.addEndpoints({ projectId: project_id, user, targetId: target_id, endpoints });
+    return ok({ target: r.target, added: r.added, skipped: r.skipped });
+  }));
+
+  // ── Whiteboard (solo agregar) ──────────────────────────────────────────
+  server.registerTool('get_whiteboard', {
+    description:
+      'Get a compact summary of the project whiteboard: target nodes, cards (with what they link to), ' +
+      'sticky notes and arrows, with their ids, plus the targets not yet on the board.',
+    inputSchema: { project_id: uuid },
+    annotations: READ_ONLY,
+  }, guarded(async ({ project_id }) => {
+    await projectFor(project_id);
+    return ok(await whiteboard.getWhiteboard(project_id));
+  }));
+
+  const offset = {
+    dx: z.number().min(0).max(5000).optional().describe('Optional x offset (px) inside this batch; pass dx and dy together'),
+    dy: z.number().min(0).max(5000).optional().describe('Optional y offset (px) inside this batch'),
+  };
+  server.registerTool('add_whiteboard_items', {
+    description:
+      `Add items to the project whiteboard (max ${whiteboard.MAX_ITEMS_PER_CALL} per call): target nodes ` +
+      '(a target box that shows its ports, endpoints and findings), cards (title + markdown body, ' +
+      'optionally linked to a target, port or endpoint of the project — a linked card gets an arrow to ' +
+      'that target\'s node when it is on the board) and sticky notes. ADD-ONLY: existing items are never ' +
+      'moved, edited or removed. The server places the batch in free space to the right of the current ' +
+      'board; dx/dy optionally arrange items relative to each other inside the batch. Returns the new ids ' +
+      '(use them with connect_whiteboard_items).' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      nodes: z.array(z.object({ target_id: uuid, ...offset })).max(whiteboard.MAX_ITEMS_PER_CALL).optional()
+        .describe('Target nodes to place (targets already on the board are skipped)'),
+      cards: z.array(z.object({
+        title: z.string().trim().min(1).max(200),
+        body: z.string().max(5000).optional().describe('Markdown'),
+        color: z.enum(whiteboard.CARD_COLORS).optional(),
+        link: z.object({ type: z.enum(['target', 'port', 'endpoint']), id: uuid }).optional()
+          .describe('Target, port or endpoint of this project the card is about'),
+        ...offset,
+      })).max(whiteboard.MAX_ITEMS_PER_CALL).optional(),
+      notes: z.array(z.object({
+        text: z.string().trim().min(1).max(2000),
+        color: z.enum(whiteboard.NOTE_COLORS).optional(),
+        ...offset,
+      })).max(whiteboard.MAX_ITEMS_PER_CALL).optional(),
+    },
+    annotations: { ...ADD_ONLY, idempotentHint: false },
+  }, guarded(async ({ project_id, nodes, cards, notes }) => {
+    await projectFor(project_id, { propose: true });
+    const r = await whiteboard.addItems({ projectId: project_id, user, nodes, cards, notes });
+    const pick = it => ({ id: it.id, x: it.x, y: it.y });
+    return ok({
+      added: {
+        nodes: r.added.nodes.map(pick), cards: r.added.cards.map(pick), notes: r.added.notes.map(pick),
+        edges: r.added.edges.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId })),
+      },
+      skipped: r.skipped,
+    });
+  }));
+
+  server.registerTool('connect_whiteboard_items', {
+    description:
+      `Draw arrows between items already on the whiteboard (max ${whiteboard.MAX_EDGES_PER_CALL} per call). ` +
+      'Arrows can connect target nodes (id = target id) and cards; sticky notes cannot be connected. ' +
+      'Existing connections are skipped. ADD-ONLY: nothing existing changes.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      edges: z.array(z.object({
+        from_id: z.string().uuid(),
+        to_id: z.string().uuid(),
+        label: z.string().trim().max(100).optional(),
+      })).min(1).max(whiteboard.MAX_EDGES_PER_CALL),
+    },
+    annotations: { ...ADD_ONLY, idempotentHint: true },
+  }, guarded(async ({ project_id, edges }) => {
+    await projectFor(project_id, { propose: true });
+    const r = await whiteboard.connectItems({ projectId: project_id, user, edges });
+    return ok({ added: r.added.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label })), skipped: r.skipped });
   }));
 
   server.registerTool('get_upload_instructions', {

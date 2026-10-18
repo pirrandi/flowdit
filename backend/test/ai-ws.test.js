@@ -76,3 +76,77 @@ test('a viewer can join the room but cannot operate the agent', async () => {
   assert.equal(await statusOf(session.id), 'paused');
   ownerSocket.close();
 });
+
+// Junta los mensajes de un tipo que le llegan a un socket ya autenticado.
+function collect(socket, type) {
+  const got = [];
+  socket.on('message', data => { const m = JSON.parse(data); if (m.type === type) got.push(m); });
+  return got;
+}
+
+test('editing a finding pings writers with vulns:changed, never the client socket', async () => {
+  const { owner, viewer, project } = await setup();
+  const { rows: [vuln] } = await db.query(
+    `INSERT INTO custom_vulns (project_id, name, category, severity, created_by) VALUES ($1,'XSS','XSS','high',$2) RETURNING id`,
+    [project.id, owner.user.id]
+  );
+  const ownerSocket  = await connect(project.id, owner.accessToken);
+  const viewerSocket = await connect(project.id, viewer.accessToken);
+  const toOwner = collect(ownerSocket, 'vulns:changed');
+  const toViewer = collect(viewerSocket, 'vulns:changed');
+
+  const res = await require('supertest')(app).patch(`/api/projects/${project.id}/vulns/${vuln.id}`)
+    .set('Authorization', `Bearer ${owner.accessToken}`).send({ description: 'updated' });
+  assert.equal(res.status, 200);
+  for (let i = 0; i < 30 && !toOwner.length; i++) await sleep(25);
+  await sleep(100);
+  assert.equal(toOwner.length, 1);
+  assert.equal(toViewer.length, 0);
+  ownerSocket.close();
+  viewerSocket.close();
+});
+
+test('a proposal status change broadcasts the pending count to writers only', async () => {
+  const { owner, viewer, project } = await setup();
+  const proposals = require('../src/services/mcp/proposals');
+  const { rows: [p] } = await db.query(
+    `INSERT INTO mcp_proposals (project_id, kind, payload, proposed_by) VALUES ($1,'note',$2,$3) RETURNING id`,
+    [project.id, JSON.stringify({ text: 'n', entity_name: 'x' }), owner.user.id]
+  );
+  await db.query(
+    `INSERT INTO mcp_proposals (project_id, kind, payload, proposed_by) VALUES ($1,'note',$2,$3)`,
+    [project.id, JSON.stringify({ text: 'n2', entity_name: 'x' }), owner.user.id]
+  );
+  const ownerSocket  = await connect(project.id, owner.accessToken);
+  const viewerSocket = await connect(project.id, viewer.accessToken);
+  const toOwner = collect(ownerSocket, 'mcp_proposals:changed');
+  const toViewer = collect(viewerSocket, 'mcp_proposals:changed');
+
+  await proposals.rejectProposal({ projectId: project.id, proposalId: p.id, user: { id: owner.user.id, username: owner.user.username } });
+  for (let i = 0; i < 30 && !toOwner.length; i++) await sleep(25);
+  await sleep(100);
+  assert.deepEqual(toOwner.map(m => m.pending), [1]);
+  assert.equal(toViewer.length, 0);
+  ownerSocket.close();
+  viewerSocket.close();
+});
+
+test('whiteboard additions from Claude Code reach writer sockets as wb:patch items_add, never the client', async () => {
+  const { owner, viewer, project } = await setup();
+  const wb = require('../src/services/mcp/whiteboard');
+  const ownerSocket  = await connect(project.id, owner.accessToken);
+  const viewerSocket = await connect(project.id, viewer.accessToken);
+  const toOwner = collect(ownerSocket, 'wb:patch');
+  const toViewer = collect(viewerSocket, 'wb:patch');
+
+  await wb.addItems({ projectId: project.id, user: { id: owner.user.id, username: owner.user.username }, notes: [{ text: 'hola' }] });
+  for (let i = 0; i < 30 && !toOwner.length; i++) await sleep(25);
+  await sleep(100);
+  assert.equal(toOwner.length, 1);
+  assert.equal(toOwner[0].op, 'items_add');
+  assert.equal(toOwner[0].notes[0].text, 'hola');
+  assert.equal(toOwner[0].notes[0].created_by, 'claude_code');
+  assert.equal(toViewer.length, 0);
+  ownerSocket.close();
+  viewerSocket.close();
+});
