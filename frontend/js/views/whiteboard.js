@@ -54,6 +54,16 @@ const METHOD_COLOR = {
 const NOTE_COLORS  = ['#ffd96a', '#a8edab', '#a8d8f0', '#f7b8b8', '#e0b8f7'];
 const CARD_COLORS  = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e4a4f'];
 
+// The saved board and live wb:patch messages are written by other project
+// members, so colors and numbers are checked before they reach a style,
+// attribute or markup: a color like `"><img onerror=…>` is stored XSS.
+const SAFE_COLOR_RE = /^(#[0-9a-f]{3,8}|var\(--[a-z0-9-]+\))$/i;
+const SAFE_PATH_RE  = /^[MLHVCSQTAZmlhvcsqtaz0-9.,eE+\- ]*$/;
+function _cardColor(c) { return CARD_COLORS.includes(c) ? c : CARD_COLORS[0]; }
+function _noteColor(c) { return NOTE_COLORS.includes(c) ? c : NOTE_COLORS[0]; }
+function _safeColor(c, fallback) { return typeof c === 'string' && SAFE_COLOR_RE.test(c) ? c : fallback; }
+function _num(v, fallback = 0) { const n = Number(v); return v !== null && v !== '' && Number.isFinite(n) ? n : fallback; }
+
 // marked does not strip embedded HTML, so its output must be sanitised before it
 // reaches innerHTML — whiteboard notes are stored and shown to every member and
 // to the client portal, which makes raw HTML here stored XSS. If either library
@@ -105,6 +115,8 @@ async function initWhiteboard() {
     _autoLayout(state.targets, _itemsBottom());
     scheduleSave();
   }
+  const v = wbData.view || {};
+  wbData.view = { panX: _num(v.panX), panY: _num(v.panY), zoom: _num(v.zoom, 1) > 0 ? _num(v.zoom, 1) : 1 };
 
   _applyTransform();
   _renderAll();
@@ -213,10 +225,10 @@ function _buildNode(nodeData, target) {
   const el = document.createElement('div');
   el.className = 'wb-node' + (nodeData.collapsed ? ' collapsed' : '') + (nodeData.h ? ' wb-node--sized' : '');
   el.dataset.nodeId = nodeData.id;
-  el.style.left  = nodeData.x + 'px';
-  el.style.top   = nodeData.y + 'px';
-  el.style.width = (nodeData.w || 290) + 'px';
-  if (nodeData.h) el.style.height = nodeData.h + 'px';
+  el.style.left  = _num(nodeData.x) + 'px';
+  el.style.top   = _num(nodeData.y) + 'px';
+  el.style.width = (_num(nodeData.w) || 290) + 'px';
+  if (_num(nodeData.h)) el.style.height = _num(nodeData.h) + 'px';
 
   const vulnRows = vulns.length
     ? vulns.map(v => `
@@ -372,17 +384,17 @@ function _buildCard(cardData) {
   const el = document.createElement('div');
   el.className = 'wb-card';
   el.dataset.nodeId = cardData.id; // same attr as target nodes → arrows work
-  el.style.left  = cardData.x + 'px';
-  el.style.top   = cardData.y + 'px';
-  el.style.width = (cardData.w || 240) + 'px';
-  if (cardData.h) el.style.height = cardData.h + 'px';
+  el.style.left  = _num(cardData.x) + 'px';
+  el.style.top   = _num(cardData.y) + 'px';
+  el.style.width = (_num(cardData.w) || 240) + 'px';
+  if (_num(cardData.h)) el.style.height = _num(cardData.h) + 'px';
 
   const colorDots = CARD_COLORS.map(c =>
     `<span class="wb-card-col" style="background:${c}" data-color="${c}"></span>`
   ).join('');
 
   el.innerHTML = `
-    <div class="wb-card-head" data-drag-handle style="background:${cardData.color || CARD_COLORS[0]}">
+    <div class="wb-card-head" data-drag-handle style="background:${_cardColor(cardData.color)}">
       ${icon('grip-vertical', { size: 13, class: 'wb-card-grip' })}
       <span class="wb-card-title" data-title contenteditable="false">${esc(cardData.title || '')}</span>
       <div class="wb-card-colors">${colorDots}</div>
@@ -582,7 +594,7 @@ function wbRemoveCard(id) {
 function wbCardColor(id, color) {
   const cd = wbData.cards.find(c => c.id === id);
   if (!cd) return;
-  cd.color = color;
+  cd.color = color = _cardColor(color);
   const head = _nl.querySelector(`[data-node-id="${id}"] .wb-card-head`);
   if (head) head.style.background = color;
   _broadcast({ op: 'card_update', cardId: id, changes: { color } });
@@ -826,14 +838,15 @@ async function syncTargets() {
 // ── Strokes ────────────────────────────────────────────────────────────
 function _renderStroke(stroke) {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', stroke.d);
-  path.setAttribute('stroke', stroke.color);
-  path.setAttribute('stroke-width', String(stroke.width / wbData.view.zoom));
+  const width = _num(stroke.width, 2) > 0 ? _num(stroke.width, 2) : 2;
+  path.setAttribute('d', typeof stroke.d === 'string' && SAFE_PATH_RE.test(stroke.d) ? stroke.d : '');
+  path.setAttribute('stroke', _safeColor(stroke.color, '#e94141'));
+  path.setAttribute('stroke-width', String(width / wbData.view.zoom));
   path.setAttribute('fill', 'none');
   path.setAttribute('stroke-linecap', 'round');
   path.setAttribute('stroke-linejoin', 'round');
   path.dataset.stroke  = stroke.id;
-  path.dataset.strokeW = String(stroke.width);
+  path.dataset.strokeW = String(width);
   _svg.appendChild(path);
   return path;
 }
@@ -880,9 +893,9 @@ function _buildNote(noteData) {
   const el = document.createElement('div');
   el.className = 'wb-sticky';
   el.dataset.noteId = noteData.id;
-  el.style.left = noteData.x + 'px';
-  el.style.top  = noteData.y + 'px';
-  el.style.background = noteData.color || NOTE_COLORS[0];
+  el.style.left = _num(noteData.x) + 'px';
+  el.style.top  = _num(noteData.y) + 'px';
+  el.style.background = _noteColor(noteData.color);
 
   const colorDots = NOTE_COLORS.map(c =>
     `<span class="wb-sticky-col" style="background:${c}" data-color="${c}"></span>`
@@ -992,7 +1005,7 @@ function wbRemoveNote(id) {
 function wbNoteColor(id, color) {
   const nd = wbData.notes.find(n => n.id === id);
   if (!nd) return;
-  nd.color = color;
+  nd.color = color = _noteColor(color);
   const el = _nl.querySelector(`[data-note-id="${id}"]`);
   if (el) el.style.background = color;
   _broadcast({ op: 'note_update', noteId: id, changes: { color } });
@@ -1316,7 +1329,7 @@ function _handleRemoteCursor({ userId, username, display_name, wx, wy }) {
 
   let el = _cursorEls.get(userId);
   if (!el) {
-    const color = _memberColor(userId);
+    const color = _safeColor(_memberColor(userId), '#7c3aed');
     el = document.createElement('div');
     el.className = 'wb-cursor';
     el.innerHTML = `
@@ -1337,8 +1350,8 @@ function _handleRemoteCursor({ userId, username, display_name, wx, wy }) {
 
 function _positionCursor(el, wx, wy) {
   const { panX, panY, zoom } = wbData.view;
-  el.style.left = (wx * zoom + panX) + 'px';
-  el.style.top  = (wy * zoom + panY) + 'px';
+  el.style.left = (_num(wx) * zoom + panX) + 'px';
+  el.style.top  = (_num(wy) * zoom + panY) + 'px';
 }
 
 function _refreshCursorPositions() {
@@ -1410,7 +1423,7 @@ function _handleRemotePatch(msg) {
     case 'node_move': {
       const nd = wbData.nodes.find(n => n.id === msg.nodeId);
       if (!nd) return;
-      nd.x = msg.x; nd.y = msg.y;
+      nd.x = _num(msg.x, nd.x); nd.y = _num(msg.y, nd.y);
       const el = _nl.querySelector(`[data-node-id="${msg.nodeId}"]`);
       if (el) { el.style.left = nd.x + 'px'; el.style.top = nd.y + 'px'; }
       _updateAllEdges();
@@ -1419,7 +1432,7 @@ function _handleRemotePatch(msg) {
     case 'node_toggle': {
       const nd = wbData.nodes.find(n => n.id === msg.nodeId);
       if (!nd) return;
-      nd.collapsed = msg.collapsed;
+      nd.collapsed = !!msg.collapsed;
       const el = _nl.querySelector(`[data-node-id="${msg.nodeId}"]`);
       if (el) {
         el.classList.toggle('collapsed', nd.collapsed);
@@ -1432,9 +1445,9 @@ function _handleRemotePatch(msg) {
     case 'node_resize': {
       const nd = wbData.nodes.find(n => n.id === msg.nodeId);
       if (!nd) return;
-      nd.w = msg.w; nd.h = msg.h;
+      nd.w = _num(msg.w, nd.w); nd.h = _num(msg.h, nd.h);
       const el = _nl.querySelector(`[data-node-id="${msg.nodeId}"]`);
-      if (el) { el.style.width = msg.w + 'px'; el.style.height = msg.h + 'px'; }
+      if (el) { el.style.width = _num(nd.w) + 'px'; el.style.height = _num(nd.h) + 'px'; }
       _updateAllEdges();
       break;
     }
@@ -1490,9 +1503,9 @@ function _handleRemotePatch(msg) {
       Object.assign(nd, msg.changes);
       const el = _nl.querySelector(`[data-note-id="${msg.noteId}"]`);
       if (!el) return;
-      if (msg.changes.color !== undefined) el.style.background = msg.changes.color;
-      if (msg.changes.x !== undefined) el.style.left = msg.changes.x + 'px';
-      if (msg.changes.y !== undefined) el.style.top  = msg.changes.y + 'px';
+      if (msg.changes.color !== undefined) el.style.background = _noteColor(msg.changes.color);
+      if (msg.changes.x !== undefined) el.style.left = _num(msg.changes.x) + 'px';
+      if (msg.changes.y !== undefined) el.style.top  = _num(msg.changes.y) + 'px';
       if (msg.changes.text !== undefined) {
         const textEl = el.querySelector('[data-text]');
         if (textEl && textEl.contentEditable !== 'true') textEl.textContent = msg.changes.text;
@@ -1550,13 +1563,13 @@ function _handleRemotePatch(msg) {
       Object.assign(cd, msg.changes);
       const el = _nl.querySelector(`[data-node-id="${msg.cardId}"]`);
       if (!el) return;
-      if (msg.changes.x !== undefined) el.style.left   = msg.changes.x + 'px';
-      if (msg.changes.y !== undefined) el.style.top    = msg.changes.y + 'px';
-      if (msg.changes.w !== undefined) el.style.width  = msg.changes.w + 'px';
-      if (msg.changes.h !== undefined) el.style.height = msg.changes.h + 'px';
+      if (msg.changes.x !== undefined) el.style.left   = _num(msg.changes.x) + 'px';
+      if (msg.changes.y !== undefined) el.style.top    = _num(msg.changes.y) + 'px';
+      if (msg.changes.w !== undefined) el.style.width  = _num(msg.changes.w) + 'px';
+      if (msg.changes.h !== undefined) el.style.height = _num(msg.changes.h) + 'px';
       if (msg.changes.color !== undefined) {
         const head = el.querySelector('.wb-card-head');
-        if (head) head.style.background = msg.changes.color;
+        if (head) head.style.background = _cardColor(msg.changes.color);
       }
       if (msg.changes.title !== undefined) {
         const t = el.querySelector('[data-title]');

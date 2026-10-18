@@ -81,6 +81,11 @@ function setup(server) {
         // whiteboard y la lista de presencia del equipo. El rol se fija al
         // unirse; un cambio de rol aplica al reconectar.
         ws._client    = membership.member_role === 'viewer';
+        // Igual que requireWriter en PUT /whiteboard: solo un rol de escritura
+        // empuja wb:patch a los demás. Hoy el único rol sin escritura es
+        // viewer (ya cortado por _client); esto cubre roles futuros de solo
+        // lectura. Se fija al unirse, como _client.
+        ws._writer    = WRITER_ROLES.includes(membership.member_role);
 
         // Track by userId for logout
         if (!userSockets.has(user.id)) userSockets.set(user.id, new Set());
@@ -101,6 +106,7 @@ function setup(server) {
           if (msg.type === 'wb:cursor' || msg.type === 'wb:patch') {
             // El whiteboard es interno: un socket de cliente ni emite ni recibe.
             if (ws._client) return;
+            if (msg.type === 'wb:patch' && !ws._writer) return;
             const room = rooms.get(projectId);
             if (!room) return;
             const out = JSON.stringify({ ...msg, userId: user.id, username: user.username, display_name: user.display_name });

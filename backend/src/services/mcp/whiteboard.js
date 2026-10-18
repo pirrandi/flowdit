@@ -292,5 +292,5 @@ async function connectItems({ projectId, user, edges }) {
 
 module.exports = {
   getWhiteboard, addItems, connectItems, WhiteboardError,
-  MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, NOTE_COLORS, CARD_COLORS,
+  MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
 };

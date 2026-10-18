@@ -2,6 +2,7 @@ const router  = require('express').Router({ mergeParams: true });
 const db      = require('../db');
 const { requireAuth, requireUser } = require('../middleware/auth');
 const { requireProjectAccess, requireWriter, denyClientSessions } = require('../middleware/project');
+const { sanitizeWhiteboardData, WhiteboardDataError } = require('../services/whiteboardSanitize');
 
 // Las cuentas viewer son el cliente (ver isClientSession): igual que el portal,
 // no ven este material interno aunque no puedan escribirlo.
@@ -18,7 +19,15 @@ router.get('/', async (req, res, next) => {
 });
 
 router.put('/', requireWriter, async (req, res, next) => {
-  const data = req.body.data ?? {};
+  // El blob lo dibuja el navegador de cada miembro: solo se guardan los campos
+  // conocidos, con colores de la allowlist y números finitos (ver whiteboardSanitize).
+  let data;
+  try {
+    data = sanitizeWhiteboardData(req.body.data ?? {});
+  } catch (err) {
+    if (err instanceof WhiteboardDataError) return res.status(400).json({ error: err.message });
+    return next(err);
+  }
   try {
     const { rows } = await db.query(
       `INSERT INTO whiteboard_state (project_id, data, updated_by)
