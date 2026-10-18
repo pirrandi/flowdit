@@ -26,16 +26,26 @@ const CREATED_BY = 'claude_code';
 const NOTE_COLORS = ['#ffd96a', '#a8edab', '#a8d8f0', '#f7b8b8', '#e0b8f7'];
 const CARD_COLORS = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e4a4f'];
 
-// Tamaños por defecto con los que whiteboard.js dibuja cada cosa.
+// Tamaños por defecto con los que whiteboard.js dibuja cada cosa (sin w/h
+// propio). La nota no tiene alto fijo en el navegador: 100 es el típico.
 const SIZE = {
   node: { w: 290, h: 380 },
   card: { w: 240, h: 110 },
   note: { w: 170, h: 100 },
 };
-// Grilla del auto-layout (celda = tamaño + separación).
+// Mínimos por tipo (los mismos que usa el resize de whiteboard.js) y máximo
+// común para un w/h explícito.
+const MIN_SIZE = {
+  node: { w: 200, h: 120 },
+  card: { w: 160, h: 80 },
+  note: { w: 120, h: 80 },
+};
+const MAX_ITEM_SIZE = 4000;
+// Grilla del auto-layout (celda = tamaño + separación). Si el lote trae
+// ítems más grandes que el default, la celda crece para que no se pisen.
 const GRID = {
-  node: { cols: 3, cw: 350, ch: 430 },
-  small: { cols: 4, cw: 280, ch: 150 },
+  node: { cols: 3, cw: 350, ch: 430, gapX: 60, gapY: 50 },
+  small: { cols: 4, cw: 280, ch: 150, gapX: 40, gapY: 40 },
 };
 const BATCH_GAP = 120;
 const ORIGIN = 80;
@@ -53,6 +63,18 @@ function normalizeBoard(data) {
   return b;
 }
 
+function clampSize(kind, dim, v) {
+  if (!Number.isFinite(v)) return undefined;
+  return Math.round(Math.min(MAX_ITEM_SIZE, Math.max(MIN_SIZE[kind][dim], v)));
+}
+
+// Posición y tamaño efectivo de un ítem: su w/h si lo tiene, si no el
+// default con que lo dibuja el navegador.
+function geometry(kind, it) {
+  const dim = (v, d) => (Number.isFinite(v) && v > 0 ? v : d);
+  return { x: it.x, y: it.y, w: dim(it.w, SIZE[kind].w), h: dim(it.h, SIZE[kind].h) };
+}
+
 // Caja que ocupa todo lo que ya está dibujado. Los trazos libres son un path
 // SVG ("M x y L x y ..."): se toman sus pares de números.
 function boundingBox(board) {
@@ -62,9 +84,9 @@ function boundingBox(board) {
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
   };
-  board.nodes.forEach(n => add(n.x, n.y, n.w || SIZE.node.w, n.h || SIZE.node.h));
-  board.cards.forEach(c => add(c.x, c.y, c.w || SIZE.card.w, c.h || SIZE.card.h));
-  board.notes.forEach(n => add(n.x, n.y, SIZE.note.w, SIZE.note.h));
+  for (const kind of ['node', 'card', 'note']) {
+    board[`${kind}s`].forEach(it => { const g = geometry(kind, it); add(g.x, g.y, g.w, g.h); });
+  }
   board.strokes.forEach(s => {
     for (const m of String(s.d || '').matchAll(/(-?\d+(?:\.\d+)?)[ ,]+(-?\d+(?:\.\d+)?)/g)) add(+m[1], +m[2], 0, 0);
   });
@@ -87,16 +109,29 @@ function layoutBatch(board, items) {
   const clamp = v => Math.max(0, Math.min(MAX_OFFSET, v));
   const hasOffset = it => Number.isFinite(it.dx) && Number.isFinite(it.dy);
 
+  // Celda de la grilla: la default, o más grande si algún ítem del grupo
+  // trae w/h mayor.
+  const cell = (group, g) => {
+    const sizes = group.map(it => geometry(it.kind, it.data));
+    return {
+      cols: g.cols,
+      cw: Math.max(g.cw, ...sizes.map(s => s.w + g.gapX)),
+      ch: Math.max(g.ch, ...sizes.map(s => s.h + g.gapY)),
+    };
+  };
+
   const nodes = items.filter(it => it.kind === 'node' && !hasOffset(it));
   const small = items.filter(it => it.kind !== 'node' && !hasOffset(it));
+  const nc = cell(nodes, GRID.node);
   nodes.forEach((it, i) => {
-    it.x = ox + (i % GRID.node.cols) * GRID.node.cw;
-    it.y = oy + Math.floor(i / GRID.node.cols) * GRID.node.ch;
+    it.x = ox + (i % nc.cols) * nc.cw;
+    it.y = oy + Math.floor(i / nc.cols) * nc.ch;
   });
-  const smallTop = oy + Math.ceil(nodes.length / GRID.node.cols) * GRID.node.ch;
+  const smallTop = oy + Math.ceil(nodes.length / nc.cols) * nc.ch;
+  const sc = cell(small, GRID.small);
   small.forEach((it, i) => {
-    it.x = ox + (i % GRID.small.cols) * GRID.small.cw;
-    it.y = smallTop + Math.floor(i / GRID.small.cols) * GRID.small.ch;
+    it.x = ox + (i % sc.cols) * sc.cw;
+    it.y = smallTop + Math.floor(i / sc.cols) * sc.ch;
   });
   items.filter(hasOffset).forEach(it => { it.x = ox + clamp(it.dx); it.y = oy + clamp(it.dy); });
   items.forEach(it => { it.x = Math.round(it.x); it.y = Math.round(it.y); });
@@ -158,13 +193,18 @@ async function getWhiteboard(projectId) {
     updated_at: rows[0]?.updated_at || null,
     nodes: board.nodes.filter(n => byId.has(n.id)).map(n => {
       const t = byId.get(n.id);
-      return { id: n.id, kind: 'target', target_id: n.id, host: t.host, type: t.type, scope: t.scope, status: t.status };
+      return {
+        id: n.id, kind: 'target', target_id: n.id, host: t.host, type: t.type, scope: t.scope, status: t.status,
+        ...geometry('node', n),
+      };
     }),
     cards: board.cards.map(c => ({
       id: c.id, title: c.title || '', body: clip(c.body || '', 1000), link: c.ref || null,
-      created_by: c.created_by || null,
+      created_by: c.created_by || null, ...geometry('card', c),
     })),
-    notes: board.notes.map(n => ({ id: n.id, text: clip(n.text || '', 1000), created_by: n.created_by || null })),
+    notes: board.notes.map(n => ({
+      id: n.id, text: clip(n.text || '', 1000), created_by: n.created_by || null, ...geometry('note', n),
+    })),
     edges: board.edges.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label || '' })),
     strokes: board.strokes.length,
     targets_not_on_board: targets.filter(t => !board.nodes.some(n => n.id === t.id)).map(t => ({ id: t.id, host: t.host })),
@@ -197,23 +237,30 @@ async function addItems({ projectId, user, nodes = [], cards = [], notes = [] })
     const skipped = [];
     const batch = [];
     const seenNodes = new Set();
+    // w/h solo para lo que se crea acá; nunca toca ítems existentes.
+    const sized = (kind, it, data) => {
+      const w = clampSize(kind, 'w', it.w), h = clampSize(kind, 'h', it.h);
+      if (w !== undefined) data.w = w;
+      if (h !== undefined) data.h = h;
+      return data;
+    };
     for (const n of nodes) {
       if (onBoard.has(n.target_id) || seenNodes.has(n.target_id)) { skipped.push({ target_id: n.target_id, reason: 'target is already on the board' }); continue; }
       seenNodes.add(n.target_id);
-      batch.push({ kind: 'node', dx: n.dx, dy: n.dy, data: { id: n.target_id, collapsed: false, created_by: CREATED_BY } });
+      batch.push({ kind: 'node', dx: n.dx, dy: n.dy, data: sized('node', n, { id: n.target_id, collapsed: false, created_by: CREATED_BY }) });
     }
     cards.forEach((c, i) => batch.push({
       kind: 'card', dx: c.dx, dy: c.dy,
-      data: {
+      data: sized('card', c, {
         id: crypto.randomUUID(), title: c.title, body: c.body || '',
         color: CARD_COLORS.includes(c.color) ? c.color : CARD_COLORS[0],
         ...(links[i] ? { ref: links[i] } : {}),
         created_by: CREATED_BY,
-      },
+      }),
     }));
     notes.forEach(n => batch.push({
       kind: 'note', dx: n.dx, dy: n.dy,
-      data: { id: crypto.randomUUID(), text: n.text, color: NOTE_COLORS.includes(n.color) ? n.color : NOTE_COLORS[0], created_by: CREATED_BY },
+      data: sized('note', n, { id: crypto.randomUUID(), text: n.text, color: NOTE_COLORS.includes(n.color) ? n.color : NOTE_COLORS[0], created_by: CREATED_BY }),
     }));
 
     layoutBatch(board, batch);
@@ -291,6 +338,7 @@ async function connectItems({ projectId, user, edges }) {
 }
 
 module.exports = {
-  getWhiteboard, addItems, connectItems, WhiteboardError,
+  getWhiteboard, addItems, connectItems, geometry, WhiteboardError,
   MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
+  SIZE, MIN_SIZE, MAX_ITEM_SIZE,
 };

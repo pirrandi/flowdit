@@ -64,6 +64,33 @@ function _noteColor(c) { return NOTE_COLORS.includes(c) ? c : NOTE_COLORS[0]; }
 function _safeColor(c, fallback) { return typeof c === 'string' && SAFE_COLOR_RE.test(c) ? c : fallback; }
 function _num(v, fallback = 0) { const n = Number(v); return v !== null && v !== '' && Number.isFinite(n) ? n : fallback; }
 
+// Item sizes. DEFAULT_SIZE is what an item without w/h is drawn with (an
+// unsized note/card grows with its text, so it is only an estimate there);
+// MIN_SIZE is the resize floor per type. Same values as the MCP server
+// (services/mcp/whiteboard.js) so its auto-layout matches what is drawn.
+const DEFAULT_SIZE  = { node: { w: 290, h: 380 }, card: { w: 240, h: 110 }, note: { w: 170, h: 100 } };
+const MIN_SIZE      = { node: { w: 200, h: 120 }, card: { w: 160, h: 80 },  note: { w: 120, h: 80 } };
+const MAX_ITEM_SIZE = 4000;
+// Optional w/h from the board or a remote patch: clamped, or 0 when absent/invalid.
+function _dim(v, min) { const n = _num(v, 0); return n > 0 ? Math.min(MAX_ITEM_SIZE, Math.max(min, n)) : 0; }
+
+function _itemEl(kind, id) {
+  const sel = kind === 'note' ? `[data-note-id="${CSS.escape(String(id))}"]` : `[data-node-id="${CSS.escape(String(id))}"]`;
+  return _nl ? _nl.querySelector(sel) : null;
+}
+
+// World-space box of an item: rendered size when it is on screen, otherwise
+// its saved w/h or the type default.
+function _itemBox(kind, d) {
+  const el  = _itemEl(kind, d.id);
+  const min = MIN_SIZE[kind], def = DEFAULT_SIZE[kind];
+  return {
+    x: _num(d.x), y: _num(d.y),
+    w: (el && el.offsetWidth)  || _dim(d.w, min.w) || def.w,
+    h: (el && el.offsetHeight) || _dim(d.h, min.h) || def.h,
+  };
+}
+
 // marked does not strip embedded HTML, so its output must be sanitised before it
 // reaches innerHTML — whiteboard notes are stored and shown to every member and
 // to the client portal, which makes raw HTML here stored XSS. If either library
@@ -154,14 +181,14 @@ async function _loadPortsAndEndpoints(pid, targets) {
 // el auto-layout inicial de nodos no las tape.
 function _itemsBottom() {
   const bottoms = [
-    ...wbData.notes.map(n => n.y + 100),
-    ...wbData.cards.map(c => c.y + (c.h || 110)),
+    ...wbData.notes.map(n => { const b = _itemBox('note', n); return b.y + b.h; }),
+    ...wbData.cards.map(c => { const b = _itemBox('card', c); return b.y + b.h; }),
   ].filter(Number.isFinite);
   return bottoms.length ? Math.max(...bottoms) + 50 : 80;
 }
 
 function _autoLayout(targets, top = 80) {
-  const cols = 3, nodeW = 290, nodeH = 380, gapX = 60, gapY = 50;
+  const cols = 3, nodeW = DEFAULT_SIZE.node.w, nodeH = DEFAULT_SIZE.node.h, gapX = 60, gapY = 50;
   wbData.nodes = targets.map((t, i) => ({
     id:        t.id,
     x:         80 + (i % cols) * (nodeW + gapX),
@@ -227,8 +254,8 @@ function _buildNode(nodeData, target) {
   el.dataset.nodeId = nodeData.id;
   el.style.left  = _num(nodeData.x) + 'px';
   el.style.top   = _num(nodeData.y) + 'px';
-  el.style.width = (_num(nodeData.w) || 290) + 'px';
-  if (_num(nodeData.h)) el.style.height = _num(nodeData.h) + 'px';
+  el.style.width = (_dim(nodeData.w, MIN_SIZE.node.w) || DEFAULT_SIZE.node.w) + 'px';
+  if (_dim(nodeData.h, MIN_SIZE.node.h)) el.style.height = _dim(nodeData.h, MIN_SIZE.node.h) + 'px';
 
   const vulnRows = vulns.length
     ? vulns.map(v => `
@@ -307,7 +334,7 @@ function _buildNode(nodeData, target) {
   });
 
   _makeNodeDraggable(el, nodeData);
-  _makeResizable(el, nodeData, 200, 120, 'node');
+  _makeResizable(el, nodeData, 'node');
   return el;
 }
 
@@ -386,8 +413,8 @@ function _buildCard(cardData) {
   el.dataset.nodeId = cardData.id; // same attr as target nodes → arrows work
   el.style.left  = _num(cardData.x) + 'px';
   el.style.top   = _num(cardData.y) + 'px';
-  el.style.width = (_num(cardData.w) || 240) + 'px';
-  if (_num(cardData.h)) el.style.height = _num(cardData.h) + 'px';
+  el.style.width = (_dim(cardData.w, MIN_SIZE.card.w) || DEFAULT_SIZE.card.w) + 'px';
+  if (_dim(cardData.h, MIN_SIZE.card.h)) el.style.height = _dim(cardData.h, MIN_SIZE.card.h) + 'px';
 
   const colorDots = CARD_COLORS.map(c =>
     `<span class="wb-card-col" style="background:${c}" data-color="${c}"></span>`
@@ -451,6 +478,7 @@ function _buildCard(cardData) {
     textEl.contentEditable = 'false';
     cardData.body = raw;
     textEl.innerHTML = renderMd(raw);
+    _updateAllEdges(); // an unsized card's height follows its text
     _broadcast({ op: 'card_update', cardId: cardData.id, changes: { body: raw } });
     scheduleSave();
   });
@@ -475,7 +503,7 @@ function _buildCard(cardData) {
   });
 
   _makeCardDraggable(el, cardData);
-  _makeResizable(el, cardData, 160, 80, 'card');
+  _makeResizable(el, cardData, 'card');
   return el;
 }
 
@@ -520,7 +548,8 @@ function _makeCardDraggable(el, cardData) {
   });
 }
 
-function _makeResizable(el, data, minW, minH, type) {
+function _makeResizable(el, data, type) {
+  const min = MIN_SIZE[type];
   const handle = document.createElement('div');
   handle.className = 'wb-resize-handle';
   el.appendChild(handle);
@@ -536,17 +565,20 @@ function _makeResizable(el, data, minW, minH, type) {
 
     function onMove(e) {
       const z = wbData.view.zoom;
-      data.w = Math.round(Math.max(minW, startW + (e.clientX - startX) / z));
-      data.h = Math.round(Math.max(minH, startH + (e.clientY - startY) / z));
+      data.w = Math.round(_dim(startW + (e.clientX - startX) / z, min.w) || min.w);
+      data.h = Math.round(_dim(startH + (e.clientY - startY) / z, min.h) || min.h);
       el.style.width  = data.w + 'px';
       el.style.height = data.h + 'px';
       if (type === 'node') el.classList.add('wb-node--sized');
+      if (type === 'note') el.classList.add('wb-sticky--sized');
       _updateAllEdges();
     }
     function onUp() {
       handle.removeEventListener('pointermove', onMove);
       if (type === 'card') {
         _broadcast({ op: 'card_update', cardId: data.id, changes: { w: data.w, h: data.h } });
+      } else if (type === 'note') {
+        _broadcast({ op: 'note_update', noteId: data.id, changes: { w: data.w, h: data.h } });
       } else {
         _broadcast({ op: 'node_resize', nodeId: data.id, w: data.w, h: data.h });
       }
@@ -609,7 +641,7 @@ function _nodeInfo(nodeId) {
   if (!src) return null;
   const el  = _nl.querySelector(`[data-node-id="${nodeId}"]`);
   const h   = el ? el.offsetHeight : 40;
-  const w   = el ? el.offsetWidth  : (nd ? (nd.w || 290) : (cd.w || 240));
+  const w   = el ? el.offsetWidth  : (_dim(src.w, 1) || DEFAULT_SIZE[nd ? 'node' : 'card'].w);
   return { cx: src.x + w / 2, cy: src.y + h / 2, w, h };
 }
 
@@ -821,7 +853,7 @@ async function syncTargets() {
 
   await _loadPortsAndEndpoints(state.currentProject.id, toAdd);
 
-  const maxY = wbData.nodes.reduce((m, n) => Math.max(m, n.y + 380), 80);
+  const maxY = wbData.nodes.reduce((m, n) => { const b = _itemBox('node', n); return Math.max(m, b.y + b.h); }, 80);
   const startY = maxY + 50;
   const newNodes = [];
   toAdd.forEach((t, i) => {
@@ -896,6 +928,7 @@ function _buildNote(noteData) {
   el.style.left = _num(noteData.x) + 'px';
   el.style.top  = _num(noteData.y) + 'px';
   el.style.background = _noteColor(noteData.color);
+  _applyNoteSize(el, noteData);
 
   const colorDots = NOTE_COLORS.map(c =>
     `<span class="wb-sticky-col" style="background:${c}" data-color="${c}"></span>`
@@ -943,7 +976,17 @@ function _buildNote(noteData) {
   });
 
   _makeNoteDraggable(el, noteData);
+  _makeResizable(el, noteData, 'note');
   return el;
+}
+
+// A note without w/h keeps the CSS default (170px wide, grows with its
+// text); once sized, its text area scrolls inside the fixed box.
+function _applyNoteSize(el, noteData) {
+  const w = _dim(noteData.w, MIN_SIZE.note.w), h = _dim(noteData.h, MIN_SIZE.note.h);
+  el.style.width  = w ? w + 'px' : '';
+  el.style.height = h ? h + 'px' : '';
+  el.classList.toggle('wb-sticky--sized', !!h);
 }
 
 function _makeNoteDraggable(el, noteData) {
@@ -1042,9 +1085,9 @@ function _screenToWorld(sx, sy) {
 
 function fitToScreen() {
   const items = [
-    ...wbData.nodes.map(n => ({ x: n.x, y: n.y, w: n.w || 290, h: n.h || 380 })),
-    ...wbData.notes.map(n => ({ x: n.x, y: n.y, w: 170, h: 100 })),
-    ...wbData.cards.map(c => ({ x: c.x, y: c.y, w: c.w || 240, h: c.h || 110 })),
+    ...wbData.nodes.map(n => _itemBox('node', n)),
+    ...wbData.notes.map(n => _itemBox('note', n)),
+    ...wbData.cards.map(c => _itemBox('card', c)),
   ];
   if (!items.length) return;
   const minX = Math.min(...items.map(i => i.x));
@@ -1203,8 +1246,9 @@ function _strokeNearPoint(pathEl, px, py, radius) {
 
 // ── Events ─────────────────────────────────────────────────────────────
 function _wireEvents() {
-  // Zoom
+  // Zoom (or let a scrollable item body scroll, see _wheelScrollsItem)
   _vp.addEventListener('wheel', e => {
+    if (_wheelScrollsItem(e)) return;
     e.preventDefault();
     const factor  = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(0.1, Math.min(3, wbData.view.zoom * factor));
@@ -1264,6 +1308,31 @@ function _wireEvents() {
 
 }
 
+// True when the wheel should scroll an item instead of zooming: the pointer is
+// over an overflowing element inside a node/card/note that can still move in
+// the wheel's direction. Ctrl/Meta+wheel (trackpad pinch sends ctrlKey)
+// always zooms, and so does a wheel over the board or an item that has
+// already scrolled to its end.
+function _wheelScrollsItem(e) {
+  if (e.ctrlKey || e.metaKey) return false;
+  if (!(e.target instanceof Element) || !_nl.contains(e.target)) return false;
+  for (let el = e.target; el && el !== _nl; el = el.parentElement) {
+    if (_canScroll(el, e.deltaX, e.deltaY)) return true;
+  }
+  return false;
+}
+
+function _canScroll(el, dx, dy) {
+  const s = getComputedStyle(el);
+  const scrolls = o => o === 'auto' || o === 'scroll';
+  if (dy && scrolls(s.overflowY) && el.scrollHeight > el.clientHeight) {
+    if (dy < 0 ? el.scrollTop > 0 : el.scrollTop + el.clientHeight < el.scrollHeight - 1) return true;
+  }
+  if (dx && scrolls(s.overflowX) && el.scrollWidth > el.clientWidth) {
+    if (dx < 0 ? el.scrollLeft > 0 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1) return true;
+  }
+  return false;
+}
 
 function _wireKeyboard() {
   document.addEventListener('keydown', e => {
@@ -1445,9 +1514,14 @@ function _handleRemotePatch(msg) {
     case 'node_resize': {
       const nd = wbData.nodes.find(n => n.id === msg.nodeId);
       if (!nd) return;
-      nd.w = _num(msg.w, nd.w); nd.h = _num(msg.h, nd.h);
+      nd.w = _dim(msg.w, MIN_SIZE.node.w) || nd.w; nd.h = _dim(msg.h, MIN_SIZE.node.h) || nd.h;
       const el = _nl.querySelector(`[data-node-id="${msg.nodeId}"]`);
-      if (el) { el.style.width = _num(nd.w) + 'px'; el.style.height = _num(nd.h) + 'px'; }
+      if (el) {
+        el.style.width = (_dim(nd.w, MIN_SIZE.node.w) || DEFAULT_SIZE.node.w) + 'px';
+        const h = _dim(nd.h, MIN_SIZE.node.h);
+        el.style.height = h ? h + 'px' : '';
+        el.classList.toggle('wb-node--sized', !!h);
+      }
       _updateAllEdges();
       break;
     }
@@ -1506,6 +1580,7 @@ function _handleRemotePatch(msg) {
       if (msg.changes.color !== undefined) el.style.background = _noteColor(msg.changes.color);
       if (msg.changes.x !== undefined) el.style.left = _num(msg.changes.x) + 'px';
       if (msg.changes.y !== undefined) el.style.top  = _num(msg.changes.y) + 'px';
+      if (msg.changes.w !== undefined || msg.changes.h !== undefined) _applyNoteSize(el, nd);
       if (msg.changes.text !== undefined) {
         const textEl = el.querySelector('[data-text]');
         if (textEl && textEl.contentEditable !== 'true') textEl.textContent = msg.changes.text;
@@ -1565,8 +1640,8 @@ function _handleRemotePatch(msg) {
       if (!el) return;
       if (msg.changes.x !== undefined) el.style.left   = _num(msg.changes.x) + 'px';
       if (msg.changes.y !== undefined) el.style.top    = _num(msg.changes.y) + 'px';
-      if (msg.changes.w !== undefined) el.style.width  = _num(msg.changes.w) + 'px';
-      if (msg.changes.h !== undefined) el.style.height = _num(msg.changes.h) + 'px';
+      if (msg.changes.w !== undefined) el.style.width  = (_dim(msg.changes.w, MIN_SIZE.card.w) || DEFAULT_SIZE.card.w) + 'px';
+      if (msg.changes.h !== undefined) { const h = _dim(msg.changes.h, MIN_SIZE.card.h); el.style.height = h ? h + 'px' : ''; }
       if (msg.changes.color !== undefined) {
         const head = el.querySelector('.wb-card-head');
         if (head) head.style.background = _cardColor(msg.changes.color);
@@ -1579,7 +1654,8 @@ function _handleRemotePatch(msg) {
         const b = el.querySelector('[data-text]');
         if (b && b.contentEditable !== 'true') b.innerHTML = renderMd(msg.changes.body);
       }
-      if (msg.changes.x !== undefined || msg.changes.y !== undefined || msg.changes.w !== undefined) _updateAllEdges();
+      // Any geometry change, or a body/title edit that changes an unsized card's height.
+      if (['x', 'y', 'w', 'h', 'title', 'body'].some(k => msg.changes[k] !== undefined)) _updateAllEdges();
       break;
     }
   }

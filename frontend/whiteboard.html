@@ -235,16 +235,18 @@
   .wb-sticky        { position: absolute; background: #ffd96a; border-radius: 7px;
                       width: 170px; min-height: 80px; padding: 10px;
                       box-shadow: 0 4px 16px rgba(0,0,0,.5), 2px 3px 6px rgba(0,0,0,.3);
-                      user-select: none; }
+                      user-select: none; display: flex; flex-direction: column; }
   .wb-sticky-head   { display: flex; justify-content: space-between; align-items: center;
-                      margin-bottom: 6px; cursor: grab; }
+                      margin-bottom: 6px; cursor: grab; flex-shrink: 0; }
   .wb-sticky-head:active { cursor: grabbing; }
   .wb-sticky-colors { display: flex; gap: 3px; }
   .wb-sticky-col    { width: 10px; height: 10px; border-radius: 50%; cursor: pointer; }
   .wb-sticky-rm     { font-size: 11px; color: rgba(0,0,0,.4); cursor: pointer; }
   .wb-sticky-rm:hover { color: rgba(0,0,0,.8); }
   .wb-sticky-text   { font-size: 12px; color: #333; line-height: 1.5; outline: none;
-                      min-height: 40px; word-break: break-word; }
+                      min-height: 40px; word-break: break-word; flex: 1; overflow-y: auto; }
+  /* Resized note: fixed box, the text scrolls inside it */
+  .wb-sticky--sized .wb-sticky-text { min-height: 0; }
 
   /* Remote cursors */
   #wb-cursor-layer  { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
@@ -309,6 +311,8 @@
                               border-radius: 0 0 2px 0; transition: border-color 0.15s; }
   .wb-card:hover .wb-resize-handle::after,
   .wb-node:hover .wb-resize-handle::after { border-color: rgba(255,255,255,.45); }
+  .wb-sticky .wb-resize-handle::after { border-color: rgba(0,0,0,.18); }
+  .wb-sticky:hover .wb-resize-handle::after { border-color: rgba(0,0,0,.45); }
 
 </style>
 </head>
@@ -437,7 +441,7 @@
 <script src="js/services/utils.js?v=4"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/whiteboard.js?v=5"></script>
+<script src="js/views/whiteboard.js?v=6"></script>
 <script src="js/components/notifications.js?v=4"></script>
 <script src="js/page.js?v=4"></script>
 <script>

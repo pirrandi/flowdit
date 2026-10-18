@@ -545,7 +545,11 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   server.registerTool('get_whiteboard', {
     description:
       'Get a compact summary of the project whiteboard: target nodes, cards (with what they link to), ' +
-      'sticky notes and arrows, with their ids, plus the targets not yet on the board.',
+      'sticky notes and arrows, with their ids, plus the targets not yet on the board. Every node, card and ' +
+      'note includes its geometry (x, y, w, h in board px; y grows downwards). Items without an explicit ' +
+      `size report the default they are drawn with (node ${whiteboard.SIZE.node.w}×${whiteboard.SIZE.node.h}, ` +
+      `card ${whiteboard.SIZE.card.w}×${whiteboard.SIZE.card.h}, note ${whiteboard.SIZE.note.w}×${whiteboard.SIZE.note.h}); ` +
+      'unsized cards and notes grow with their text, so their real height can be larger.',
     inputSchema: { project_id: uuid },
     annotations: READ_ONLY,
   }, guarded(async ({ project_id }) => {
@@ -557,6 +561,14 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     dx: z.number().min(0).max(5000).optional().describe('Optional x offset (px) inside this batch; pass dx and dy together'),
     dy: z.number().min(0).max(5000).optional().describe('Optional y offset (px) inside this batch'),
   };
+  const sizeRange = kind =>
+    `${whiteboard.MIN_SIZE[kind].w}..${whiteboard.MAX_ITEM_SIZE} wide, ${whiteboard.MIN_SIZE[kind].h}..${whiteboard.MAX_ITEM_SIZE} tall`;
+  const size = kind => ({
+    w: z.number().positive().optional()
+      .describe(`Optional width (px) of the new item, default ${whiteboard.SIZE[kind].w}; clamped to ${sizeRange(kind)}`),
+    h: z.number().positive().optional()
+      .describe(`Optional height (px) of the new item, default ${whiteboard.SIZE[kind].h}; the content scrolls if it does not fit`),
+  });
   server.registerTool('add_whiteboard_items', {
     description:
       `Add items to the project whiteboard (max ${whiteboard.MAX_ITEMS_PER_CALL} per call): target nodes ` +
@@ -564,12 +576,13 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       'optionally linked to a target, port or endpoint of the project — a linked card gets an arrow to ' +
       'that target\'s node when it is on the board) and sticky notes. ADD-ONLY: existing items are never ' +
       'moved, edited or removed. The server places the batch in free space to the right of the current ' +
-      'board; dx/dy optionally arrange items relative to each other inside the batch. Returns the new ids ' +
-      '(use them with connect_whiteboard_items).' +
+      'board; dx/dy optionally arrange items relative to each other inside the batch, and w/h optionally ' +
+      'size the NEW items (larger items get larger grid cells so the batch never overlaps). Returns the new ' +
+      'ids with their geometry (use the ids with connect_whiteboard_items).' +
       ' ' + LANGUAGE_RULE,
     inputSchema: {
       project_id: uuid,
-      nodes: z.array(z.object({ target_id: uuid, ...offset })).max(whiteboard.MAX_ITEMS_PER_CALL).optional()
+      nodes: z.array(z.object({ target_id: uuid, ...offset, ...size('node') })).max(whiteboard.MAX_ITEMS_PER_CALL).optional()
         .describe('Target nodes to place (targets already on the board are skipped)'),
       cards: z.array(z.object({
         title: z.string().trim().min(1).max(200),
@@ -578,21 +591,23 @@ function buildMcpServer({ user, token, uploadsUrl }) {
         link: z.object({ type: z.enum(['target', 'port', 'endpoint']), id: uuid }).optional()
           .describe('Target, port or endpoint of this project the card is about'),
         ...offset,
+        ...size('card'),
       })).max(whiteboard.MAX_ITEMS_PER_CALL).optional(),
       notes: z.array(z.object({
         text: z.string().trim().min(1).max(2000),
         color: z.enum(whiteboard.NOTE_COLORS).optional(),
         ...offset,
+        ...size('note'),
       })).max(whiteboard.MAX_ITEMS_PER_CALL).optional(),
     },
     annotations: { ...ADD_ONLY, idempotentHint: false },
   }, guarded(async ({ project_id, nodes, cards, notes }) => {
     await projectFor(project_id, { propose: true });
     const r = await whiteboard.addItems({ projectId: project_id, user, nodes, cards, notes });
-    const pick = it => ({ id: it.id, x: it.x, y: it.y });
+    const pick = kind => it => ({ id: it.id, ...whiteboard.geometry(kind, it) });
     return ok({
       added: {
-        nodes: r.added.nodes.map(pick), cards: r.added.cards.map(pick), notes: r.added.notes.map(pick),
+        nodes: r.added.nodes.map(pick('node')), cards: r.added.cards.map(pick('card')), notes: r.added.notes.map(pick('note')),
         edges: r.added.edges.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId })),
       },
       skipped: r.skipped,

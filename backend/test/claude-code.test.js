@@ -962,6 +962,65 @@ test('whiteboard additions keep existing items intact and consecutive batches do
   assert.equal(summary.data.edges.length, 2);
 });
 
+test('whiteboard items can be sized on creation, sizes are clamped and reported, and sized batches do not overlap', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  // Tablero existente con una nota humana redimensionada: el lote nuevo
+  // tiene que arrancar a la derecha de su ancho real, no del default.
+  const human = { id: '11111111-1111-4111-8111-111111111111', x: 100, y: 100, w: 900, h: 500, text: 'humana', color: '#ffd96a' };
+  const put = await request(app).put(`/api/projects/${project.id}/whiteboard`).set(auth(owner.accessToken))
+    .send({ data: { notes: [human], nodes: [], cards: [], edges: [], strokes: [] } });
+  assert.equal(put.status, 200);
+
+  const a = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id,
+    nodes: [{ target_id: target.id, w: 500, h: 600 }],
+    cards: [{ title: 'Grande', w: 700, h: 400 }, { title: 'Chica', w: 10, h: 99999 }],
+    notes: [{ text: 'Default' }],
+  });
+  assert.equal(a.isError, false, a.text);
+  const [big, small] = a.data.added.cards;
+  assert.deepEqual([big.w, big.h], [700, 400]);
+  assert.deepEqual([small.w, small.h], [160, 4000], 'clamped to the card min width and the max height');
+  assert.deepEqual([a.data.added.nodes[0].w, a.data.added.nodes[0].h], [500, 600]);
+  const note = a.data.added.notes[0];
+  assert.deepEqual([note.w, note.h], [170, 100], 'unsized note reports the default size');
+
+  const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  assert.deepEqual(wb.data.notes.find(n => n.id === human.id), human, 'existing note untouched');
+  const stored = wb.data.notes.find(n => n.created_by === 'claude_code');
+  assert.equal(stored.w, undefined, 'no size is stored unless one was given');
+  assert.equal(wb.data.cards.find(c => c.title === 'Grande').w, 700);
+
+  // Nada del lote se pisa entre sí ni con lo existente.
+  const boxes = [
+    { ...human },
+    ...a.data.added.nodes, ...a.data.added.cards, ...a.data.added.notes,
+  ];
+  const overlaps = (p, q) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      assert.ok(!overlaps(boxes[i], boxes[j]), `items ${i} and ${j} overlap: ${JSON.stringify([boxes[i], boxes[j]])}`);
+    }
+  }
+  assert.ok(boxes.slice(1).every(b => b.x >= human.x + human.w), 'batch starts right of the resized note');
+
+  // Un segundo lote arranca pasado el borde derecho real del primero.
+  const b = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, notes: [{ text: 'Otro', w: 300, h: 300 }] });
+  assert.equal(b.isError, false, b.text);
+  const firstRight = Math.max(...boxes.map(x => x.x + x.w));
+  assert.ok(b.data.added.notes[0].x >= firstRight);
+
+  // get_whiteboard expone la geometría (con defaults si no hay w/h).
+  const summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
+  const sNote = summary.data.notes.find(n => n.id === human.id);
+  assert.deepEqual([sNote.x, sNote.y, sNote.w, sNote.h], [100, 100, 900, 500]);
+  const sDefault = summary.data.notes.find(n => n.id === note.id);
+  assert.deepEqual([sDefault.x, sDefault.y, sDefault.w, sDefault.h], [note.x, note.y, 170, 100]);
+  const sNode = summary.data.nodes[0];
+  assert.deepEqual([sNode.w, sNode.h], [500, 600]);
+  assert.ok(summary.data.cards.every(c => ['x', 'y', 'w', 'h'].every(k => Number.isFinite(c[k]))));
+});
+
 test('whiteboard additions on a project without a board create it, and foreign links are refused', async () => {
   const { owner, project, ownerToken } = await setup();
   const other = await createProject(owner.accessToken);

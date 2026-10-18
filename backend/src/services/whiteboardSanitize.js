@@ -3,7 +3,7 @@
 // fields survive: colors go through the same allowlists the MCP tools use,
 // numbers are coerced to finite values and strings are capped. Invalid values
 // fall back to a default instead of rejecting the whole save.
-const { NOTE_COLORS, CARD_COLORS, MAX_BOARD_ITEMS } = require('./mcp/whiteboard');
+const { NOTE_COLORS, CARD_COLORS, MAX_BOARD_ITEMS, MAX_ITEM_SIZE } = require('./mcp/whiteboard');
 
 const MAX_STROKES = 5000;
 const MAX_PATH_LEN = 200000;
@@ -11,6 +11,10 @@ const ID_RE = /^[\w-]{1,100}$/;
 const SAFE_COLOR_RE = /^(#[0-9a-f]{3,8}|var\(--[a-z0-9-]+\))$/i;
 const SAFE_PATH_RE = /^[MLHVCSQTAZmlhvcsqtaz0-9.,eE+\- ]*$/;
 const DEFAULT_STROKE_COLOR = '#e94141';
+// Bounds for an item's optional w/h. The browser enforces tighter per-type
+// minimums while resizing; this only keeps a hand-crafted blob from producing
+// zero-size or absurdly large boxes.
+const MIN_ITEM_SIZE = 60;
 
 class WhiteboardDataError extends Error {}
 
@@ -18,6 +22,9 @@ const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray
 const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : undefined);
 const validId = v => typeof v === 'string' && ID_RE.test(v);
+const size = v => (typeof v === 'number' && Number.isFinite(v)
+  ? Math.min(MAX_ITEM_SIZE, Math.max(MIN_ITEM_SIZE, v))
+  : undefined);
 
 // Copies optional fields only when present and valid, so a legit payload
 // round-trips without gaining keys it did not have.
@@ -27,8 +34,8 @@ function setIf(out, key, value) {
 
 function position(item) {
   const out = { id: item.id, x: num(item.x, 0), y: num(item.y, 0) };
-  setIf(out, 'w', num(item.w, undefined));
-  setIf(out, 'h', num(item.h, undefined));
+  setIf(out, 'w', size(item.w));
+  setIf(out, 'h', size(item.h));
   return out;
 }
 
@@ -60,7 +67,7 @@ function sanitizeCard(c) {
 }
 
 function sanitizeNote(n) {
-  const out = { id: n.id, x: num(n.x, 0), y: num(n.y, 0) };
+  const out = position(n);
   setIf(out, 'text', str(n.text, 20000));
   out.color = NOTE_COLORS.includes(n.color) ? n.color : NOTE_COLORS[0];
   setIf(out, 'created_by', str(n.created_by, 50));

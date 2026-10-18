@@ -78,6 +78,24 @@ test('malicious colors, unknown fields and unsafe stroke paths are neutralised',
   assert.equal(d.evil, undefined);
 });
 
+test('item sizes: notes keep w/h, and w/h of every type are clamped or dropped', async () => {
+  const { owner, project, target } = await setup();
+  const res = await put(owner, project, {
+    nodes: [{ id: target.id, x: 0, y: 0, w: 1e9, h: 5 }],
+    cards: [{ id: 'c1', x: 0, y: 0, w: 'wide', h: 300, title: 'T', color: '#1e3a5f' }],
+    notes: [
+      { id: 'n1', x: 1, y: 2, w: 240, h: 180, text: 'grande', color: '#ffd96a' },
+      { id: 'n2', x: 1, y: 2, w: -10, h: null, text: 'mal', color: '#ffd96a' },
+    ],
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const d = res.body.data;
+  assert.deepEqual(d.nodes[0], { id: target.id, x: 0, y: 0, w: 4000, h: 60 });
+  assert.deepEqual(d.cards[0], { id: 'c1', x: 0, y: 0, h: 300, title: 'T', color: '#1e3a5f' });
+  assert.deepEqual(d.notes[0], { id: 'n1', x: 1, y: 2, w: 240, h: 180, text: 'grande', color: '#ffd96a' });
+  assert.deepEqual(d.notes[1], { id: 'n2', x: 1, y: 2, w: 60, text: 'mal', color: '#ffd96a' });
+});
+
 test('non-object data is rejected with 400 and nothing is stored', async () => {
   const { owner, project } = await setup();
   for (const data of ['<svg onload=alert(1)>', [], 42]) {
