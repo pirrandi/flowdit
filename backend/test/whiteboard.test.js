@@ -128,3 +128,135 @@ test('non-object data is rejected with 400 and nothing is stored', async () => {
   }
   assert.equal((await db.query(`SELECT 1 FROM whiteboard_state`)).rows.length, 0);
 });
+
+// ── Imágenes (POST/GET /whiteboard/images) ──────────────────────────────
+
+function pngOf(w, h) {
+  const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    u32(13), Buffer.from('IHDR'), u32(w), u32(h), Buffer.from([8, 6, 0, 0, 0]), u32(0),
+  ]);
+}
+const PNG = pngOf(640, 480);
+
+async function addMember(ownerToken, projectId, role) {
+  const user = await registerUser();
+  const inv = await request(app).post(`/api/projects/${projectId}/invites`).set(auth(ownerToken)).send({ role });
+  assert.equal(inv.status, 201);
+  const join = await request(app).post('/api/projects/join').set(auth(user.accessToken)).send({ token: inv.body.token });
+  assert.equal(join.status, 200);
+  return user;
+}
+
+const uploadImage = (token, project, buf, name = 'shot.png', contentType = 'image/png') =>
+  request(app).post(`/api/projects/${project.id}/whiteboard/images`).set(auth(token))
+    .attach('file', buf, { filename: name, contentType });
+const getImage = (token, project, id) =>
+  request(app).get(`/api/projects/${project.id}/whiteboard/images/${id}`).set(auth(token))
+    .buffer(true).parse((res, cb) => { const c = []; res.on('data', d => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+
+test('images upload by magic bytes and are served with locked-down headers', async () => {
+  const { owner, project } = await setup();
+  const up = await uploadImage(owner.accessToken, project, PNG, 'x.gif', 'image/gif');
+  assert.equal(up.status, 201, JSON.stringify(up.body));
+  assert.deepEqual(Object.keys(up.body).sort(), ['height', 'id', 'mime', 'size', 'width']);
+  assert.equal(up.body.mime, 'image/png');
+  assert.equal(up.body.size, PNG.length);
+  assert.equal(up.body.width, 640);
+  assert.equal(up.body.height, 480);
+
+  const res = await getImage(owner.accessToken, project, up.body.id);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['content-type'], 'image/png');
+  assert.equal(res.headers['x-content-type-options'], 'nosniff');
+  assert.equal(res.headers['content-disposition'], 'inline');
+  assert.match(res.headers['cache-control'], /^private/);
+  assert.match(res.headers['content-security-policy'], /^default-src 'none'/);
+  assert.ok(res.body.equals(PNG));
+});
+
+test('non-images and SVG are rejected, and nothing is stored', async () => {
+  const { owner, project } = await setup();
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><rect/></svg>');
+  for (const [buf, name, type] of [
+    [svg, 'a.svg', 'image/svg+xml'],
+    [Buffer.from('<html><script>alert(1)</script></html>'), 'a.png', 'image/png'],
+    [Buffer.from('GIF89a-not-allowed-here'), 'a.gif', 'image/gif'],
+  ]) {
+    const res = await uploadImage(owner.accessToken, project, buf, name, type);
+    assert.equal(res.status, 415, name);
+  }
+  const big = await uploadImage(owner.accessToken, project, Buffer.concat([PNG, Buffer.alloc(4 * 1024 * 1024)]));
+  assert.equal(big.status, 413);
+  const none = await request(app).post(`/api/projects/${project.id}/whiteboard/images`).set(auth(owner.accessToken)).field('x', '1');
+  assert.equal(none.status, 400);
+  assert.equal((await db.query('SELECT 1 FROM whiteboard_images')).rows.length, 0);
+});
+
+test('viewers (client accounts) and non-members cannot upload or read images; pentesters can', async () => {
+  const { owner, project } = await setup();
+  const id = (await uploadImage(owner.accessToken, project, PNG)).body.id;
+  const viewer = await addMember(owner.accessToken, project.id, 'viewer');
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const stranger = await registerUser();
+
+  assert.equal((await uploadImage(viewer.accessToken, project, PNG)).status, 403);
+  assert.equal((await getImage(viewer.accessToken, project, id)).status, 403);
+  assert.equal((await uploadImage(stranger.accessToken, project, PNG)).status, 404);
+  assert.equal((await getImage(stranger.accessToken, project, id)).status, 404);
+  assert.equal((await uploadImage(pentester.accessToken, project, PNG)).status, 201);
+  assert.equal((await getImage(pentester.accessToken, project, id)).status, 200);
+});
+
+test('an image is only served through its own project', async () => {
+  const { owner, project } = await setup();
+  const other = await createProject(owner.accessToken);
+  const id = (await uploadImage(owner.accessToken, project, PNG)).body.id;
+  assert.equal((await getImage(owner.accessToken, other, id)).status, 404);
+  assert.equal((await getImage(owner.accessToken, project, 'not-a-uuid')).status, 404);
+  assert.equal((await getImage(owner.accessToken, project, '00000000-0000-4000-8000-000000000000')).status, 404);
+});
+
+test('uploading sweeps old unreferenced images but keeps referenced and recent ones', async () => {
+  const { owner, project } = await setup();
+  const ids = [];
+  for (let i = 0; i < 3; i++) ids.push((await uploadImage(owner.accessToken, project, PNG)).body.id);
+  await db.query(`UPDATE whiteboard_images SET created_at = NOW() - INTERVAL '25 hours' WHERE id = ANY($1::uuid[])`, [ids.slice(0, 2)]);
+  const saved = await put(owner, project, { images: [{ id: 'img1', imageId: ids[0], x: 0, y: 0, w: 320, h: 240 }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+
+  const fresh = (await uploadImage(owner.accessToken, project, PNG)).body.id;
+  const { rows } = await db.query('SELECT id FROM whiteboard_images WHERE project_id = $1', [project.id]);
+  assert.deepEqual(rows.map(r => r.id).sort(), [ids[0], ids[2], fresh].sort());
+});
+
+test('per-project image cap is enforced', async () => {
+  const { owner, project } = await setup();
+  await db.query(
+    `INSERT INTO whiteboard_images (project_id, mime, bytes, size)
+     SELECT $1, 'image/png', '\\x00'::bytea, 1 FROM generate_series(1, 300)`,
+    [project.id]
+  );
+  const res = await uploadImage(owner.accessToken, project, PNG);
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /300/);
+});
+
+test('board image items keep only known fields and need a valid imageId', async () => {
+  const { owner, project } = await setup();
+  const imageId = '66666666-6666-4666-8666-666666666666';
+  const res = await put(owner, project, {
+    images: [
+      { id: 'i1', imageId, x: 10, y: 20, w: 320, h: 240, caption: 'captura <b>', created_by: 'claude_code', src: 'javascript:alert(1)' },
+      { id: 'i2', imageId: '../../etc/passwd', x: 0, y: 0 },
+      { id: 'i3', x: 0, y: 0 },
+      { id: 'i4', imageId, x: 'x', y: 0, w: 1, h: 1e9, caption: 'x'.repeat(600) },
+    ],
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const d = res.body.data;
+  assert.equal(d.images.length, 2);
+  assert.deepEqual(d.images[0], { id: 'i1', imageId, x: 10, y: 20, w: 320, h: 240, caption: 'captura <b>', created_by: 'claude_code' });
+  assert.deepEqual(d.images[1], { id: 'i4', imageId, x: 0, y: 0, w: 60, h: 4000, caption: 'x'.repeat(500) });
+});

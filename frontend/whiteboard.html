@@ -100,9 +100,9 @@
   .wb-edge-group.reconnecting .wb-edge-handle { pointer-events: none; }
   .wb-edge-ghost  { stroke: var(--a); stroke-width: 1.5; stroke-dasharray: 4 4; fill: none; pointer-events: none; }
   .wb-node.connect-from { outline: 2px solid var(--a); outline-offset: 3px; border-radius: 10px; }
-  .wb-card.connect-from, .wb-sticky.connect-from { outline: 2px solid var(--a); outline-offset: 3px; }
+  .wb-card.connect-from, .wb-sticky.connect-from, .wb-image.connect-from { outline: 2px solid var(--a); outline-offset: 3px; }
   .wb-ep-row.connect-from, .wb-port-chip.connect-from { outline: 2px solid var(--a); outline-offset: 1px; }
-  .wb-node.connect-target, .wb-card.connect-target, .wb-sticky.connect-target,
+  .wb-node.connect-target, .wb-card.connect-target, .wb-sticky.connect-target, .wb-image.connect-target,
   .wb-ep-row.connect-target, .wb-port-chip.connect-target { outline: 2px dashed var(--a); outline-offset: 2px; }
   #wb-viewport.mode-connect .wb-ep-row, #wb-viewport.mode-connect .wb-port-chip { cursor: crosshair; }
 
@@ -266,6 +266,37 @@
   .wb-card-text blockquote { border-left: 2px solid var(--b2); padding-left: 6px; margin: 4px 0; opacity: 0.75; }
   .wb-card-text hr  { border: none; border-top: 1px solid var(--b1); margin: 6px 0; }
 
+  /* Images (bytes in whiteboard_images, shown through a blob: URL) */
+  .wb-image         { position: absolute; background: var(--bg3); border: 1px solid var(--b2);
+                      border-radius: 8px; overflow: hidden; user-select: none;
+                      box-shadow: 0 4px 20px rgba(0,0,0,.55), 0 1px 4px rgba(0,0,0,.35);
+                      display: flex; flex-direction: column; transition: box-shadow 0.15s; }
+  .wb-image:hover   { box-shadow: 0 6px 28px rgba(0,0,0,.65), 0 1px 4px rgba(0,0,0,.4); }
+  .wb-image.dragging { box-shadow: 0 12px 36px rgba(0,0,0,.7); z-index: 100; }
+  .wb-image-head    { position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+                      display: flex; align-items: center; gap: 6px; padding: 5px 7px 10px;
+                      background: linear-gradient(rgba(0,0,0,.6), transparent);
+                      cursor: grab; opacity: 0; transition: opacity 0.15s; }
+  .wb-image:hover .wb-image-head, .wb-image.dragging .wb-image-head { opacity: 1; }
+  .wb-image-head:active { cursor: grabbing; }
+  .wb-image-head .wb-cc-tag { font-size: 9px; font-family: var(--mono); }
+  .wb-image-cap     { margin-left: auto; color: rgba(255,255,255,.7); cursor: pointer; display: flex; padding: 1px 3px; }
+  .wb-image-rm      { font-size: 13px; color: rgba(255,255,255,.7); cursor: pointer; padding: 0 3px; }
+  .wb-image-cap:hover, .wb-image-rm:hover { color: #fff; }
+  .wb-image-frame   { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+                      background: rgba(0,0,0,.25); cursor: zoom-in; }
+  .wb-image-img     { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+  .wb-image-status  { font-size: 10px; color: var(--t4); font-family: var(--mono); padding: 8px; text-align: center; }
+  .wb-image-frame.error { cursor: default; }
+  .wb-image-frame.error .wb-image-status { color: #ff6b6b; }
+  .wb-image-caption { flex-shrink: 0; max-height: 40%; overflow-y: auto; padding: 4px 8px;
+                      font-size: 11px; line-height: 1.4; color: var(--t2); outline: none; word-break: break-word; }
+  .wb-image-caption:empty:not([contenteditable="true"]) { display: none; }
+  .wb-image-caption[contenteditable="true"] { user-select: text; cursor: text; }
+  .wb-image-caption:empty::before { content: attr(data-placeholder); color: var(--t4); font-style: italic; }
+  .wb-image:hover .wb-resize-handle::after { border-color: rgba(255,255,255,.45); }
+  #wb-viewport.wb-drop { box-shadow: inset 0 0 0 2px var(--a); }
+
   /* Sticky notes */
   .wb-sticky        { position: absolute; background: #ffd96a; border-radius: 7px;
                       width: 170px; min-height: 80px; padding: 10px;
@@ -305,7 +336,7 @@
   .wb-search-clear.visible { display: block; }
   /* Node search states */
   .wb-node.wb-highlight, .wb-card.wb-highlight { outline: 2px solid var(--a); outline-offset: 2px; }
-  .wb-node.wb-dimmed, .wb-card.wb-dimmed, .wb-sticky.wb-dimmed { opacity: 0.18; transition: opacity 0.15s; }
+  .wb-node.wb-dimmed, .wb-card.wb-dimmed, .wb-sticky.wb-dimmed, .wb-image.wb-dimmed { opacity: 0.18; transition: opacity 0.15s; }
 
   /* Inline edge label input */
   .wb-label-input   { position: absolute; transform: translate(-50%, -50%);
@@ -379,6 +410,9 @@
           data-icon="sticky-note"></button>
         <button class="wb-tool-btn" id="wb-btn-card" onclick="setWbMode('card')" title="Custom card (A)"
           data-icon="credit-card"></button>
+        <button class="wb-tool-btn" id="wb-btn-image" onclick="wbPickImages()" title="Agregar imagen (también se puede arrastrar o pegar)"
+          data-icon="image"></button>
+        <input type="file" id="wb-image-input" accept="image/png,image/jpeg,image/webp" multiple hidden>
 
         <!-- Draw/eraser options (floating panel) -->
         <div class="wb-draw-panel" id="wb-draw-panel">
@@ -466,13 +500,13 @@
 
 <script src="js/data.js?v=3"></script>
 <script src="js/services/state.js?v=3"></script>
-<script src="js/services/api.js?v=4"></script>
+<script src="js/services/api.js?v=5"></script>
 <script src="js/services/ws.js?v=3"></script>
 <script src="js/services/icons.js?v=3"></script>
 <script src="js/services/utils.js?v=4"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/whiteboard.js?v=7"></script>
+<script src="js/views/whiteboard.js?v=8"></script>
 <script src="js/components/notifications.js?v=4"></script>
 <script src="js/page.js?v=4"></script>
 <script>

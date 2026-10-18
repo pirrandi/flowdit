@@ -6,6 +6,7 @@
 const {
   NOTE_COLORS, CARD_COLORS, EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS, MAX_BOARD_ITEMS, MAX_ITEM_SIZE,
 } = require('./mcp/whiteboard');
+const { MAX_PROJECT_IMAGES } = require('./whiteboardImages');
 
 const MAX_STROKES = 5000;
 const MAX_PATH_LEN = 200000;
@@ -76,6 +77,17 @@ function sanitizeNote(n) {
   return out;
 }
 
+// Imagen: solo el id de su fila en whiteboard_images (los bytes nunca van
+// en el blob). Sin imageId válido el ítem no sirve y se descarta.
+function sanitizeImage(i) {
+  if (!validId(i.imageId)) return null;
+  const out = position(i);
+  out.imageId = i.imageId;
+  setIf(out, 'caption', str(i.caption, 500));
+  setIf(out, 'created_by', str(i.created_by, 50));
+  return out;
+}
+
 function sanitizeEdge(e) {
   if (!validId(e.fromId) || !validId(e.toId)) return null;
   const out = { id: e.id, fromId: e.fromId, toId: e.toId };
@@ -108,6 +120,7 @@ const LISTS = {
   nodes:   { fn: sanitizeNode,   max: MAX_BOARD_ITEMS },
   cards:   { fn: sanitizeCard,   max: MAX_BOARD_ITEMS },
   notes:   { fn: sanitizeNote,   max: MAX_BOARD_ITEMS },
+  images:  { fn: sanitizeImage,  max: MAX_PROJECT_IMAGES },
   edges:   { fn: sanitizeEdge,   max: MAX_BOARD_ITEMS },
   strokes: { fn: sanitizeStroke, max: MAX_STROKES },
 };

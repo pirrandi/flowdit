@@ -107,7 +107,7 @@ function uploadInstructions(uploadsUrl) {
     token: 'Use the same fdt_ API token configured for this MCP server (scope "read_propose"). If $FLOWDIT_TOKEN is not set in the shell, ask the user to export it — never print or log the token.',
     accepted: `PNG, JPEG or WebP (detected from the file content), max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB each`,
     response: '{ "upload_id": "...", "name": "...", "size": 123, "mime": "image/png" }',
-    next_step: `Pass the upload_id values in evidence_upload_ids of propose_finding or update_proposal (max ${MAX_UPLOADS_PER_PROPOSAL} per proposal). Unattached uploads expire after 24h and each upload can be attached to only one proposal.`,
+    next_step: `Pass the upload_id values in evidence_upload_ids of propose_finding or update_proposal (max ${MAX_UPLOADS_PER_PROPOSAL} per proposal), or in images[].upload_id of add_whiteboard_items to place them on the whiteboard. Unattached uploads expire after 24h and each upload can be used only once (one proposal or one whiteboard image).`,
   };
 }
 
@@ -545,8 +545,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   server.registerTool('get_whiteboard', {
     description:
       'Get a compact summary of the project whiteboard: target nodes, cards (with what they link to), ' +
-      'sticky notes and arrows (with the endpoint/port each end points at and their style), with their ids, plus the targets not yet on the board. Every node, card and ' +
-      'note includes its geometry (x, y, w, h in board px; y grows downwards). Items without an explicit ' +
+      'sticky notes, images (with their caption) and arrows (with the endpoint/port each end points at and their style), with their ids, plus the targets not yet on the board. Every node, card, ' +
+      'note and image includes its geometry (x, y, w, h in board px; y grows downwards). Items without an explicit ' +
       `size report the default they are drawn with (node ${whiteboard.SIZE.node.w}×${whiteboard.SIZE.node.h}, ` +
       `card ${whiteboard.SIZE.card.w}×${whiteboard.SIZE.card.h}, note ${whiteboard.SIZE.note.w}×${whiteboard.SIZE.note.h}); ` +
       'unsized cards and notes grow with their text, so their real height can be larger.',
@@ -574,7 +574,9 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       `Add items to the project whiteboard (max ${whiteboard.MAX_ITEMS_PER_CALL} per call): target nodes ` +
       '(a target box that shows its ports, endpoints and findings), cards (title + markdown body, ' +
       'optionally linked to a target, port or endpoint of the project — a linked card gets an arrow to ' +
-      'that target\'s node when it is on the board) and sticky notes. ADD-ONLY: existing items are never ' +
+      'that target\'s node when it is on the board), sticky notes and images (screenshots uploaded first with ' +
+      `POST /mcp/uploads, see get_upload_instructions; max ${whiteboard.MAX_IMAGES_PER_CALL} per call; each upload is ` +
+      'consumed and cannot be reused). ADD-ONLY: existing items are never ' +
       'moved, edited or removed. The server places the batch in free space to the right of the current ' +
       'board; dx/dy optionally arrange items relative to each other inside the batch, and w/h optionally ' +
       'size the NEW items (larger items get larger grid cells so the batch never overlaps). Returns the new ' +
@@ -599,15 +601,24 @@ function buildMcpServer({ user, token, uploadsUrl }) {
         ...offset,
         ...size('note'),
       })).max(whiteboard.MAX_ITEMS_PER_CALL).optional(),
+      images: z.array(z.object({
+        upload_id: uuid.describe('upload_id returned by POST /mcp/uploads (your own, unused, less than 24h old)'),
+        caption: z.string().trim().max(300).optional().describe('Short caption shown under the image'),
+        ...offset,
+        w: z.number().positive().optional()
+          .describe(`Optional width (px), default ${whiteboard.SIZE.image.w} (or the image width if smaller); with only w or h the other keeps the image aspect ratio; clamped to ${sizeRange('image')}`),
+        h: z.number().positive().optional().describe('Optional height (px)'),
+      })).max(whiteboard.MAX_IMAGES_PER_CALL).optional(),
     },
     annotations: { ...ADD_ONLY, idempotentHint: false },
-  }, guarded(async ({ project_id, nodes, cards, notes }) => {
+  }, guarded(async ({ project_id, nodes, cards, notes, images }) => {
     await projectFor(project_id, { propose: true });
-    const r = await whiteboard.addItems({ projectId: project_id, user, nodes, cards, notes });
+    const r = await whiteboard.addItems({ projectId: project_id, user, nodes, cards, notes, images });
     const pick = kind => it => ({ id: it.id, ...whiteboard.geometry(kind, it) });
     return ok({
       added: {
         nodes: r.added.nodes.map(pick('node')), cards: r.added.cards.map(pick('card')), notes: r.added.notes.map(pick('note')),
+        images: r.added.images.map(pick('image')),
         edges: r.added.edges.map(e => ({ id: e.id, from_id: e.fromId, to_id: e.toId })),
       },
       skipped: r.skipped,
@@ -617,7 +628,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   server.registerTool('connect_whiteboard_items', {
     description:
       `Draw arrows between items already on the whiteboard (max ${whiteboard.MAX_EDGES_PER_CALL} per call). ` +
-      'Arrows can connect target nodes (id = target id), cards and sticky notes. An end on a target node can ' +
+      'Arrows can connect target nodes (id = target id), cards, sticky notes and images. An end on a target node can ' +
       'point at one of that target\'s endpoints or ports (from_endpoint_id / from_port_id, to_endpoint_id / ' +
       'to_port_id; ids from list_endpoints / list_ports); the arrow then anchors on that row of the node. ' +
       'Optional style (line), arrow (which end gets the arrowhead, default end) and color. A connection that ' +
@@ -655,7 +666,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   }));
 
   server.registerTool('get_upload_instructions', {
-    description: 'Get the exact command to upload a screenshot to Flowdit so it can be attached to a finding proposal via evidence_upload_ids.',
+    description: 'Get the exact command to upload a screenshot to Flowdit so it can be attached to a finding proposal via evidence_upload_ids or placed on the whiteboard via add_whiteboard_items images.',
     inputSchema: {},
     annotations: READ_ONLY,
   }, guarded(async () => ok({ ...uploadInstructions(uploadsUrl), token_scope: token.scopes })));

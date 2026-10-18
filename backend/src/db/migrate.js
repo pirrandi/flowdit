@@ -1032,6 +1032,31 @@ const migrations = [
   `ALTER TABLE targets ADD COLUMN IF NOT EXISTS source VARCHAR(20)`,
   `ALTER TABLE target_ports ADD COLUMN IF NOT EXISTS source VARCHAR(20)`,
   `ALTER TABLE target_endpoints ADD COLUMN IF NOT EXISTS source VARCHAR(20)`,
+  // Imágenes del whiteboard. Los bytes viven acá y el blob del tablero
+  // (whiteboard_state.data.images) solo guarda el id: el blob lo baja y
+  // re-sube entero cada navegador en cada autosave. Las que ningún tablero
+  // referencia se barren a las 24 h (en cada subida, sin cron; ver
+  // services/whiteboardImages.js). source: 'user' (subida desde la UI) o
+  // 'claude_code' (copiada de una subida de /mcp/uploads).
+  `CREATE TABLE IF NOT EXISTS whiteboard_images (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    mime        TEXT NOT NULL,
+    bytes       BYTEA NOT NULL,
+    size        INTEGER NOT NULL,
+    width       INTEGER,
+    height      INTEGER,
+    created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+    source      VARCHAR(20) NOT NULL DEFAULT 'user',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `ALTER TABLE whiteboard_images DROP CONSTRAINT IF EXISTS whiteboard_images_mime_check`,
+  `ALTER TABLE whiteboard_images ADD CONSTRAINT whiteboard_images_mime_check
+     CHECK (mime IN ('image/png','image/jpeg','image/webp'))`,
+  `ALTER TABLE whiteboard_images DROP CONSTRAINT IF EXISTS whiteboard_images_source_check`,
+  `ALTER TABLE whiteboard_images ADD CONSTRAINT whiteboard_images_source_check
+     CHECK (source IN ('user','claude_code'))`,
+  `CREATE INDEX IF NOT EXISTS idx_whiteboard_images_project ON whiteboard_images(project_id, created_at)`,
 
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`

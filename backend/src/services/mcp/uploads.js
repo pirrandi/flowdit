@@ -114,9 +114,32 @@ async function attachUploads(client, { proposalId, userId, uploadIds }) {
   return ids;
 }
 
+// Consume subidas para el whiteboard DENTRO de la transacción del caller:
+// las borra y devuelve sus bytes para copiarlos a whiteboard_images. Solo
+// sueltas, propias y sin vencer; borrarlas es lo que impide reusarlas (el
+// DELETE lockea la fila, así que de dos llamadas concurrentes una sola la
+// obtiene). Si falta alguna, lanza y el caller hace ROLLBACK.
+async function consumeUploads(client, { userId, uploadIds }) {
+  const ids = [...new Set(uploadIds)];
+  if (!ids.length) return new Map();
+  const { rows } = await client.query(
+    `DELETE FROM mcp_uploads
+     WHERE id = ANY($1::uuid[]) AND user_id = $2
+       AND used_by_proposal_id IS NULL AND created_at >= NOW() - ${UNUSED_TTL_SQL}
+     RETURNING id, mime, size, data`,
+    [ids, userId]
+  );
+  if (rows.length !== ids.length) {
+    const ok = new Set(rows.map(r => r.id));
+    const bad = ids.filter(id => !ok.has(id));
+    throw new UploadError(400, await explainUnusable(client, bad, userId, null, 'upload'));
+  }
+  return new Map(rows.map(r => [r.id, r]));
+}
+
 // Mensaje para el modelo de por qué una subida no se puede usar. Una subida
 // ajena se reporta igual que una inexistente: no se confirma que exista.
-async function explainUnusable(client, ids, userId, proposalId) {
+async function explainUnusable(client, ids, userId, proposalId, label = 'evidence upload') {
   const { rows } = await client.query(
     `SELECT id, used_by_proposal_id, (created_at < NOW() - ${UNUSED_TTL_SQL}) AS expired
      FROM mcp_uploads WHERE id = ANY($1::uuid[]) AND user_id = $2`,
@@ -125,12 +148,12 @@ async function explainUnusable(client, ids, userId, proposalId) {
   const byId = new Map(rows.map(r => [r.id, r]));
   const id = ids[0];
   const r = byId.get(id);
-  if (!r) return `evidence upload "${id}" not found — upload the file first (see get_upload_instructions)`;
+  if (!r) return `${label} "${id}" not found — upload the file first (see get_upload_instructions)`;
   if (r.used_by_proposal_id && r.used_by_proposal_id !== proposalId) {
-    return `evidence upload "${id}" is already attached to another proposal — upload the file again to use it here`;
+    return `${label} "${id}" is already attached to another proposal — upload the file again to use it here`;
   }
-  if (r.expired) return `evidence upload "${id}" expired (unattached uploads last 24h) — upload the file again`;
-  return `evidence upload "${id}" cannot be used`;
+  if (r.expired) return `${label} "${id}" expired (unattached uploads last 24h) — upload the file again`;
+  return `${label} "${id}" cannot be used`;
 }
 
 // Metadatos livianos de las subidas de cada propuesta, para listados.
@@ -151,6 +174,6 @@ async function evidenceForProposal(queryable, proposalId) {
 }
 
 module.exports = {
-  createUpload, attachUploads, evidenceForProposal, detectImageMime, sanitizeName,
+  createUpload, attachUploads, consumeUploads, evidenceForProposal, detectImageMime, sanitizeName,
   UploadError, UPLOADS_META_SQL, MAX_UPLOAD_BYTES, MAX_UNUSED_PER_USER, MAX_UPLOADS_PER_PROPOSAL,
 };

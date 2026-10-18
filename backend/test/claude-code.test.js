@@ -1117,3 +1117,66 @@ test('whiteboard arrows can anchor on a target endpoint or port; foreign or mism
   const s = summary.data.edges.find(e => e.label === 'pivot');
   assert.deepEqual([s.from_endpoint_id, s.to_port_id, s.to_endpoint_id], [ep, port, null]);
 });
+
+test('whiteboard images come from your own upload, consume it, and show in get_whiteboard', async () => {
+  const { project, ownerToken } = await setup();
+  const up = await uploadOk(ownerToken.token);
+  const res = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id, images: [{ upload_id: up.upload_id, caption: 'Panel de login' }], notes: [{ text: 'contexto' }],
+  });
+  assert.equal(res.isError, false, res.text);
+  const img = res.data.added.images[0];
+  assert.deepEqual([img.w, img.h], [320, 240]);
+
+  // La subida se consumió: no queda en mcp_uploads y no se puede reusar.
+  assert.equal((await db.query('SELECT 1 FROM mcp_uploads WHERE id=$1', [up.upload_id])).rows.length, 0);
+  const { rows: [row] } = await db.query('SELECT id, project_id, source, mime, bytes FROM whiteboard_images');
+  assert.equal(row.project_id, project.id);
+  assert.equal(row.source, 'claude_code');
+  assert.ok(row.bytes.equals(PNG));
+  const { rows: [wb] } = await db.query('SELECT data FROM whiteboard_state WHERE project_id=$1', [project.id]);
+  assert.equal(wb.data.images[0].imageId, row.id);
+  assert.equal(wb.data.images[0].created_by, 'claude_code');
+
+  const again = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, images: [{ upload_id: up.upload_id }] });
+  assert.equal(again.isError, true);
+  assert.match(again.text, /not found/);
+
+  const summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
+  assert.deepEqual(summary.data.images.map(i => [i.id, i.caption]), [[img.id, 'Panel de login']]);
+  const note = res.data.added.notes[0];
+  const edge = await callTool(ownerToken.token, 'connect_whiteboard_items', { project_id: project.id, edges: [{ from_id: note.id, to_id: img.id }] });
+  assert.equal(edge.isError, false, edge.text);
+  assert.equal(edge.data.added.length, 1);
+});
+
+test('whiteboard images refuse foreign, attached and expired uploads without consuming anything', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const pTok = await createToken(pentester.accessToken);
+  const theirs = await uploadOk(pTok.token);
+  const mine = await uploadOk(ownerToken.token);
+
+  const foreign = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id, images: [{ upload_id: mine.upload_id }, { upload_id: theirs.upload_id }],
+  });
+  assert.equal(foreign.isError, true);
+  assert.match(foreign.text, /not found/);
+  // Rollback: la subida válida del mismo lote sigue disponible.
+  assert.equal((await db.query('SELECT 1 FROM mcp_uploads WHERE id=$1', [mine.upload_id])).rows.length, 1);
+
+  const attached = await uploadOk(ownerToken.token);
+  await propose(ownerToken.token, project, target, { evidence_upload_ids: [attached.upload_id] });
+  const used = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, images: [{ upload_id: attached.upload_id }] });
+  assert.equal(used.isError, true);
+  assert.match(used.text, /already attached/);
+
+  await db.query(`UPDATE mcp_uploads SET created_at = NOW() - INTERVAL '25 hours' WHERE id=$1`, [mine.upload_id]);
+  const expired = await callTool(ownerToken.token, 'add_whiteboard_items', { project_id: project.id, images: [{ upload_id: mine.upload_id }] });
+  assert.equal(expired.isError, true);
+  assert.match(expired.text, /expired/);
+
+  // Todo se revirtió: ni imágenes ni tablero.
+  assert.equal((await db.query('SELECT 1 FROM whiteboard_images')).rows.length, 0);
+  assert.equal((await db.query('SELECT 1 FROM whiteboard_state')).rows.length, 0);
+});

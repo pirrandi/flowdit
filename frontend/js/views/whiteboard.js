@@ -2,7 +2,7 @@
 'use strict';
 
 // ── Module state ───────────────────────────────────────────────────────
-let wbData = { nodes: [], strokes: [], notes: [], edges: [], cards: [], view: { panX: 0, panY: 0, zoom: 1 } };
+let wbData = { nodes: [], strokes: [], notes: [], edges: [], cards: [], images: [], view: { panX: 0, panY: 0, zoom: 1 } };
 let _mode = 'select';
 let _drawColor = '#e94141';
 let _drawWidth = 2;
@@ -36,6 +36,12 @@ let _connectFrom    = null;  // first end picked in connect mode: { id, ep?, por
 let _selectedEdgeId = null;
 let _edgeToolbar    = null;  // floating toolbar of the selected edge
 let _edgeRaf        = 0;     // pending requestAnimationFrame for _scheduleEdgeUpdate
+
+// Images: imageId → { promise, url } of the blob: URL each image is shown
+// with (the API needs the Bearer header, so <img src="/api/..."> cannot
+// load it). Revoked once no item on the board uses that imageId.
+const _imgUrls = new Map();
+let _lastPointer = null; // last client {x, y} over the viewport, for paste
 
 // Remote cursors
 let _cursorLayer;
@@ -82,8 +88,8 @@ function _num(v, fallback = 0) { const n = Number(v); return v !== null && v !==
 // unsized note/card grows with its text, so it is only an estimate there);
 // MIN_SIZE is the resize floor per type. Same values as the MCP server
 // (services/mcp/whiteboard.js) so its auto-layout matches what is drawn.
-const DEFAULT_SIZE  = { node: { w: 290, h: 380 }, card: { w: 240, h: 110 }, note: { w: 170, h: 100 } };
-const MIN_SIZE      = { node: { w: 200, h: 120 }, card: { w: 160, h: 80 },  note: { w: 120, h: 80 } };
+const DEFAULT_SIZE  = { node: { w: 290, h: 380 }, card: { w: 240, h: 110 }, note: { w: 170, h: 100 }, image: { w: 320, h: 240 } };
+const MIN_SIZE      = { node: { w: 200, h: 120 }, card: { w: 160, h: 80 },  note: { w: 120, h: 80 },  image: { w: 80, h: 60 } };
 const MAX_ITEM_SIZE = 4000;
 // Optional w/h from the board or a remote patch: clamped, or 0 when absent/invalid.
 function _dim(v, min) { const n = _num(v, 0); return n > 0 ? Math.min(MAX_ITEM_SIZE, Math.max(min, n)) : 0; }
@@ -153,10 +159,12 @@ async function initWhiteboard() {
     // borraba.
     wbData.cards   = saved.cards   || [];
     wbData.edges   = saved.edges   || [];
+    wbData.images  = saved.images  || [];
     wbData.view    = saved.view    || { panX: 0, panY: 0, zoom: 1 };
     _autoLayout(state.targets, _itemsBottom());
     scheduleSave();
   }
+  if (!Array.isArray(wbData.images)) wbData.images = [];
   const v = wbData.view || {};
   wbData.view = { panX: _num(v.panX), panY: _num(v.panY), zoom: _num(v.zoom, 1) > 0 ? _num(v.zoom, 1) : 1 };
 
@@ -198,6 +206,7 @@ function _itemsBottom() {
   const bottoms = [
     ...wbData.notes.map(n => { const b = _itemBox('note', n); return b.y + b.h; }),
     ...wbData.cards.map(c => { const b = _itemBox('card', c); return b.y + b.h; }),
+    ...wbData.images.map(i => { const b = _itemBox('image', i); return b.y + b.h; }),
   ].filter(Number.isFinite);
   return bottoms.length ? Math.max(...bottoms) + 50 : 80;
 }
@@ -258,6 +267,7 @@ function _renderAll() {
   wbData.strokes.forEach(s => _renderStroke(s));
   wbData.notes.forEach(n => _nl.appendChild(_buildNote(n)));
   wbData.cards.forEach(c => _nl.appendChild(_buildCard(c)));
+  wbData.images.forEach(i => _nl.appendChild(_buildImage(i)));
   wbData.edges.forEach(e => _renderEdge(e));
 }
 
@@ -579,11 +589,15 @@ function _makeResizable(el, data, type) {
 
     const startX = e.clientX, startY = e.clientY;
     const startW = el.offsetWidth,  startH = el.offsetHeight;
+    const ratio  = startH / (startW || 1);
 
     function onMove(e) {
       const z = wbData.view.zoom;
       data.w = Math.round(_dim(startW + (e.clientX - startX) / z, min.w) || min.w);
-      data.h = Math.round(_dim(startH + (e.clientY - startY) / z, min.h) || min.h);
+      // An image keeps its proportions unless Shift is held.
+      data.h = type === 'image' && !e.shiftKey
+        ? Math.round(_dim(data.w * ratio, min.h) || min.h)
+        : Math.round(_dim(startH + (e.clientY - startY) / z, min.h) || min.h);
       el.style.width  = data.w + 'px';
       el.style.height = data.h + 'px';
       if (type === 'node') el.classList.add('wb-node--sized');
@@ -596,6 +610,8 @@ function _makeResizable(el, data, type) {
         _broadcast({ op: 'card_update', cardId: data.id, changes: { w: data.w, h: data.h } });
       } else if (type === 'note') {
         _broadcast({ op: 'note_update', noteId: data.id, changes: { w: data.w, h: data.h } });
+      } else if (type === 'image') {
+        _broadcast({ op: 'image_update', imageId: data.id, changes: { w: data.w, h: data.h } });
       } else {
         _broadcast({ op: 'node_resize', nodeId: data.id, w: data.w, h: data.h });
       }
@@ -644,6 +660,270 @@ function wbCardColor(id, color) {
   scheduleSave();
 }
 
+// ── Images ─────────────────────────────────────────────────────────────
+// An image item only holds the id of its row in whiteboard_images
+// (imageId); the bytes are fetched with the API and shown via a blob: URL.
+// Same type/size limits as the server, checked here only to fail early.
+const IMAGE_TYPES     = ['image/png', 'image/jpeg', 'image/webp'];
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+// Items from the saved board or a wb:patch: the imageId ends up in a URL.
+function _validImage(im) {
+  return !!im && typeof im === 'object' && _validId(im.id) && _validId(im.imageId);
+}
+
+function _viewportCenter() {
+  const r = _vp.getBoundingClientRect();
+  return _screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
+}
+
+// Initial size: the image's own width up to the default, keeping its
+// proportions (4:3 when the server could not read them). Same rule as the
+// MCP server (services/mcp/whiteboard.js imageBox).
+function _imageInitialSize(meta) {
+  const ratio = meta.width > 0 && meta.height > 0 ? meta.height / meta.width : DEFAULT_SIZE.image.h / DEFAULT_SIZE.image.w;
+  const w = Math.round(_dim(Math.min(DEFAULT_SIZE.image.w, meta.width || DEFAULT_SIZE.image.w), MIN_SIZE.image.w));
+  const h = Math.round(_dim(w * ratio, MIN_SIZE.image.h));
+  return { w, h };
+}
+
+function _imageUrl(imageId) {
+  let entry = _imgUrls.get(imageId);
+  if (entry) return entry.promise;
+  entry = { url: null };
+  entry.promise = api.whiteboard.imageBlob(state.currentProject.id, imageId).then(blob => {
+    // Released while downloading (the item was removed): no URL to leak.
+    if (_imgUrls.get(imageId) !== entry) throw new Error('released');
+    entry.url = URL.createObjectURL(blob);
+    return entry.url;
+  });
+  // A failed download is retried the next time the image is drawn.
+  entry.promise.catch(() => { if (_imgUrls.get(imageId) === entry) _imgUrls.delete(imageId); });
+  _imgUrls.set(imageId, entry);
+  return entry.promise;
+}
+
+function _releaseImageUrl(imageId) {
+  if (wbData.images.some(i => i.imageId === imageId)) return;
+  const entry = _imgUrls.get(imageId);
+  if (!entry) return;
+  _imgUrls.delete(imageId);
+  if (entry.url) URL.revokeObjectURL(entry.url);
+}
+
+function _applyImageGeometry(el, im) {
+  el.style.left   = _num(im.x) + 'px';
+  el.style.top    = _num(im.y) + 'px';
+  el.style.width  = (_dim(im.w, MIN_SIZE.image.w) || DEFAULT_SIZE.image.w) + 'px';
+  el.style.height = (_dim(im.h, MIN_SIZE.image.h) || DEFAULT_SIZE.image.h) + 'px';
+}
+
+function _applyImageCaption(el, im) {
+  const cap = el.querySelector('[data-caption]');
+  if (cap && cap.contentEditable !== 'true') cap.textContent = im.caption || '';
+  const img = el.querySelector('.wb-image-img');
+  if (img) img.alt = im.caption || '';
+}
+
+function _buildImage(im) {
+  const el = document.createElement('div');
+  el.className = 'wb-image';
+  el.dataset.nodeId = im.id; // same attr as cards → arrows and _itemEl work
+  _applyImageGeometry(el, im);
+  el.innerHTML = `
+    <div class="wb-image-head" data-drag-handle>
+      ${icon('grip-vertical', { size: 13, class: 'wb-card-grip' })}
+      ${im.created_by === 'claude_code' ? '<span class="wb-cc-tag">Claude Code</span>' : ''}
+      <span class="wb-image-cap" title="Editar pie de imagen">${icon('pencil', { size: 11 })}</span>
+      <span class="wb-image-rm" title="Quitar del tablero">×</span>
+    </div>
+    <div class="wb-image-frame" data-drag-handle title="Clic para ampliar"><span class="wb-image-status">Cargando imagen…</span></div>
+    <div class="wb-image-caption" data-caption contenteditable="false" data-placeholder="Pie de imagen…"></div>`;
+  _applyImageCaption(el, im);
+
+  const frame = el.querySelector('.wb-image-frame');
+  const fail = () => {
+    frame.classList.add('error');
+    frame.querySelector('.wb-image-status').textContent = 'No se pudo cargar la imagen';
+  };
+  if (_validId(im.imageId)) {
+    _imageUrl(im.imageId).then(url => {
+      const img = document.createElement('img');
+      img.className = 'wb-image-img';
+      img.draggable = false;
+      img.alt = im.caption || '';
+      img.src = url; // by property, never interpolated into markup
+      frame.replaceChildren(img);
+    }).catch(fail);
+  } else {
+    fail();
+  }
+
+  const cap = el.querySelector('[data-caption]');
+  const editCaption = () => {
+    cap.contentEditable = 'true';
+    cap.focus();
+    const r = document.createRange();
+    r.selectNodeContents(cap);
+    r.collapse(false);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(r);
+  };
+  el.querySelector('.wb-image-cap').addEventListener('click', e => { e.stopPropagation(); editCaption(); });
+  cap.addEventListener('dblclick', e => { e.stopPropagation(); editCaption(); });
+  cap.addEventListener('pointerdown', e => e.stopPropagation());
+  cap.addEventListener('blur', () => {
+    cap.contentEditable = 'false';
+    const text = cap.innerText.trim().slice(0, 500);
+    if ((im.caption || '') === text) { cap.textContent = text; return; }
+    if (text) im.caption = text; else delete im.caption;
+    _applyImageCaption(el, im);
+    _broadcast({ op: 'image_update', imageId: im.id, changes: { caption: text } });
+    scheduleSave();
+  });
+  cap.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); cap.blur(); }
+  });
+
+  el.querySelector('.wb-image-rm').addEventListener('click', e => {
+    e.stopPropagation();
+    wbRemoveImage(im.id);
+  });
+
+  _makeImageDraggable(el, im);
+  _makeResizable(el, im, 'image');
+  return el;
+}
+
+// Drag from the header or the picture; a click on the picture without
+// dragging opens it full size.
+function _makeImageDraggable(el, im) {
+  el.querySelectorAll('[data-drag-handle]').forEach(handle => {
+    handle.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || _mode !== 'select') return;
+      if (e.target.closest('.wb-image-rm, .wb-image-cap')) return;
+      e.stopPropagation();
+      e.preventDefault();
+
+      const startX = e.clientX, startY = e.clientY;
+      const origX = _num(im.x), origY = _num(im.y);
+      let dragging = false;
+
+      function onMove(e) {
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        if (!dragging) {
+          if (dx * dx + dy * dy < 25) return;
+          dragging = true;
+          el.classList.add('dragging');
+          handle.setPointerCapture(e.pointerId);
+        }
+        im.x = origX + dx / wbData.view.zoom;
+        im.y = origY + dy / wbData.view.zoom;
+        el.style.left = im.x + 'px';
+        el.style.top  = im.y + 'px';
+        _updateAllEdges();
+      }
+      function onUp() {
+        handle.removeEventListener('pointermove', onMove);
+        if (!dragging) {
+          if (handle.classList.contains('wb-image-frame')) _openImageLightbox(im);
+          return;
+        }
+        el.classList.remove('dragging');
+        _broadcast({ op: 'image_update', imageId: im.id, changes: { x: im.x, y: im.y } });
+        scheduleSave();
+      }
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp, { once: true });
+    });
+  });
+}
+
+// Full-size view, with the shared .img-lb styles (css/main.css). Esc or a
+// click outside the picture closes it; while open, keys stay here so the
+// board shortcuts do not fire underneath.
+function _openImageLightbox(im) {
+  const entry = _imgUrls.get(im.imageId);
+  if (!entry?.url) return;
+  document.getElementById('img-lb')?._close?.();
+  const overlay = document.createElement('div');
+  overlay.className = 'img-lb';
+  overlay.id = 'img-lb';
+  overlay.innerHTML = `
+    <div class="img-lb-bar">
+      <span class="img-lb-name"></span>
+      <button class="img-lb-btn img-lb-close" title="Cerrar (Esc)">${icon('x', { size: 20 })}</button>
+    </div>
+    <div class="img-lb-stage"><img class="img-lb-img" alt=""></div>`;
+  const imgEl = overlay.querySelector('.img-lb-img');
+  imgEl.src = entry.url;
+  imgEl.alt = im.caption || '';
+  overlay.querySelector('.img-lb-name').textContent = im.caption || 'Imagen';
+
+  const onKey = e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  const close = () => {
+    window.removeEventListener('keydown', onKey, true);
+    overlay.remove();
+  };
+  overlay._close = close;
+  overlay.addEventListener('click', e => {
+    if (e.target.closest('.img-lb-close') || e.target === overlay || e.target.classList.contains('img-lb-stage')) close();
+  });
+  window.addEventListener('keydown', onKey, true);
+  document.body.appendChild(overlay);
+}
+
+// Uploads each file, then places it centered on (wx, wy); several files
+// cascade a little so they do not stack exactly.
+async function _addImageFiles(files, wx, wy) {
+  const list = [...(files || [])];
+  let placed = 0;
+  for (const file of list) {
+    const name = file.name || 'Imagen';
+    if (file.type && !IMAGE_TYPES.includes(file.type)) { showToast(`${name}: solo se aceptan PNG, JPEG o WebP`, 'error'); continue; }
+    if (file.size > MAX_IMAGE_BYTES) { showToast(`${name}: supera los 4 MB`, 'error'); continue; }
+    try {
+      const meta = await api.whiteboard.uploadImage(state.currentProject.id, file);
+      const { w, h } = _imageInitialSize(meta);
+      const off = placed * 24;
+      const im = { id: crypto.randomUUID(), imageId: meta.id, x: Math.round(wx - w / 2 + off), y: Math.round(wy - h / 2 + off), w, h };
+      wbData.images.push(im);
+      _nl.appendChild(_buildImage(im));
+      _broadcast({ op: 'image_add', image: im });
+      scheduleSave();
+      placed++;
+    } catch (err) {
+      showToast(`${name}: no se pudo subir (${err.message})`, 'error');
+    }
+  }
+}
+
+function wbPickImages() {
+  document.getElementById('wb-image-input')?.click();
+}
+
+function _removeImage(id, broadcast) {
+  _removedIds.add(id);
+  const im = wbData.images.find(i => i.id === id);
+  if (!im) return;
+  wbData.images = wbData.images.filter(i => i.id !== id);
+  _itemEl('image', id)?.remove();
+  _removeItemEdges(id, broadcast);
+  _releaseImageUrl(im.imageId);
+  if (broadcast) {
+    _broadcast({ op: 'image_remove', imageId: id });
+    scheduleSave();
+  }
+}
+
+function wbRemoveImage(id) {
+  _removeImage(id, true);
+}
+
 // ── Edges ──────────────────────────────────────────────────────────────
 // An edge joins two ends. Each end is a board item (target node, card or
 // note: fromId/toId) and, on a target node, optionally one of its endpoint
@@ -657,7 +937,7 @@ function _edgeEl(edgeId) {
 }
 
 function _findItem(id) {
-  for (const kind of ['node', 'card', 'note']) {
+  for (const kind of ['node', 'card', 'note', 'image']) {
     const data = wbData[`${kind}s`].find(x => x.id === id);
     if (data) return { kind, data };
   }
@@ -685,7 +965,7 @@ function _edgeProblem(from, to, ignoreId = null) {
 // endpoint row / port chip of a target node.
 function _endFromElement(target) {
   if (!(target instanceof Element) || !_nl.contains(target)) return null;
-  const itemEl = target.closest('.wb-node, .wb-card, .wb-sticky');
+  const itemEl = target.closest('.wb-node, .wb-card, .wb-sticky, .wb-image');
   if (!itemEl) return null;
   if (itemEl.classList.contains('wb-sticky')) return { id: itemEl.dataset.noteId, el: itemEl };
   const id = itemEl.dataset.nodeId;
@@ -1454,6 +1734,7 @@ function fitToScreen() {
     ...wbData.nodes.map(n => _itemBox('node', n)),
     ...wbData.notes.map(n => _itemBox('note', n)),
     ...wbData.cards.map(c => _itemBox('card', c)),
+    ...wbData.images.map(i => _itemBox('image', i)),
   ];
   if (!items.length) return;
   const minX = Math.min(...items.map(i => i.x));
@@ -1632,7 +1913,7 @@ function _wireEvents() {
   // Connect mode picks ends before any item handler sees the event (note
   // text and card bodies stop pointerdown; endpoint rows copy on click). The
   // item's own controls (collapse, remove, colors) keep working.
-  const ITEM_CONTROLS = '.wb-node-collapse, .wb-node-remove, .wb-card-rm, .wb-sticky-rm, [data-color], .wb-resize-handle';
+  const ITEM_CONTROLS = '.wb-node-collapse, .wb-node-remove, .wb-card-rm, .wb-sticky-rm, .wb-image-rm, .wb-image-cap, [data-color], .wb-resize-handle';
   _vp.addEventListener('pointerdown', e => {
     if (_mode !== 'connect' || e.button !== 0) return;
     if (e.target instanceof Element && e.target.closest(ITEM_CONTROLS)) return;
@@ -1671,7 +1952,46 @@ function _wireEvents() {
       _eraserRing.style.top  = (e.clientY - rect.top)  + 'px';
     }
   });
-  _vp.addEventListener('mouseleave', () => { _eraserRing.style.display = 'none'; });
+  _vp.addEventListener('mouseleave', () => { _eraserRing.style.display = 'none'; _lastPointer = null; });
+  _vp.addEventListener('mousemove', e => { _lastPointer = { x: e.clientX, y: e.clientY }; });
+
+  // Images: file picker (toolbar), drag & drop onto the board, paste.
+  const fileInput = document.getElementById('wb-image-input');
+  fileInput?.addEventListener('change', () => {
+    const c = _viewportCenter();
+    _addImageFiles(fileInput.files, c.x, c.y);
+    fileInput.value = '';
+  });
+  const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+  _vp.addEventListener('dragover', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    _vp.classList.add('wb-drop');
+  });
+  _vp.addEventListener('dragleave', e => {
+    if (!_vp.contains(e.relatedTarget)) _vp.classList.remove('wb-drop');
+  });
+  _vp.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    _vp.classList.remove('wb-drop');
+    const w = _screenToWorld(e.clientX, e.clientY);
+    _addImageFiles(e.dataTransfer.files, w.x, w.y);
+  });
+  document.addEventListener('paste', e => {
+    const t = e.target;
+    if (t instanceof Element && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+    const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    const w = _lastPointer ? _screenToWorld(_lastPointer.x, _lastPointer.y) : _viewportCenter();
+    _addImageFiles(files, w.x, w.y);
+  });
+  window.addEventListener('pagehide', () => {
+    _imgUrls.forEach(entry => { if (entry.url) URL.revokeObjectURL(entry.url); });
+    _imgUrls.clear();
+  });
 
   // Cursor broadcasting (throttled to 40ms)
   let _cursorThrottle = false;
@@ -1812,9 +2132,9 @@ function _memberColor(userId) {
 // `explicit`: altas nuevas del servidor (items_add). Un nodo de target usa el
 // id del target, así que si acá se había quitado ese nodo y Claude Code lo
 // vuelve a agregar, es un alta nueva y se respeta.
-async function _mergeItems({ nodes = [], cards = [], notes = [], edges = [] }, { explicit = false } = {}) {
+async function _mergeItems({ nodes = [], cards = [], notes = [], images = [], edges = [] }, { explicit = false } = {}) {
   const fresh = (list, item) => item?.id && (explicit || !_removedIds.has(item.id)) && !list.some(x => x.id === item.id);
-  if (explicit) [...nodes, ...cards, ...notes, ...edges].forEach(it => it?.id && _removedIds.delete(it.id));
+  if (explicit) [...nodes, ...cards, ...notes, ...images, ...edges].forEach(it => it?.id && _removedIds.delete(it.id));
   let n = 0;
   // Un nodo de un target que esta pestaña todavía no conoce (agregado
   // después de cargarla): se recargan los targets para poder dibujarlo.
@@ -1833,6 +2153,8 @@ async function _mergeItems({ nodes = [], cards = [], notes = [], edges = [] }, {
   });
   cards.filter(c => fresh(wbData.cards, c)).forEach(c => { wbData.cards.push(c); _nl.appendChild(_buildCard(c)); n++; });
   notes.filter(x => fresh(wbData.notes, x)).forEach(x => { wbData.notes.push(x); _nl.appendChild(_buildNote(x)); n++; });
+  (Array.isArray(images) ? images : []).filter(x => _validImage(x) && fresh(wbData.images, x))
+    .forEach(x => { wbData.images.push(x); _nl.appendChild(_buildImage(x)); n++; });
   edges.filter(e => fresh(wbData.edges, e)).forEach(e => { wbData.edges.push(e); _renderEdge(e); n++; });
   if (n) _updateAllEdges();
   return n;
@@ -1982,6 +2304,32 @@ function _handleRemotePatch(msg) {
       if (ed.id === _selectedEdgeId) _refreshEdgeToolbar(ed);
       break;
     }
+    case 'image_add':
+      if (_validImage(msg.image) && !wbData.images.find(i => i.id === msg.image.id)) {
+        wbData.images.push(msg.image);
+        _nl.appendChild(_buildImage(msg.image));
+        _updateAllEdges();
+      }
+      break;
+    case 'image_update': {
+      const im = wbData.images.find(i => i.id === msg.imageId);
+      if (!im || !msg.changes || typeof msg.changes !== 'object') return;
+      const c = msg.changes;
+      for (const k of ['x', 'y', 'w', 'h']) if (c[k] !== undefined) im[k] = _num(c[k], im[k]);
+      if (typeof c.caption === 'string') {
+        if (c.caption) im.caption = c.caption.slice(0, 500); else delete im.caption;
+      }
+      const el = _itemEl('image', im.id);
+      if (el) {
+        _applyImageGeometry(el, im);
+        if (c.caption !== undefined) _applyImageCaption(el, im);
+      }
+      _updateAllEdges();
+      break;
+    }
+    case 'image_remove':
+      _removeImage(msg.imageId, false);
+      break;
     case 'card_add':
       if (!wbData.cards.find(c => c.id === msg.card.id)) {
         wbData.cards.push(msg.card);
@@ -2116,6 +2464,12 @@ function _applySearch() {
     if (match) hits++;
   });
 
+  // Images (by caption)
+  wbData.images.forEach(im => {
+    const el = _itemEl('image', im.id);
+    if (el) el.classList.toggle('wb-dimmed', !(im.caption || '').toLowerCase().includes(q));
+  });
+
   // Sticky notes
   wbData.notes.forEach(n => {
     const el    = _nl.querySelector(`[data-note-id="${n.id}"]`);
@@ -2208,6 +2562,8 @@ window.wbRemoveNote     = wbRemoveNote;
 window.wbNoteColor      = wbNoteColor;
 window.wbRemoveCard     = wbRemoveCard;
 window.wbCardColor      = wbCardColor;
+window.wbPickImages     = wbPickImages;
+window.wbRemoveImage    = wbRemoveImage;
 window.wbSearch         = wbSearch;
 window.wbSearchClear    = wbSearchClear;
 window.redoStroke       = redoStroke;

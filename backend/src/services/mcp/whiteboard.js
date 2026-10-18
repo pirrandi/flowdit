@@ -13,9 +13,13 @@ const crypto = require('node:crypto');
 const db       = require('../../db');
 const ws       = require('../ws');
 const activity = require('../activity');
+const { consumeUploads } = require('./uploads');
+const wbImages = require('../whiteboardImages');
 
 const MAX_ITEMS_PER_CALL = 30;
 const MAX_EDGES_PER_CALL = 50;
+// Cada imagen copia hasta 4 MB dentro de la transacción del tablero.
+const MAX_IMAGES_PER_CALL = 10;
 // Tope del tablero entero: un Claude Code en loop no debe poder inflar el
 // JSON (que cada navegador baja y re-sube completo en cada autosave).
 const MAX_BOARD_ITEMS = 1500;
@@ -38,6 +42,7 @@ const SIZE = {
   node: { w: 290, h: 380 },
   card: { w: 240, h: 110 },
   note: { w: 170, h: 100 },
+  image: { w: 320, h: 240 },
 };
 // Mínimos por tipo (los mismos que usa el resize de whiteboard.js) y máximo
 // común para un w/h explícito.
@@ -45,6 +50,7 @@ const MIN_SIZE = {
   node: { w: 200, h: 120 },
   card: { w: 160, h: 80 },
   note: { w: 120, h: 80 },
+  image: { w: 80, h: 60 },
 };
 const MAX_ITEM_SIZE = 4000;
 // Grilla del auto-layout (celda = tamaño + separación). Si el lote trae
@@ -60,12 +66,12 @@ const MAX_OFFSET = 5000;
 class WhiteboardError extends Error {}
 
 function emptyBoard() {
-  return { nodes: [], strokes: [], notes: [], edges: [], cards: [], view: { panX: 0, panY: 0, zoom: 1 } };
+  return { nodes: [], strokes: [], notes: [], edges: [], cards: [], images: [], view: { panX: 0, panY: 0, zoom: 1 } };
 }
 
 function normalizeBoard(data) {
   const b = { ...emptyBoard(), ...(data || {}) };
-  for (const k of ['nodes', 'strokes', 'notes', 'edges', 'cards']) if (!Array.isArray(b[k])) b[k] = [];
+  for (const k of ['nodes', 'strokes', 'notes', 'edges', 'cards', 'images']) if (!Array.isArray(b[k])) b[k] = [];
   return b;
 }
 
@@ -90,7 +96,7 @@ function boundingBox(board) {
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
   };
-  for (const kind of ['node', 'card', 'note']) {
+  for (const kind of ['node', 'card', 'note', 'image']) {
     board[`${kind}s`].forEach(it => { const g = geometry(kind, it); add(g.x, g.y, g.w, g.h); });
   }
   board.strokes.forEach(s => {
@@ -100,7 +106,7 @@ function boundingBox(board) {
 }
 
 function itemCount(board) {
-  return board.nodes.length + board.cards.length + board.notes.length + board.edges.length;
+  return board.nodes.length + board.cards.length + board.notes.length + board.images.length + board.edges.length;
 }
 
 // Ubica el lote nuevo en espacio libre: a la derecha de todo lo existente,
@@ -211,6 +217,9 @@ async function getWhiteboard(projectId) {
     notes: board.notes.map(n => ({
       id: n.id, text: clip(n.text || '', 1000), created_by: n.created_by || null, ...geometry('note', n),
     })),
+    images: board.images.map(i => ({
+      id: i.id, caption: i.caption || '', created_by: i.created_by || null, ...geometry('image', i),
+    })),
     edges: board.edges.map(e => ({
       id: e.id, from_id: e.fromId, to_id: e.toId, label: e.label || '',
       from_endpoint_id: e.fromEp || null, to_endpoint_id: e.toEp || null,
@@ -226,10 +235,25 @@ function broadcastAdd(projectId, added) {
   ws.broadcastWhiteboardPatch(projectId, { op: 'items_add', source: CREATED_BY, ...added });
 }
 
-async function addItems({ projectId, user, nodes = [], cards = [], notes = [] }) {
-  const total = nodes.length + cards.length + notes.length;
-  if (!total) throw new WhiteboardError('nothing to add — pass at least one of nodes, cards or notes');
+// Tamaño de una imagen nueva: w/h explícitos (si viene uno solo, el otro
+// sale de la proporción de la imagen), o el ancho por defecto con su
+// proporción. Sin dimensiones conocidas se usa la del default (4:3).
+function imageBox(dims, w, h) {
+  const ratio = dims ? dims.height / dims.width : SIZE.image.h / SIZE.image.w;
+  if (!Number.isFinite(w) && !Number.isFinite(h)) w = Math.min(SIZE.image.w, dims?.width || SIZE.image.w);
+  if (!Number.isFinite(w)) w = h / ratio;
+  if (!Number.isFinite(h)) h = w * ratio;
+  return { w: clampSize('image', 'w', w), h: clampSize('image', 'h', h) };
+}
+
+async function addItems({ projectId, user, nodes = [], cards = [], notes = [], images = [] }) {
+  const total = nodes.length + cards.length + notes.length + images.length;
+  if (!total) throw new WhiteboardError('nothing to add — pass at least one of nodes, cards, notes or images');
   if (total > MAX_ITEMS_PER_CALL) throw new WhiteboardError(`at most ${MAX_ITEMS_PER_CALL} items per call`);
+  if (images.length > MAX_IMAGES_PER_CALL) throw new WhiteboardError(`at most ${MAX_IMAGES_PER_CALL} images per call`);
+  if (new Set(images.map(i => i.upload_id)).size !== images.length) {
+    throw new WhiteboardError('each upload_id can be used only once');
+  }
 
   // Validación previa (fuera del lock): ids de targets y links.
   const { rows: targets } = await db.query(`SELECT id, host FROM targets WHERE project_id = $1`, [projectId]);
@@ -273,9 +297,30 @@ async function addItems({ projectId, user, nodes = [], cards = [], notes = [] })
       kind: 'note', dx: n.dx, dy: n.dy,
       data: sized('note', n, { id: crypto.randomUUID(), text: n.text, color: NOTE_COLORS.includes(n.color) ? n.color : NOTE_COLORS[0], created_by: CREATED_BY }),
     }));
+    // Imágenes: la subida (propia, suelta, sin vencer) se consume y sus bytes
+    // se copian a whiteboard_images. Todo en esta transacción: si algo falla
+    // (topes del proyecto, subida inválida) la subida sigue disponible.
+    if (images.length) {
+      const uploads = await consumeUploads(client, { userId: user.id, uploadIds: images.map(i => i.upload_id) });
+      const keepIds = wbImages.referencedIds(board);
+      for (const img of images) {
+        const up = uploads.get(img.upload_id);
+        const row = await wbImages.insertImage(client, {
+          projectId, userId: user.id, buffer: up.data, source: CREATED_BY, keepIds,
+        });
+        const dims = row.width && row.height ? { width: row.width, height: row.height } : null;
+        batch.push({
+          kind: 'image', dx: img.dx, dy: img.dy,
+          data: {
+            id: crypto.randomUUID(), imageId: row.id, ...imageBox(dims, img.w, img.h),
+            ...(img.caption ? { caption: img.caption } : {}), created_by: CREATED_BY,
+          },
+        });
+      }
+    }
 
     layoutBatch(board, batch);
-    const added = { nodes: [], cards: [], notes: [], edges: [] };
+    const added = { nodes: [], cards: [], notes: [], images: [], edges: [] };
     for (const it of batch) {
       const item = { ...it.data, x: it.x, y: it.y };
       added[`${it.kind}s`].push(item);
@@ -299,7 +344,7 @@ async function addItems({ projectId, user, nodes = [], cards = [], notes = [] })
   });
 
   broadcastAdd(projectId, result.added);
-  const n = result.added.nodes.length + result.added.cards.length + result.added.notes.length;
+  const n = result.added.nodes.length + result.added.cards.length + result.added.notes.length + result.added.images.length;
   if (n) {
     await activity.log({
       projectId, user, action: 'claude_code_whiteboard_added', entityType: 'whiteboard',
@@ -362,7 +407,7 @@ async function connectItems({ projectId, user, edges }) {
     if (itemCount(board) + edges.length > MAX_BOARD_ITEMS) {
       throw new WhiteboardError(`the whiteboard already has ${itemCount(board)} items — it cannot grow past ${MAX_BOARD_ITEMS}`);
     }
-    const ids = new Set([...board.nodes, ...board.cards, ...board.notes].map(it => it.id));
+    const ids = new Set([...board.nodes, ...board.cards, ...board.notes, ...board.images].map(it => it.id));
     const nodeIds = new Set(board.nodes.map(n => n.id));
     const existing = new Set(board.edges.map(x => pairKey(
       endKey(x.fromId, x.fromEp, x.fromPort), endKey(x.toId, x.toEp, x.toPort)
@@ -371,7 +416,7 @@ async function connectItems({ projectId, user, edges }) {
     for (const e of edges) {
       for (const side of ['from', 'to']) {
         const id = e[`${side}_id`];
-        if (!ids.has(id)) throw new WhiteboardError(`"${id}" is not a target node, card or note on this whiteboard — call get_whiteboard`);
+        if (!ids.has(id)) throw new WhiteboardError(`"${id}" is not a target node, card, note or image on this whiteboard — call get_whiteboard`);
         // El endpoint/puerto ya se verificó contra el target; además el
         // target tiene que estar en el tablero como nodo.
         if ((e[`${side}_endpoint_id`] || e[`${side}_port_id`]) && !nodeIds.has(id)) {
@@ -404,13 +449,13 @@ async function connectItems({ projectId, user, edges }) {
     }
     return { added, skipped };
   });
-  if (result.added.length) broadcastAdd(projectId, { nodes: [], cards: [], notes: [], edges: result.added });
+  if (result.added.length) broadcastAdd(projectId, { nodes: [], cards: [], notes: [], images: [], edges: result.added });
   return result;
 }
 
 module.exports = {
   getWhiteboard, addItems, connectItems, geometry, WhiteboardError,
-  MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
+  MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_IMAGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
   EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS,
   SIZE, MIN_SIZE, MAX_ITEM_SIZE,
 };

@@ -22,7 +22,7 @@ const { seedTemplates } = require('../src/db/vuln-templates');
 const TABLES = [
   'mcp_uploads', 'mcp_proposals', 'api_tokens',
   'organization_sso_configs', 'organization_invites', 'organization_members',
-  'ai_usage', 'whiteboard_state', 'report_config', 'report_templates',
+  'ai_usage', 'whiteboard_images', 'whiteboard_state', 'report_config', 'report_templates',
   'ticket_replies', 'tickets', 'portal_links',
   'target_endpoints', 'target_ports', 'activity_log', 'project_methodologies',
   'methodology_progress', 'methodologies', 'custom_vulns', 'ps_progress',

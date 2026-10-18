@@ -55,6 +55,31 @@ async function requestUpload(method, path, formData, retry = true) {
   return data;
 }
 
+// GET de un binario (imágenes del whiteboard): un <img src> no puede mandar
+// el Bearer, así que se baja con fetch y la vista lo muestra con un blob: URL.
+// Solo se aceptan los tipos de imagen que el servidor guarda: un blob de
+// otro tipo nunca llega a un createObjectURL.
+const BLOB_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+async function requestImageBlob(path, retry = true) {
+  const headers = {};
+  if (tokens.access) headers['Authorization'] = `Bearer ${tokens.access}`;
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (res.status === 401 && retry && tokens.refresh) {
+    if (!_refreshPromise) {
+      _refreshPromise = refreshTokens().finally(() => { _refreshPromise = null; });
+    }
+    const ok = await _refreshPromise;
+    if (ok) return requestImageBlob(path, false);
+    tokens.clear();
+    window.dispatchEvent(new Event('fd:logout'));
+    throw new ApiError(401, 'Session expired');
+  }
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
+  const blob = await res.blob();
+  if (!BLOB_IMAGE_TYPES.includes(blob.type)) throw new ApiError(415, 'Unexpected content type');
+  return blob;
+}
+
 async function request(method, path, body, retry = true) {
   const headers = { 'Content-Type': 'application/json' };
   // Portal session takes priority over regular user session
@@ -273,6 +298,12 @@ const api = {
   whiteboard: {
     get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),
     save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
+    uploadImage: (pid, file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return requestUpload('POST', `/projects/${pid}/whiteboard/images`, fd);
+    },
+    imageBlob: (pid, imageId) => requestImageBlob(`/projects/${pid}/whiteboard/images/${encodeURIComponent(imageId)}`),
   },
   // Report builder configuration — cover metadata, section layout and the
   // per-finding editorial data (risk-matrix probability, remediation
