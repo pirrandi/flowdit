@@ -6,6 +6,7 @@ These are committed to the repo instead of loaded from a CDN.
 |---|---|---|---|
 | `marked.umd.js` | [marked](https://github.com/markedjs/marked) | 18.0.10 | MIT (`marked.LICENSE.txt`) |
 | `purify.min.js` | [DOMPurify](https://github.com/cure53/DOMPurify) | 3.4.14 | Apache-2.0 / MPL-2.0 (`dompurify.LICENSE.txt`) |
+| `html2canvas.min.js` | [html2canvas](https://github.com/niklasvh/html2canvas) | 1.4.1 | MIT (`html2canvas.LICENSE.txt`) |
 
 ## Why vendored
 
@@ -26,6 +27,18 @@ formatting rather than sanitisation.
 npm install marked@<version> dompurify@<version>   # in a scratch directory
 cp node_modules/marked/lib/marked.umd.js      frontend/js/vendor/
 cp node_modules/dompurify/dist/purify.min.js  frontend/js/vendor/
+```
+
+`html2canvas.min.js` is loaded lazily by the whiteboard PNG export
+(`js/views/whiteboard.js`), only when the user exports. Pin the version and check
+the tarball against the registry before copying:
+
+```bash
+npm pack html2canvas@<version>                       # prints the integrity hash
+npm view html2canvas@<version> dist.integrity        # must match
+tar -xzf html2canvas-<version>.tgz
+cp package/dist/html2canvas.min.js frontend/js/vendor/
+cp package/LICENSE frontend/js/vendor/html2canvas.LICENSE.txt
 ```
 
 Then update the version numbers in the table above.

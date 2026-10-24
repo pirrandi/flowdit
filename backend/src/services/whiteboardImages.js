@@ -69,7 +69,9 @@ function imageDimensions(buf, mime) {
 }
 
 // imageIds que el tablero guardado referencia (solo los que tienen forma de
-// UUID: el resto no puede ser una fila de esta tabla).
+// UUID: el resto no puede ser una fila de esta tabla). Un ítem borrado sale
+// de data.images y queda como tombstone en whiteboard_state.sync: un PUT
+// viejo no lo revive (whiteboardSync.js), así que sus bytes se barren.
 function referencedIds(data) {
   const images = Array.isArray(data?.images) ? data.images : [];
   return [...new Set(images.map(i => i?.imageId).filter(isUuid))];

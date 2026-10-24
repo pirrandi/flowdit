@@ -4,7 +4,7 @@
 // numbers are coerced to finite values and strings are capped. Invalid values
 // fall back to a default instead of rejecting the whole save.
 const {
-  NOTE_COLORS, CARD_COLORS, EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS, MAX_BOARD_ITEMS, MAX_ITEM_SIZE,
+  NOTE_COLORS, CARD_COLORS, EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS, REF_TYPES, MAX_BOARD_ITEMS, MAX_ITEM_SIZE,
 } = require('./mcp/whiteboard');
 const { MAX_PROJECT_IMAGES } = require('./whiteboardImages');
 
@@ -49,13 +49,19 @@ function sanitizeNode(n) {
   return out;
 }
 
+// What a card points at (REF_TYPES). The browser looks the id up in the
+// project data it already has (a finding card shows the CURRENT finding from
+// GET /vulns), so an unknown type is dropped with the whole ref and ids must
+// look like ids.
 function sanitizeRef(ref) {
-  if (!isPlainObject(ref)) return undefined;
-  const out = {};
-  for (const [key, max] of [['type', 20], ['id', 100], ['target_id', 100], ['label', 1000]]) {
+  if (!isPlainObject(ref) || !REF_TYPES.includes(ref.type)) return undefined;
+  const out = { type: ref.type };
+  for (const key of ['id', 'target_id']) {
     if (ref[key] === null) out[key] = null;
-    else setIf(out, key, str(ref[key], max));
+    else if (validId(ref[key])) out[key] = ref[key];
   }
+  if (ref.label === null) out.label = null;
+  else setIf(out, 'label', str(ref.label, 1000));
   return out;
 }
 
@@ -140,7 +146,34 @@ function sanitizeWhiteboardData(data) {
     const zoom = num(data.view.zoom, 1);
     out.view = { panX: num(data.view.panX, 0), panY: num(data.view.panY, 0), zoom: zoom > 0 ? zoom : 1 };
   }
+  // Only a request flag ("targets were auto-placed"): mergeBoard keeps it in
+  // whiteboard_state.sync, never in the stored blob.
+  if (data.initialized === true) out.initialized = true;
   return out;
 }
 
-module.exports = { sanitizeWhiteboardData, WhiteboardDataError };
+// Sync fields of PUT /whiteboard next to `data` (see services/whiteboardSync.js).
+// base_revision: the board revision the client's copy is based on; without it
+// the PUT is treated as a legacy full-board save (never deletes anything).
+// removed: { kind: [ids] } the client deleted since that base.
+function sanitizeSyncRequest(body) {
+  const out = { baseRevision: undefined, removed: {} };
+  const base = body?.base_revision;
+  if (base !== undefined && base !== null) {
+    if (!Number.isSafeInteger(base) || base < 0) throw new WhiteboardDataError('base_revision must be a non-negative integer');
+    out.baseRevision = base;
+  }
+  const removed = body?.removed;
+  if (removed === undefined || removed === null) return out;
+  if (!isPlainObject(removed)) throw new WhiteboardDataError('removed must be an object of id lists');
+  if (out.baseRevision === undefined) throw new WhiteboardDataError('removed requires base_revision');
+  for (const [key, { max }] of Object.entries(LISTS)) {
+    if (!Array.isArray(removed[key])) continue;
+    out.removed[key] = [...new Set(removed[key].filter(validId))].slice(0, max);
+  }
+  return out;
+}
+
+const LIST_LIMITS = Object.fromEntries(Object.entries(LISTS).map(([key, { max }]) => [key, max]));
+
+module.exports = { sanitizeWhiteboardData, sanitizeSyncRequest, LIST_LIMITS, WhiteboardDataError };

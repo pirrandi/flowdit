@@ -296,8 +296,10 @@ const api = {
     markAllRead: ()       => request('POST', '/notifications/read-all'),
   },
   whiteboard: {
-    get:  (pid)       => request('GET', `/projects/${pid}/whiteboard`),
-    save: (pid, data) => request('PUT', `/projects/${pid}/whiteboard`, { data }),
+    // since: solo lo que cambió después de esa revisión (ver whiteboardSync.js).
+    get:  (pid, since)      => request('GET', `/projects/${pid}/whiteboard${since !== undefined ? `?since=${since}` : ''}`),
+    // sync: { base_revision, removed } — sin él es un guardado viejo del tablero entero.
+    save: (pid, data, sync) => request('PUT', `/projects/${pid}/whiteboard`, { data, ...(sync || {}) }),
     uploadImage: (pid, file) => {
       const fd = new FormData();
       fd.append('file', file);

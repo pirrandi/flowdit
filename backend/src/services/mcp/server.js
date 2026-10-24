@@ -63,7 +63,10 @@ const INSTRUCTIONS =
   'findings against targets that are in scope (list_targets shows scope/status), and ' +
   'check list_findings first to avoid duplicates. While a proposal is still pending you can ' +
   'fix it with update_proposal or withdraw it with withdraw_proposal. Screenshots are ' +
-  'uploaded out of band (get_upload_instructions) and attached by id. ' +
+  'uploaded out of band (call get_upload_instructions WITH project_id first) and attached by id. ' +
+  'Prefer a REAL screenshot; only if a real capture is impossible, generate an illustrative image and ' +
+  'label it as reconstructed. Follow the cropping rules it returns and use the shell_prompt it gives ' +
+  'for any terminal capture — never a placeholder prompt. ' +
   LANGUAGE_RULE;
 
 // Campos de un hallazgo, compartidos por propose_finding (obligatorios los
@@ -96,16 +99,45 @@ const TARGET_FIELDS = {
   notes: z.string().trim().max(10000).optional().describe('Why this target is relevant / how it was discovered (in Spanish)'),
 };
 
+// Host de shell a partir del nombre de la organización: minúsculas, lo que no
+// sea [a-z0-9] pasa a "-", sin guiones colgando, acotado. Es lo que va después
+// del "@" en el prompt de una captura de terminal (user@host), así que tiene
+// que parecer un hostname, no el nombre con espacios. Si no queda nada usable,
+// cae a "flowdit".
+function orgHost(name) {
+  const slug = String(name || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quita acentos: "Résility" -> "Resility"
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return slug || 'flowdit';
+}
+
 // Instrucciones de subida. NUNCA llevan el token: el modelo ya lo tiene en
 // la config de Claude Code y devolverlo acá lo dejaría en el transcript.
-function uploadInstructions(uploadsUrl) {
+// `shellPrompt` es el user@host que debe aparecer en cualquier captura de
+// terminal (ver get_upload_instructions): el usuario real de Flowdit y la
+// organización dueña del proyecto, nunca un placeholder inventado.
+function uploadInstructions(uploadsUrl, shellPrompt) {
   const command = `curl -sS -H "Authorization: Bearer $FLOWDIT_TOKEN" -F "file=@/path/to/screenshot.png" ${uploadsUrl}`;
+  const rendering = [
+    'PRIORITY: attach a REAL screenshot — an actual capture of the command/tool output you ran or the browser state you observed. A real capture is always preferred; it is the only thing that truly proves a finding.',
+    'ONLY if a real capture is genuinely impossible (no display, output not visually capturable, etc.) may you generate an illustrative image reconstructing the output. A generated image is a fallback, never the default.',
+    'A generated/illustrative image MUST be visibly labelled as such (e.g. a header like "Reconstrucción — no es una captura real") and the proposal text must say the evidence was reconstructed. Never pass a generated image off as a real screenshot — fabricated evidence presented as real is a serious integrity problem in a pentest report.',
+    'Crop the image tightly to its content: no empty margins, no blank space above/below the text, no filler. The image bounds should hug the terminal/tool output.',
+  ];
+  if (shellPrompt) {
+    rendering.push(`If a shell prompt is visible (real capture or reconstruction), it must read "${shellPrompt}" (real Flowdit user @ the organization running the engagement). Never use placeholders like "pentester@flowdit" or "user@host".`);
+  }
   return {
     upload_url: uploadsUrl,
     method: 'POST multipart/form-data, one file per request in the field "file"',
     command,
     token: 'Use the same fdt_ API token configured for this MCP server (scope "read_propose"). If $FLOWDIT_TOKEN is not set in the shell, ask the user to export it — never print or log the token.',
     accepted: `PNG, JPEG or WebP (detected from the file content), max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB each`,
+    rendering,
+    ...(shellPrompt ? { shell_prompt: shellPrompt } : {}),
     response: '{ "upload_id": "...", "name": "...", "size": 123, "mime": "image/png" }',
     next_step: `Pass the upload_id values in evidence_upload_ids of propose_finding or update_proposal (max ${MAX_UPLOADS_PER_PROPOSAL} per proposal), or in images[].upload_id of add_whiteboard_items to place them on the whiteboard. Unattached uploads expire after 24h and each upload can be used only once (one proposal or one whiteboard image).`,
   };
@@ -205,7 +237,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     annotations: READ_ONLY,
   }, guarded(async ({ project_id }) => {
     const p = await projectFor(project_id);
-    const [{ rows: targets }, { rows: sev }, { rows: pend }] = await Promise.all([
+    const [{ rows: org }, { rows: targets }, { rows: sev }, { rows: pend }] = await Promise.all([
+      db.query('SELECT name FROM organizations WHERE id = $1', [p.organization_id]),
       db.query(
         `SELECT t.id, t.host, t.type, t.scope, t.status,
                 (SELECT COUNT(*) FROM target_ports tp WHERE tp.target_id = t.id)::int AS ports,
@@ -218,6 +251,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     ]);
     return ok({
       id: p.id, name: p.name, status: p.status, target: p.target, description: p.description,
+      organization: org[0]?.name || null,
       date_start: p.date_start, date_end: p.date_end, your_role: p.member_role,
       can_propose: token.scopes === 'read_propose' && WRITER_ROLES.includes(p.member_role),
       targets,
@@ -544,7 +578,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   // ── Whiteboard (solo agregar) ──────────────────────────────────────────
   server.registerTool('get_whiteboard', {
     description:
-      'Get a compact summary of the project whiteboard: target nodes, cards (with what they link to), ' +
+      'Get a compact summary of the project whiteboard: target nodes, cards (with what they link to; a card linked ' +
+      'to a finding also carries that finding\'s current title, severity and remediation_status, or deleted: true), ' +
       'sticky notes, images (with their caption) and arrows (with the endpoint/port each end points at and their style), with their ids, plus the targets not yet on the board. Every node, card, ' +
       'note and image includes its geometry (x, y, w, h in board px; y grows downwards). Items without an explicit ' +
       `size report the default they are drawn with (node ${whiteboard.SIZE.node.w}×${whiteboard.SIZE.node.h}, ` +
@@ -573,7 +608,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     description:
       `Add items to the project whiteboard (max ${whiteboard.MAX_ITEMS_PER_CALL} per call): target nodes ` +
       '(a target box that shows its ports, endpoints and findings), cards (title + markdown body, ' +
-      'optionally linked to a target, port or endpoint of the project — a linked card gets an arrow to ' +
+      'optionally linked to a target, port, endpoint or finding of the project — a linked card gets an arrow to ' +
       'that target\'s node when it is on the board), sticky notes and images (screenshots uploaded first with ' +
       `POST /mcp/uploads, see get_upload_instructions; max ${whiteboard.MAX_IMAGES_PER_CALL} per call; each upload is ` +
       'consumed and cannot be reused). ADD-ONLY: existing items are never ' +
@@ -590,8 +625,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
         title: z.string().trim().min(1).max(200),
         body: z.string().max(5000).optional().describe('Markdown'),
         color: z.enum(whiteboard.CARD_COLORS).optional(),
-        link: z.object({ type: z.enum(['target', 'port', 'endpoint']), id: uuid }).optional()
-          .describe('Target, port or endpoint of this project the card is about'),
+        link: z.object({ type: z.enum(whiteboard.REF_TYPES), id: uuid }).optional()
+          .describe('Target, port, endpoint or finding of this project the card is about. A finding card always shows the finding\'s CURRENT title, severity and remediation status in its header (your title is kept only as a fallback), with your body below'),
         ...offset,
         ...size('card'),
       })).max(whiteboard.MAX_ITEMS_PER_CALL).optional(),
@@ -666,10 +701,18 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   }));
 
   server.registerTool('get_upload_instructions', {
-    description: 'Get the exact command to upload a screenshot to Flowdit so it can be attached to a finding proposal via evidence_upload_ids or placed on the whiteboard via add_whiteboard_items images.',
-    inputSchema: {},
+    description: 'Get the exact command to upload a screenshot to Flowdit so it can be attached to a finding proposal via evidence_upload_ids or placed on the whiteboard via add_whiteboard_items images. Pass project_id to also get the real shell prompt (user@organization) and cropping rules your evidence screenshots must follow.',
+    inputSchema: { project_id: uuid.optional().describe('The project the evidence is for — needed to build the correct user@organization shell prompt') },
     annotations: READ_ONLY,
-  }, guarded(async () => ok({ ...uploadInstructions(uploadsUrl), token_scope: token.scopes })));
+  }, guarded(async ({ project_id }) => {
+    let shellPrompt = null;
+    if (project_id) {
+      const p = await projectFor(project_id);
+      const { rows } = await db.query('SELECT name FROM organizations WHERE id = $1', [p.organization_id]);
+      shellPrompt = `${user.username}@${orgHost(rows[0]?.name)}`;
+    }
+    return ok({ ...uploadInstructions(uploadsUrl, shellPrompt), token_scope: token.scopes });
+  }));
 
   return server;
 }

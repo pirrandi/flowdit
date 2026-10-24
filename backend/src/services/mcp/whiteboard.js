@@ -2,19 +2,23 @@
 // tarjetas, nodos de target, flechas). Nunca borra, mueve ni edita lo que ya
 // está: el tablero es del equipo.
 //
-// El tablero es un único JSON por proyecto (whiteboard_state.data) que el
-// navegador guarda entero con PUT (gana el último). Por eso:
-//   1. la escritura acá es atómica (SELECT ... FOR UPDATE, merge, UPDATE), y
+// El tablero es un único JSON por proyecto (whiteboard_state.data) que los
+// navegadores guardan mezclando ítem por ítem (services/whiteboardSync.js).
+// Por eso:
+//   1. la escritura acá es atómica (SELECT ... FOR UPDATE, merge, UPDATE) y
+//      sube la revisión del tablero con cada ítem agregado marcado en ella:
+//      el PUT de una pestaña que todavía no lo vio no lo borra, y
 //   2. después se avisa a la sala del proyecto con un 'wb:patch' op
-//      'items_add': whiteboard.js lo mezcla en su wbData en memoria, así el
-//      próximo autosave de un navegador abierto INCLUYE lo agregado en vez
-//      de pisarlo (ver _handleRemotePatch / scheduleSave en whiteboard.js).
+//      'items_add': whiteboard.js lo mezcla en su wbData en memoria (ver
+//      _handleRemotePatch en whiteboard.js).
 const crypto = require('node:crypto');
 const db       = require('../../db');
 const ws       = require('../ws');
 const activity = require('../activity');
 const { consumeUploads } = require('./uploads');
 const wbImages = require('../whiteboardImages');
+const wbSync   = require('../whiteboardSync');
+const { inTransaction } = wbSync;
 
 const MAX_ITEMS_PER_CALL = 30;
 const MAX_EDGES_PER_CALL = 50;
@@ -35,6 +39,9 @@ const CARD_COLORS = ['#1e3a5f', '#3a1e5f', '#1e5230', '#5f1e1e', '#5f3a1e', '#1e
 const EDGE_COLORS = ['#e53935', '#f57c00', '#f9a825', '#43a047', '#1e88e5', '#8e24aa'];
 const EDGE_STYLES = ['solid', 'dashed', 'dotted'];
 const EDGE_ARROWS = ['end', 'start', 'both', 'none'];
+// A qué puede apuntar una tarjeta (card.ref.type). 'finding' = un custom_vuln
+// del proyecto: el navegador lo dibuja con los datos ACTUALES del hallazgo.
+const REF_TYPES = ['target', 'port', 'endpoint', 'finding'];
 
 // Tamaños por defecto con los que whiteboard.js dibuja cada cosa (sin w/h
 // propio). La nota no tiene alto fijo en el navegador: 100 es el típico.
@@ -62,6 +69,8 @@ const GRID = {
 const BATCH_GAP = 120;
 const ORIGIN = 80;
 const MAX_OFFSET = 5000;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class WhiteboardError extends Error {}
 
@@ -149,36 +158,26 @@ function layoutBatch(board, items) {
   items.forEach(it => { it.x = Math.round(it.x); it.y = Math.round(it.y); });
 }
 
+// Lock del tablero (whiteboardSync.lockState) con las listas normalizadas.
 async function lockBoard(client, projectId) {
-  await client.query(
-    `INSERT INTO whiteboard_state (project_id, data) VALUES ($1, $2) ON CONFLICT (project_id) DO NOTHING`,
-    [projectId, JSON.stringify(emptyBoard())]
-  );
-  const { rows } = await client.query(
-    `SELECT data FROM whiteboard_state WHERE project_id = $1 FOR UPDATE`, [projectId]
-  );
-  return normalizeBoard(rows[0].data);
+  const state = await wbSync.lockState(client, projectId, emptyBoard());
+  return { board: normalizeBoard(state.data), state };
 }
 
-async function inTransaction(fn) {
-  const client = await db.pool.connect();
-  try {
-    await client.query('BEGIN');
-    const out = await fn(client);
-    await client.query('COMMIT');
-    return out;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+// Guarda el tablero con lo agregado con las mismas revisiones que el PUT del
+// navegador (whiteboardSync): una pestaña con datos viejos no pisa estas altas.
+async function saveAdded(client, projectId, board, state, added, userId) {
+  const { sync, revision } = wbSync.stampAdded({ ...state, data: board }, added);
+  await wbSync.writeState(client, projectId, { data: board, revision, sync }, userId);
+  return revision;
 }
 
-// Texto corto de a qué apunta una tarjeta (target / puerto / endpoint del
-// proyecto). Lanza si el id no es de este proyecto.
+// Texto corto de a qué apunta una tarjeta (target / puerto / endpoint /
+// hallazgo del proyecto). Lanza si el id no es de este proyecto. Un hallazgo
+// sin target queda con target_id null (sin flecha automática).
 async function resolveLink(projectId, link) {
   const q = {
+    finding: `SELECT v.target_id, v.name AS label FROM custom_vulns v WHERE v.id = $1 AND v.project_id = $2`,
     target: `SELECT t.id AS target_id, t.host AS label FROM targets t WHERE t.id = $1 AND t.project_id = $2`,
     port: `SELECT p.target_id, t.host || ':' || p.port || '/' || p.protocol AS label
            FROM target_ports p JOIN targets t ON t.id = p.target_id WHERE p.id = $1 AND t.project_id = $2`,
@@ -201,6 +200,23 @@ async function getWhiteboard(projectId) {
     `SELECT id, host, type, scope, status FROM targets WHERE project_id = $1`, [projectId]
   );
   const byId = new Map(targets.map(t => [t.id, t]));
+  // Tarjetas de hallazgo: el estado actual del hallazgo (o deleted si ya no
+  // existe), igual que lo muestra el navegador.
+  const findingIds = [...new Set(board.cards
+    .filter(c => c.ref?.type === 'finding' && UUID_RE.test(c.ref.id || '')).map(c => c.ref.id))];
+  const findings = new Map();
+  if (findingIds.length) {
+    const { rows: vulns } = await db.query(
+      `SELECT id, name, severity, remediation_status FROM custom_vulns WHERE project_id = $1 AND id = ANY($2::uuid[])`,
+      [projectId, findingIds]
+    );
+    vulns.forEach(v => findings.set(v.id, v));
+  }
+  const findingOf = ref => {
+    if (ref?.type !== 'finding') return {};
+    const v = findings.get(ref.id);
+    return { finding: v ? { id: v.id, title: v.name, severity: v.severity, remediation_status: v.remediation_status } : { id: ref.id, deleted: true } };
+  };
   return {
     updated_at: rows[0]?.updated_at || null,
     nodes: board.nodes.filter(n => byId.has(n.id)).map(n => {
@@ -211,7 +227,7 @@ async function getWhiteboard(projectId) {
       };
     }),
     cards: board.cards.map(c => ({
-      id: c.id, title: c.title || '', body: clip(c.body || '', 1000), link: c.ref || null,
+      id: c.id, title: c.title || '', body: clip(c.body || '', 1000), link: c.ref || null, ...findingOf(c.ref),
       created_by: c.created_by || null, ...geometry('card', c),
     })),
     notes: board.notes.map(n => ({
@@ -231,8 +247,8 @@ async function getWhiteboard(projectId) {
   };
 }
 
-function broadcastAdd(projectId, added) {
-  ws.broadcastWhiteboardPatch(projectId, { op: 'items_add', source: CREATED_BY, ...added });
+function broadcastAdd(projectId, added, revision) {
+  ws.broadcastWhiteboardPatch(projectId, { op: 'items_add', source: CREATED_BY, revision, ...added });
 }
 
 // Tamaño de una imagen nueva: w/h explícitos (si viene uno solo, el otro
@@ -264,7 +280,7 @@ async function addItems({ projectId, user, nodes = [], cards = [], notes = [], i
   const links = await Promise.all(cards.map(c => (c.link ? resolveLink(projectId, c.link) : null)));
 
   const result = await inTransaction(async client => {
-    const board = await lockBoard(client, projectId);
+    const { board, state } = await lockBoard(client, projectId);
     if (itemCount(board) + total > MAX_BOARD_ITEMS) {
       throw new WhiteboardError(`the whiteboard already has ${itemCount(board)} items — it cannot grow past ${MAX_BOARD_ITEMS}`);
     }
@@ -336,14 +352,12 @@ async function addItems({ projectId, user, nodes = [], cards = [], notes = [], i
         added.edges.push(edge);
       }
     }
-    await client.query(
-      `UPDATE whiteboard_state SET data = $2, updated_by = $3, updated_at = NOW() WHERE project_id = $1`,
-      [projectId, JSON.stringify(board), user.id]
-    );
-    return { added, skipped };
+    const revision = await saveAdded(client, projectId, board, state, added, user.id);
+    return { added, skipped, revision };
   });
 
-  broadcastAdd(projectId, result.added);
+  broadcastAdd(projectId, result.added, result.revision);
+  delete result.revision;
   const n = result.added.nodes.length + result.added.cards.length + result.added.notes.length + result.added.images.length;
   if (n) {
     await activity.log({
@@ -403,7 +417,7 @@ async function connectItems({ projectId, user, edges }) {
   if (edges.length > MAX_EDGES_PER_CALL) throw new WhiteboardError(`at most ${MAX_EDGES_PER_CALL} edges per call`);
   await checkSubAnchors(projectId, edges);
   const result = await inTransaction(async client => {
-    const board = await lockBoard(client, projectId);
+    const { board, state } = await lockBoard(client, projectId);
     if (itemCount(board) + edges.length > MAX_BOARD_ITEMS) {
       throw new WhiteboardError(`the whiteboard already has ${itemCount(board)} items — it cannot grow past ${MAX_BOARD_ITEMS}`);
     }
@@ -441,21 +455,17 @@ async function connectItems({ projectId, user, edges }) {
       board.edges.push(edge);
       added.push(edge);
     }
-    if (added.length) {
-      await client.query(
-        `UPDATE whiteboard_state SET data = $2, updated_by = $3, updated_at = NOW() WHERE project_id = $1`,
-        [projectId, JSON.stringify(board), user.id]
-      );
-    }
-    return { added, skipped };
+    const revision = added.length ? await saveAdded(client, projectId, board, state, { edges: added }, user.id) : null;
+    return { added, skipped, revision };
   });
-  if (result.added.length) broadcastAdd(projectId, { nodes: [], cards: [], notes: [], images: [], edges: result.added });
+  if (result.added.length) broadcastAdd(projectId, { nodes: [], cards: [], notes: [], images: [], edges: result.added }, result.revision);
+  delete result.revision;
   return result;
 }
 
 module.exports = {
   getWhiteboard, addItems, connectItems, geometry, WhiteboardError,
   MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_IMAGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
-  EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS,
+  EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS, REF_TYPES,
   SIZE, MIN_SIZE, MAX_ITEM_SIZE,
 };

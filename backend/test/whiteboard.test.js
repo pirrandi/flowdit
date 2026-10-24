@@ -102,6 +102,27 @@ test('edge style fields and endpoint anchors are kept only when valid', async ()
   assert.deepEqual(d.edges[2], { id: 'e3', fromId: 'n1', toId: target.id });
 });
 
+test('card refs: finding is an allowed type; unknown types drop the ref and bad ids are dropped', async () => {
+  const { owner, project, target } = await setup();
+  const finding = '66666666-6666-4666-8666-666666666666';
+  const xss = '"><img src=x onerror=alert(1)>';
+  const card = (id, ref) => ({ id, x: 0, y: 0, title: 'T', color: '#1e3a5f', ref });
+  const res = await put(owner, project, {
+    cards: [
+      card('c1', { type: 'finding', id: finding, target_id: target.id, label: 'XSS', extra: 1 }),
+      card('c2', { type: 'finding', id: finding, target_id: null }),
+      card('c3', { type: 'script', id: finding }),
+      card('c4', { type: 'finding', id: xss, target_id: xss, label: 'x' }),
+    ],
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const d = res.body.data;
+  assert.deepEqual(d.cards[0].ref, { type: 'finding', id: finding, target_id: target.id, label: 'XSS' });
+  assert.deepEqual(d.cards[1].ref, { type: 'finding', id: finding, target_id: null });
+  assert.equal(d.cards[2].ref, undefined);
+  assert.deepEqual(d.cards[3].ref, { type: 'finding', label: 'x' });
+});
+
 test('item sizes: notes keep w/h, and w/h of every type are clamped or dropped', async () => {
   const { owner, project, target } = await setup();
   const res = await put(owner, project, {
@@ -259,4 +280,240 @@ test('board image items keep only known fields and need a valid imageId', async 
   assert.equal(d.images.length, 2);
   assert.deepEqual(d.images[0], { id: 'i1', imageId, x: 10, y: 20, w: 320, h: 240, caption: 'captura <b>', created_by: 'claude_code' });
   assert.deepEqual(d.images[1], { id: 'i4', imageId, x: 0, y: 0, w: 60, h: 4000, caption: 'x'.repeat(500) });
+});
+
+// ── Sync por ítem (services/whiteboardSync.js) ──────────────────────────
+// Cada pestaña manda su revisión base, lo que cambió y lo que borró; el
+// servidor mezcla ítem por ítem. Lo que se fija acá: un PUT con datos viejos
+// (pestaña desconectada, whiteboard.js viejo en caché) no resucita lo borrado
+// ni pisa lo que otros cambiaron o agregaron.
+const wbSync = require('../src/services/whiteboardSync');
+const mcpWhiteboard = require('../src/services/mcp/whiteboard');
+
+const syncPut = (owner, project, body) =>
+  request(app).put(`/api/projects/${project.id}/whiteboard`).set(auth(owner.accessToken)).send(body);
+const getBoard = (owner, project, query = '') =>
+  request(app).get(`/api/projects/${project.id}/whiteboard${query}`).set(auth(owner.accessToken));
+
+const note = (id, extra = {}) => ({ id, x: 10, y: 20, text: id, color: '#ffd96a', ...extra });
+
+// Tablero con dos notas guardado por una pestaña nueva; devuelve su revisión.
+async function seedBoard(owner, project) {
+  const res = await syncPut(owner, project, { base_revision: 0, data: { notes: [note('n1'), note('n2')] } });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.full, false);
+  assert.deepEqual(res.body.changes.notes.map(n => n.id), ['n1', 'n2']);
+  return res.body.revision;
+}
+
+test('a stale PUT cannot resurrect an item deleted after its base revision', async () => {
+  const { owner, project } = await setup();
+  const base = await seedBoard(owner, project);
+
+  const del = await syncPut(owner, project, { base_revision: base, data: {}, removed: { notes: ['n1'] } });
+  assert.equal(del.status, 200, JSON.stringify(del.body));
+  assert.ok(del.body.revision > base);
+
+  // Otra pestaña, todavía en `base`, edita n1 (que para ella sigue vivo).
+  const stale = await syncPut(owner, project, { base_revision: base, data: { notes: [note('n1', { text: 'editada' })] } });
+  assert.equal(stale.status, 200);
+  assert.deepEqual(stale.body.deleted.notes, ['n1'], 'the stale tab is told to drop it');
+  // Y un whiteboard.js viejo que manda el tablero entero tampoco lo revive.
+  const legacy = await put(owner, project, { notes: [note('n1'), note('n2')] });
+  assert.equal(legacy.status, 200);
+  assert.deepEqual(legacy.body.data.notes.map(n => n.id), ['n2']);
+
+  const get = await getBoard(owner, project);
+  assert.deepEqual(get.body.data.notes.map(n => n.id), ['n2']);
+});
+
+test('a stale PUT does not overwrite a newer edit of an item it did not touch', async () => {
+  const { owner, project } = await setup();
+  const base = await seedBoard(owner, project);
+
+  const moved = await syncPut(owner, project, { base_revision: base, data: { notes: [note('n2', { x: 500 })] } });
+  assert.equal(moved.status, 200);
+
+  // La pestaña B (base vieja) solo cambió n1: su copia vieja de n2 no viaja.
+  const b = await syncPut(owner, project, { base_revision: base, data: { notes: [note('n1', { text: 'B' })] } });
+  assert.equal(b.status, 200);
+  const byId = Object.fromEntries((await getBoard(owner, project)).body.data.notes.map(n => [n.id, n]));
+  assert.equal(byId.n2.x, 500);
+  assert.equal(byId.n1.text, 'B');
+  // B recibe la edición de A para ponerse al día.
+  assert.deepEqual(b.body.changes.notes.map(n => n.id).sort(), ['n1', 'n2']);
+  assert.equal(b.body.changes.notes.find(n => n.id === 'n2').x, 500);
+});
+
+test('concurrent additions from two clients both survive', async () => {
+  const { owner, project } = await setup();
+  const base = await seedBoard(owner, project);
+  const a = await syncPut(owner, project, { base_revision: base, data: { notes: [note('a1')], cards: [{ id: 'c-a', x: 0, y: 0, title: 'A', color: '#1e3a5f' }] } });
+  const b = await syncPut(owner, project, { base_revision: base, data: { notes: [note('b1')] } });
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  const d = (await getBoard(owner, project)).body.data;
+  assert.deepEqual(d.notes.map(n => n.id).sort(), ['a1', 'b1', 'n1', 'n2']);
+  assert.deepEqual(d.cards.map(c => c.id), ['c-a']);
+});
+
+test('a Claude Code addition survives a stale tab PUT and is sent to it as a change', async () => {
+  const { owner, project } = await setup();
+  const base = await seedBoard(owner, project);
+  const added = await mcpWhiteboard.addItems({ projectId: project.id, user: owner.user, notes: [{ text: 'de Claude' }] });
+  const aiId = added.added.notes[0].id;
+
+  // Pestaña nueva con base vieja y PUT de un whiteboard.js viejo sin la nota.
+  const fresh = await syncPut(owner, project, { base_revision: base, data: { notes: [note('n2', { x: 99 })] } });
+  assert.equal(fresh.status, 200);
+  assert.ok(fresh.body.changes.notes.some(n => n.id === aiId));
+  const legacy = await put(owner, project, { notes: [note('n1'), note('n2')] });
+  assert.equal(legacy.status, 200);
+
+  const d = (await getBoard(owner, project)).body.data;
+  assert.ok(d.notes.some(n => n.id === aiId && n.text === 'de Claude'));
+});
+
+test('a legacy PUT without base revision never deletes, but still updates and adds', async () => {
+  const { owner, project } = await setup();
+  await seedBoard(owner, project);
+  const res = await put(owner, project, { notes: [note('n2', { text: 'cambiada' }), note('n3')] });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.ok(Number.isInteger(res.body.revision));
+  assert.deepEqual(res.body.data.notes.map(n => [n.id, n.text]), [['n1', 'n1'], ['n2', 'cambiada'], ['n3', 'n3']]);
+
+  // `removed` solo vale con base_revision; una base inválida se rechaza.
+  assert.equal((await syncPut(owner, project, { data: {}, removed: { notes: ['n1'] } })).status, 400);
+  assert.equal((await syncPut(owner, project, { base_revision: -1, data: {} })).status, 400);
+  assert.equal((await syncPut(owner, project, { base_revision: '3', data: {} })).status, 400);
+  assert.equal((await getBoard(owner, project)).body.data.notes.length, 3);
+});
+
+test('GET ?since returns only what changed after that revision', async () => {
+  const { owner, project } = await setup();
+  const base = await seedBoard(owner, project);
+  await syncPut(owner, project, { base_revision: base, data: { notes: [note('n3')] }, removed: { notes: ['n1'] } });
+
+  const full = await getBoard(owner, project);
+  assert.ok(full.body.revision > base);
+  assert.equal(full.body.sync, undefined, 'item revisions and tombstones stay server-side');
+
+  const delta = await getBoard(owner, project, `?since=${base}`);
+  assert.equal(delta.body.full, false);
+  assert.deepEqual(delta.body.changes.notes.map(n => n.id), ['n3']);
+  assert.deepEqual(delta.body.deleted.notes, ['n1']);
+  assert.equal((await getBoard(owner, project, `?since=${full.body.revision}`)).body.changes.notes.length, 0);
+  assert.equal((await getBoard(owner, project, '?since=999999')).body.full, true);
+  assert.equal((await getBoard(owner, project, '?since=abc')).body.full, true);
+});
+
+test('a re-added node comes back only when the client already knew it was removed', async () => {
+  const { owner, project, target } = await setup();
+  const node = { id: target.id, x: 0, y: 0, collapsed: false };
+  const r1 = (await syncPut(owner, project, { base_revision: 0, data: { nodes: [node], initialized: true } })).body.revision;
+  const r2 = (await syncPut(owner, project, { base_revision: r1, data: {}, removed: { nodes: [target.id] } })).body.revision;
+  // Base vieja: no lo revive.
+  await syncPut(owner, project, { base_revision: r1, data: { nodes: [node] } });
+  assert.deepEqual((await getBoard(owner, project)).body.data.nodes, []);
+  // Base que ya incluye el borrado ("sync targets"): vuelve.
+  await syncPut(owner, project, { base_revision: r2, data: { nodes: [node] } });
+  assert.deepEqual((await getBoard(owner, project)).body.data.nodes.map(n => n.id), [target.id]);
+});
+
+test('undoing a delete persists: the same ids come back with a base that includes the removal', async () => {
+  const { owner, project } = await setup();
+  const base = await seedBoard(owner, project);
+  const arrow = { id: 'e1', fromId: 'n1', toId: 'n2', label: 'x' };
+  const r1 = (await syncPut(owner, project, { base_revision: base, data: { edges: [arrow] } })).body.revision;
+
+  // Delete n1 with its arrow, then undo: the client re-adds both from its
+  // copies, with the revision the delete returned as base.
+  const del = await syncPut(owner, project, { base_revision: r1, data: {}, removed: { notes: ['n1'], edges: ['e1'] } });
+  assert.equal(del.status, 200);
+  const undo = await syncPut(owner, project, { base_revision: del.body.revision, data: { notes: [note('n1')], edges: [arrow] } });
+  assert.equal(undo.status, 200, JSON.stringify(undo.body));
+  assert.ok(undo.body.revision > del.body.revision);
+
+  const d = (await getBoard(owner, project)).body.data;
+  assert.deepEqual(d.notes.map(n => n.id).sort(), ['n1', 'n2']);
+  assert.deepEqual(d.edges.map(e => e.id), ['e1']);
+  // Another tab that saw the delete gets them back as changes, not deletions.
+  const since = (await getBoard(owner, project, `?since=${del.body.revision}`)).body;
+  assert.deepEqual(since.changes.notes.map(n => n.id), ['n1']);
+  assert.deepEqual(since.changes.edges.map(e => e.id), ['e1']);
+  assert.deepEqual(since.deleted.notes, []);
+  // A save from before the delete still cannot bring them back on its own.
+  const again = await syncPut(owner, project, { base_revision: del.body.revision, data: {}, removed: { notes: ['n1'] } });
+  await syncPut(owner, project, { base_revision: r1, data: { notes: [note('n1')] } });
+  assert.ok(!(await getBoard(owner, project)).body.data.notes.some(n => n.id === 'n1'), JSON.stringify(again.body));
+});
+
+test('removing every target node persists: the board stays initialized', async () => {
+  const { owner, project, target } = await setup();
+  let get = await getBoard(owner, project);
+  assert.equal(get.body.initialized, false);
+  assert.equal(get.body.revision, 0);
+
+  const r1 = (await syncPut(owner, project, {
+    base_revision: 0, data: { nodes: [{ id: target.id, x: 80, y: 80, collapsed: false }], initialized: true },
+  })).body.revision;
+  const res = await syncPut(owner, project, { base_revision: r1, data: {}, removed: { nodes: [target.id] } });
+  assert.equal(res.body.initialized, true);
+  get = await getBoard(owner, project);
+  assert.deepEqual(get.body.data.nodes, []);
+  assert.equal(get.body.initialized, true);
+  assert.equal(get.body.data.initialized, undefined, 'the flag lives outside the blob');
+});
+
+test('legacy boards: with nodes they count as initialized, with only notes they do not', async () => {
+  const { owner, project, target } = await setup();
+  await db.query(
+    `INSERT INTO whiteboard_state (project_id, data) VALUES ($1, $2)`,
+    [project.id, JSON.stringify({ nodes: [{ id: target.id, x: 0, y: 0 }], notes: [note('n1')] })]
+  );
+  const get = await getBoard(owner, project);
+  assert.equal(get.body.initialized, true);
+  assert.equal(get.body.revision, 0);
+  assert.deepEqual(get.body.data.notes, [note('n1')]);
+
+  const other = await createProject(owner.accessToken);
+  await db.query(`INSERT INTO whiteboard_state (project_id, data) VALUES ($1, $2)`, [other.id, JSON.stringify({ notes: [note('n1')] })]);
+  assert.equal((await getBoard(owner, other)).body.initialized, false);
+});
+
+test('tombstones are bounded: the oldest are pruned and a client older than them gets the full board', () => {
+  const deleted = {};
+  for (let i = 1; i <= wbSync.MAX_TOMBSTONES; i++) deleted[`notes:old${i}`] = i;
+  const state = { data: { notes: [note('n1')] }, revision: wbSync.MAX_TOMBSTONES, sync: { deleted } };
+  const merged = wbSync.mergeBoard(state, {}, { baseRevision: state.revision, removed: { notes: ['n1'] } });
+  assert.equal(Object.keys(merged.sync.deleted).length, wbSync.MAX_TOMBSTONES);
+  assert.equal(merged.sync.deleted['notes:old1'], undefined);
+  assert.equal(merged.sync.deleted['notes:n1'], merged.revision);
+  assert.equal(merged.sync.floor, 1);
+  assert.equal(wbSync.changesSince(merged, 0).full, true);
+  const recent = wbSync.changesSince(merged, 1);
+  assert.equal(recent.full, false);
+  assert.ok(recent.deleted.notes.includes('n1'));
+});
+
+test('image GC treats tombstoned image items as unreferenced', async () => {
+  const { owner, project } = await setup();
+  const imgId = (await uploadImage(owner.accessToken, project, PNG)).body.id;
+  const r1 = (await syncPut(owner, project, { base_revision: 0, data: { images: [{ id: 'img1', imageId: imgId, x: 0, y: 0, w: 320, h: 240 }] } })).body.revision;
+  await syncPut(owner, project, { base_revision: r1, data: {}, removed: { images: ['img1'] } });
+  await db.query(`UPDATE whiteboard_images SET created_at = NOW() - INTERVAL '25 hours' WHERE id = $1`, [imgId]);
+  // Un PUT viejo con el ítem no lo revive, así que la próxima subida lo barre.
+  await put(owner, project, { images: [{ id: 'img1', imageId: imgId, x: 0, y: 0, w: 320, h: 240 }] });
+  await uploadImage(owner.accessToken, project, PNG);
+  const { rows } = await db.query('SELECT id FROM whiteboard_images WHERE id = $1', [imgId]);
+  assert.equal(rows.length, 0);
+});
+
+test('mergeBoard: the same item with keys in another order is not a change', () => {
+  const stored = { id: 'c1', x: 10, y: 20, title: 'T', color: '#3d8bfd', ref: { id: 'r', type: 'target' } };
+  const state = { data: { cards: [stored] }, revision: 3, sync: {} };
+  const reordered = { ref: { type: 'target', id: 'r' }, color: '#3d8bfd', title: 'T', y: 20, x: 10, id: 'c1' };
+  const merged = wbSync.mergeBoard(state, { cards: [reordered] });
+  assert.equal(merged.changed, false);
+  assert.equal(merged.revision, 3);
 });

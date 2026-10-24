@@ -1017,6 +1017,8 @@ function scheduleVulnsRefresh() {
     // datos nuevos (scroll y borrador de notas incluidos), en edición no lo toca.
     if (state.currentView === 'custom' && typeof renderCustomVulns === 'function') renderCustomVulns();
     if (typeof updateDashboard === 'function') updateDashboard();
+    // Whiteboard: finding rows of target nodes and finding cards.
+    if (typeof wbRefreshFindings === 'function') wbRefreshFindings();
   }, 300);
 }
 

@@ -1053,6 +1053,43 @@ test('whiteboard additions on a project without a board create it, and foreign l
   assert.deepEqual(wb.data.nodes, []);
 });
 
+test('whiteboard cards can link a finding of the project (live in get_whiteboard); foreign findings are refused', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const insertVuln = async (projectId, name, targetId = null) => (await db.query(
+    `INSERT INTO custom_vulns (project_id, name, severity, target_id, created_by) VALUES ($1,$2,'high',$3,$4) RETURNING id`,
+    [projectId, name, targetId, owner.user.id]
+  )).rows[0].id;
+  const own = await insertVuln(project.id, 'XSS reflejado', target.id);
+  const other = await createProject(owner.accessToken);
+  const foreign = await insertVuln(other.id, 'Ajeno');
+
+  const bad = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id, cards: [{ title: 'x', link: { type: 'finding', id: foreign } }],
+  });
+  assert.equal(bad.isError, true);
+  assert.match(bad.text, /does not belong to this project/);
+  assert.equal((await db.query(`SELECT 1 FROM whiteboard_state`)).rows.length, 0);
+
+  const a = await callTool(ownerToken.token, 'add_whiteboard_items', {
+    project_id: project.id,
+    nodes: [{ target_id: target.id }],
+    cards: [{ title: 'Hallazgo', body: 'Notas', link: { type: 'finding', id: own } }],
+  });
+  assert.equal(a.isError, false, a.text);
+  assert.equal(a.data.added.edges.length, 1, 'a finding card is connected to its target node');
+  const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  assert.deepEqual(wb.data.cards[0].ref, { type: 'finding', id: own, target_id: target.id, label: 'XSS reflejado' });
+
+  // get_whiteboard shows the CURRENT finding, and deleted once it is gone.
+  await db.query(`UPDATE custom_vulns SET name = 'XSS almacenado', remediation_status = 'remediated' WHERE id = $1`, [own]);
+  let summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
+  assert.deepEqual(summary.data.cards[0].finding, { id: own, title: 'XSS almacenado', severity: 'high', remediation_status: 'remediated' });
+  assert.equal(summary.data.cards[0].link.type, 'finding');
+  await db.query(`DELETE FROM custom_vulns WHERE id = $1`, [own]);
+  summary = await callTool(ownerToken.token, 'get_whiteboard', { project_id: project.id });
+  assert.deepEqual(summary.data.cards[0].finding, { id: own, deleted: true });
+});
+
 test('whiteboard arrows can anchor on a target endpoint or port; foreign or mismatched ones and bad styles are refused', async () => {
   const { owner, project, target, ownerToken } = await setup();
   const t2 = await createTarget(owner.accessToken, project.id, { host: 'api.example.com' });

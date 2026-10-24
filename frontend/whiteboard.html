@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Whiteboard</title>
+<title>Pizarra</title>
 <link rel="stylesheet" href="css/main.css?v=9">
 <link rel="stylesheet" href="css/transitions.css?v=3">
 <link rel="expect" href="#fd-document-end" blocking="render">
@@ -32,6 +32,7 @@
                       color: var(--t3); cursor: pointer; transition: background 0.12s, color 0.12s; }
   .wb-tool-btn:hover  { background: var(--bg3); color: var(--t1); border-color: var(--b1); }
   .wb-tool-btn.active { background: var(--a); color: #fff; border-color: var(--a); }
+  .wb-tool-btn:disabled { opacity: .35; cursor: default; background: none; border-color: transparent; }
 
   /* Action buttons (keep text, smaller) */
   .wb-btn           { display: flex; align-items: center; gap: 4px;
@@ -102,6 +103,13 @@
   .wb-node.connect-from { outline: 2px solid var(--a); outline-offset: 3px; border-radius: 10px; }
   .wb-card.connect-from, .wb-sticky.connect-from, .wb-image.connect-from { outline: 2px solid var(--a); outline-offset: 3px; }
   .wb-ep-row.connect-from, .wb-port-chip.connect-from { outline: 2px solid var(--a); outline-offset: 1px; }
+  /* Selected items (click, Shift/Ctrl+click, selection box, Ctrl+A) */
+  .wb-node.wb-selected, .wb-card.wb-selected, .wb-sticky.wb-selected, .wb-image.wb-selected {
+                      outline: 2px solid var(--a); outline-offset: 3px; }
+  .wb-node.wb-selected { border-radius: 10px; }
+  .wb-marquee       { position: absolute; z-index: 150; pointer-events: none;
+                      border: 1px solid var(--a); border-radius: 2px;
+                      background: color-mix(in srgb, var(--a) 12%, transparent); }
   .wb-node.connect-target, .wb-card.connect-target, .wb-sticky.connect-target, .wb-image.connect-target,
   .wb-ep-row.connect-target, .wb-port-chip.connect-target { outline: 2px dashed var(--a); outline-offset: 2px; }
   #wb-viewport.mode-connect .wb-ep-row, #wb-viewport.mode-connect .wb-port-chip { cursor: crosshair; }
@@ -189,6 +197,12 @@
                       flex-shrink: 0; width: 30px; }
   .wb-vuln-name     { font-size: 11px; color: var(--t1); overflow: hidden;
                       text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #wb-viewport.mode-select .wb-vuln-row[data-vuln-id] { cursor: grab; }
+  /* Ghost of a finding row being dragged onto the board (_startFindingDrag) */
+  .wb-drag-ghost    { position: absolute; z-index: 250; pointer-events: none; transform: translate(8px, 8px);
+                      max-width: 240px; padding: 4px 9px; border-radius: 6px; font-size: 11px;
+                      background: var(--bg2); color: var(--t1); border: 1px solid var(--a);
+                      box-shadow: 0 4px 16px rgba(0,0,0,.35); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Port chips */
   .wb-ports-wrap    { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -231,7 +245,7 @@
   .wb-card-head:active { cursor: grabbing; }
   .wb-card-title    { flex: 1; font-size: 12px; font-weight: 700; color: #fff;
                       outline: none; min-width: 0; word-break: break-word; }
-  .wb-card-title:empty::before { content: 'Untitled'; opacity: 0.5; }
+  .wb-card-title:empty::before { content: 'Sin título'; opacity: 0.5; }
   .wb-card-colors   { display: flex; gap: 3px; flex-shrink: 0; }
   .wb-card-col      { width: 9px; height: 9px; border-radius: 50%; cursor: pointer;
                       opacity: 0.65; transition: opacity 0.1s, transform 0.1s; }
@@ -246,6 +260,46 @@
   .wb-card-text[contenteditable="true"] { white-space: pre-wrap; }
   .wb-card-text:empty::before { content: attr(data-placeholder); color: var(--t4); font-style: italic; }
   .wb-card-hint     { font-size: 9px; color: var(--t4); margin-top: 5px; font-family: var(--mono); }
+  /* Finding cards (card.ref.type 'finding'): live data from state.customVulns */
+  .wb-card--finding { border-left: 3px solid var(--wb-sev, var(--b2)); }
+  .wb-card--finding .wb-card-title { cursor: inherit; }
+  .wb-card--gone .wb-card-title { text-decoration: line-through; opacity: .7; }
+  .wb-finding       { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 6px; }
+  .wb-finding-sev   { font-size: 9px; font-weight: 700; font-family: var(--mono); text-transform: uppercase;
+                      color: #fff; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+  .wb-finding-status { font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--b2); color: var(--t2); }
+  .wb-finding-status--closed { color: var(--c-low, #43a047); border-color: currentColor; }
+  .wb-finding-cvss  { font-size: 10px; font-family: var(--mono); color: var(--t3); }
+  .wb-finding--gone { font-size: 11px; color: #ff6b6b; gap: 4px; }
+
+  /* Finding picker (wbPickFinding) */
+  .wb-picker        { width: min(480px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 10px; }
+  .wb-picker .wb-modal-title { margin: 0; }
+  .wb-picker-search { width: 100%; box-sizing: border-box; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--b1);
+                      background: var(--bg1); color: var(--t1); font-size: 12px; outline: none; }
+  .wb-picker-search:focus { border-color: var(--a); }
+  .wb-picker-list   { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+  .wb-picker-item   { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; cursor: pointer;
+                      padding: 6px 8px; border-radius: 6px; border: 1px solid var(--b1); background: var(--bg3); color: var(--t1); }
+  .wb-picker-item:hover, .wb-picker-item:focus-visible { border-color: var(--a); outline: none; }
+  .wb-picker-name   { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wb-picker-host   { font-size: 10px; font-family: var(--mono); color: var(--t3); flex-shrink: 0; max-width: 140px;
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wb-picker-on     { font-size: 9px; color: var(--a); flex-shrink: 0; }
+  .wb-picker-empty  { font-size: 12px; color: var(--t4); font-style: italic; padding: 8px 2px; }
+
+  /* Export menu */
+  .wb-export-wrap   { position: relative; display: flex; }
+  .wb-export-menu   { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 200; min-width: 200px;
+                      flex-direction: column; gap: 2px; padding: 5px; background: var(--bg2); border: 1px solid var(--b1);
+                      border-radius: 9px; box-shadow: 0 6px 20px rgba(0,0,0,.28); }
+  .wb-export-menu.visible { display: flex; }
+  .wb-export-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 9px;
+                      border: none; border-radius: 6px; background: none; color: var(--t1); font-size: 12px;
+                      cursor: pointer; text-align: left; }
+  .wb-export-menu button:hover:not(:disabled), .wb-export-menu button:focus-visible { background: var(--bg3); outline: none; }
+  .wb-export-menu button:disabled { opacity: .45; cursor: default; }
+  .wb-export-sub    { font-size: 10px; color: var(--t3); }
   /* Ítems agregados por Claude Code (servidor MCP) */
   .wb-card-ref      { font-size: 10px; color: var(--t3); font-family: var(--mono); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .wb-cc-tag        { color: var(--a); font-weight: 600; }
@@ -396,22 +450,23 @@
 
       <!-- Tool buttons (icon-only) + floating draw panel -->
       <div style="position:relative;display:flex;gap:2px">
-        <button class="wb-tool-btn active" id="wb-btn-select" onclick="setWbMode('select')" title="Select (V)"
-          data-icon="mouse-pointer-2"></button>
-        <button class="wb-tool-btn" id="wb-btn-pan" onclick="setWbMode('pan')" title="Pan (H)"
-          data-icon="move"></button>
-        <button class="wb-tool-btn" id="wb-btn-draw" onclick="setWbMode('draw')" title="Draw (D)"
-          data-icon="pencil"></button>
-        <button class="wb-tool-btn" id="wb-btn-eraser" onclick="setWbMode('eraser')" title="Eraser (E)"
-          data-icon="eraser"></button>
-        <button class="wb-tool-btn" id="wb-btn-connect" onclick="setWbMode('connect')" title="Connect nodes (C)"
-          data-icon="workflow"></button>
-        <button class="wb-tool-btn" id="wb-btn-note" onclick="setWbMode('note')" title="Sticky note (N)"
-          data-icon="sticky-note"></button>
-        <button class="wb-tool-btn" id="wb-btn-card" onclick="setWbMode('card')" title="Custom card (A)"
-          data-icon="credit-card"></button>
+        <button class="wb-tool-btn active" id="wb-btn-select" onclick="setWbMode('select')"
+          title="Seleccionar (V) · Shift+clic suma a la selección, Ctrl+A selecciona todo, Ctrl+D duplica, Supr borra"
+          aria-label="Seleccionar" data-icon="mouse-pointer-2"></button>
+        <button class="wb-tool-btn" id="wb-btn-pan" onclick="setWbMode('pan')" title="Desplazar (H)"
+          aria-label="Desplazar" data-icon="move"></button>
+        <button class="wb-tool-btn" id="wb-btn-draw" onclick="setWbMode('draw')" title="Dibujar (D)"
+          aria-label="Dibujar" data-icon="pencil"></button>
+        <button class="wb-tool-btn" id="wb-btn-eraser" onclick="setWbMode('eraser')" title="Borrador (E)"
+          aria-label="Borrador" data-icon="eraser"></button>
+        <button class="wb-tool-btn" id="wb-btn-connect" onclick="setWbMode('connect')" title="Conectar elementos (C)"
+          aria-label="Conectar elementos" data-icon="workflow"></button>
+        <button class="wb-tool-btn" id="wb-btn-note" onclick="setWbMode('note')" title="Nota adhesiva (N)"
+          aria-label="Nota adhesiva" data-icon="sticky-note"></button>
+        <button class="wb-tool-btn" id="wb-btn-card" onclick="setWbMode('card')" title="Tarjeta (A)"
+          aria-label="Tarjeta" data-icon="credit-card"></button>
         <button class="wb-tool-btn" id="wb-btn-image" onclick="wbPickImages()" title="Agregar imagen (también se puede arrastrar o pegar)"
-          data-icon="image"></button>
+          aria-label="Agregar imagen" data-icon="image"></button>
         <input type="file" id="wb-image-input" accept="image/png,image/jpeg,image/webp" multiple hidden>
 
         <!-- Draw/eraser options (floating panel) -->
@@ -424,49 +479,62 @@
           <div class="wb-swatch" style="background:#9c27b0" onclick="setDrawColor('#9c27b0')" data-color="#9c27b0"></div>
           <div class="wb-swatch" style="background:var(--t1)" onclick="setDrawColor('var(--t1)')" data-color="t1"></div>
           <div class="wb-tool-sep"></div>
-          <span class="wb-draw-panel-label">Size</span>
-          <button class="wb-w-btn active" id="wb-w-thin"   onclick="setDrawWidth(2,'thin')"   title="Thin">
+          <span class="wb-draw-panel-label">Grosor</span>
+          <button class="wb-w-btn active" id="wb-w-thin"   onclick="setDrawWidth(2,'thin')"   title="Fino" aria-label="Fino">
             <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
-          <button class="wb-w-btn"        id="wb-w-medium" onclick="setDrawWidth(4,'medium')" title="Medium">
+          <button class="wb-w-btn"        id="wb-w-medium" onclick="setDrawWidth(4,'medium')" title="Medio" aria-label="Medio">
             <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="3"   stroke-linecap="round"/></svg>
           </button>
-          <button class="wb-w-btn"        id="wb-w-thick"  onclick="setDrawWidth(8,'thick')"  title="Thick">
+          <button class="wb-w-btn"        id="wb-w-thick"  onclick="setDrawWidth(8,'thick')"  title="Grueso" aria-label="Grueso">
             <svg width="22" height="8" viewBox="0 0 22 8"><line x1="1" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/></svg>
           </button>
           <div class="wb-tool-sep"></div>
-          <button class="wb-btn" onclick="clearDrawing()" title="Clear all strokes" style="padding:4px 8px;font-size:10px"
-            data-icon="x" data-icon-size="12">Clear</button>
+          <button class="wb-btn" onclick="clearDrawing()" title="Borrar todos los trazos" style="padding:4px 8px;font-size:10px"
+            data-icon="x" data-icon-size="12">Borrar</button>
         </div>
       </div>
 
       <div class="wb-tool-sep"></div>
 
       <!-- Action buttons -->
-      <button class="wb-btn" onclick="syncTargets()" title="Add targets not yet on the board"
-        data-icon="circle-plus" data-icon-size="13">Sync</button>
-      <button class="wb-btn" onclick="fitToScreen()" title="Fit all to screen (F)"
-        data-icon="maximize" data-icon-size="13">Fit</button>
+      <button class="wb-btn" onclick="syncTargets()" title="Agregar los targets que todavía no están en el tablero"
+        data-icon="circle-plus" data-icon-size="13">Sincronizar</button>
+      <button class="wb-btn" onclick="wbPickFinding()" title="Agregar un finding del proyecto como tarjeta (también se puede arrastrar desde un target)"
+        data-icon="triangle-alert" data-icon-size="13">Finding</button>
+      <button class="wb-btn" onclick="fitToScreen()" title="Ajustar todo a la pantalla (F)"
+        data-icon="maximize" data-icon-size="13">Ajustar</button>
 
       <div class="wb-tool-sep"></div>
 
       <!-- Undo / Redo -->
-      <button class="wb-tool-btn" onclick="undoStroke()" title="Undo (Ctrl+Z)" data-icon="undo-2"></button>
-      <button class="wb-tool-btn" onclick="redoStroke()" title="Redo (Ctrl+Y)" data-icon="redo-2"></button>
-      <button class="wb-tool-btn" id="wb-export-btn" onclick="exportPng()" title="Export as PNG" data-icon="download"></button>
+      <button class="wb-tool-btn" id="wb-btn-undo" onclick="wbUndo()" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" data-icon="undo-2"></button>
+      <button class="wb-tool-btn" id="wb-btn-redo" onclick="wbRedo()" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" data-icon="redo-2"></button>
+      <div class="wb-export-wrap" id="wb-export-wrap">
+        <button class="wb-tool-btn" id="wb-export-btn" onclick="wbExportMenu()" title="Exportar como PNG"
+          aria-label="Exportar como PNG" aria-haspopup="menu" aria-expanded="false" data-icon="download"></button>
+        <div class="wb-export-menu" id="wb-export-menu" role="menu">
+          <button role="menuitem" data-export="board" onclick="exportPng(false)">
+            <span>Todo el tablero</span><span class="wb-export-sub">Ajustado al contenido</span>
+          </button>
+          <button role="menuitem" data-export="selection" onclick="exportPng(true)">
+            <span>Solo la selección</span><span class="wb-export-sub"></span>
+          </button>
+        </div>
+      </div>
 
       <div class="wb-tool-sep"></div>
 
       <!-- Search -->
       <div class="wb-search-wrap">
         <span data-icon="search" data-icon-size="12" style="display:flex"></span>
-        <input type="text" id="wb-search" placeholder="Search… (/)" autocomplete="off"
+        <input type="text" id="wb-search" placeholder="Buscar… (/)" autocomplete="off" aria-label="Buscar en el tablero"
                oninput="wbSearch(this.value)">
         <span class="wb-search-count" id="wb-search-count"></span>
-        <button class="wb-search-clear" id="wb-search-clear" onclick="wbSearchClear()" tabindex="-1">×</button>
+        <button class="wb-search-clear" id="wb-search-clear" onclick="wbSearchClear()" tabindex="-1" title="Limpiar búsqueda (Esc)" aria-label="Limpiar búsqueda">×</button>
       </div>
 
-      <span class="wb-save-status" id="wb-save-status">Saved <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M20 6 9 17l-5-5" /></svg></span>
+      <span class="wb-save-status" id="wb-save-status">Guardado <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fd-icon"><path d="M20 6 9 17l-5-5" /></svg></span>
     </div>
 
     <!-- Whiteboard viewport -->
@@ -500,15 +568,15 @@
 
 <script src="js/data.js?v=3"></script>
 <script src="js/services/state.js?v=3"></script>
-<script src="js/services/api.js?v=5"></script>
+<script src="js/services/api.js?v=6"></script>
 <script src="js/services/ws.js?v=3"></script>
 <script src="js/services/icons.js?v=3"></script>
 <script src="js/services/utils.js?v=4"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
-<script src="js/views/whiteboard.js?v=8"></script>
+<script src="js/views/whiteboard.js?v=11"></script>
 <script src="js/components/notifications.js?v=4"></script>
-<script src="js/page.js?v=4"></script>
+<script src="js/page.js?v=5"></script>
 <script>
 function pageInit() {
   initWhiteboard();

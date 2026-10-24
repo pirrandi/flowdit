@@ -13,9 +13,19 @@ let _activeStrokeEl = null;
 let _portsMap = {};
 let _endpointsMap = {};
 
-// Undo / redo stacks (strokes only, local per session)
+// Undo / redo (local per session, see the History section). Entries:
+// { items: [{ key, before, after }], seq, tag?, at? } with before/after the
+// item's JSON copy ('kind:id' key, null = not on the board).
+const HISTORY_MAX = 100;
 let _undoStack = [];
 let _redoStack = [];
+// Items changed by someone else ('kind:id' → _remoteSeq when it happened):
+// undo/redo leaves them alone if that was after the entry.
+const _remoteTouched = new Map();
+let _remoteSeq = 0;
+
+// Selected board items ('nodes:id', 'cards:id', 'notes:id', 'images:id').
+const _selection = new Set();
 
 // Eraser ring DOM element
 let _eraserRing;
@@ -23,11 +33,20 @@ let _eraserRing;
 // Search
 let _searchQuery = '';
 
-// Ids que ESTA pestaña vio borrar (local o remoto) en la sesión. Al
-// reconectar el socket se re-lee el tablero del servidor y se suma lo que
-// falte (lo que agregaron otros o Claude Code mientras no llegaban los
-// patches); esto evita resucitar lo que acá ya se borró.
-const _removedIds = new Set();
+// Sync con el servidor (ver backend services/whiteboardSync.js). El servidor
+// mezcla ítem por ítem: cada guardado manda la revisión base, SOLO los ítems
+// que esta pestaña cambió o agregó y los ids que borró. Para saber cuáles son,
+// _syncBase guarda cada ítem ('kind:id' → JSON canónico) tal como lo conoce el
+// servidor en _syncRev; lo que difiere es una edición local pendiente. Los
+// cambios que llegan de otros (wb:patch, respuestas del servidor) actualizan
+// también la base, así no se re-mandan como propios.
+const SYNC_KINDS = ['nodes', 'cards', 'notes', 'images', 'edges', 'strokes'];
+const _syncBase = new Map();
+let _syncRev = 0;
+let _syncChain = Promise.resolve(); // guardados y lecturas, de a uno
+let _pullTimer = null;
+let _initPending = false; // los targets se auto-ubicaron y falta avisarlo
+let _loadFailed = false;  // la carga inicial falló: la próxima lectura es completa
 let _wbReady = false;
 
 // Edges / connect mode
@@ -55,6 +74,12 @@ let _vp, _ws, _svg, _nl;
 const SEV_COLOR = {
   critical: '#e53935', high: '#f57c00', medium: '#f9a825', low: '#43a047', info: '#1e88e5',
 };
+const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
+const SEV_LABEL = { critical: 'Crítica', high: 'Alta', medium: 'Media', low: 'Baja', info: 'Info' };
+const SEV_SHORT = { critical: 'CRÍT', high: 'ALTA', medium: 'MED', low: 'BAJA', info: 'INFO' };
+const REMEDIATION_LABEL = { open: 'Abierto', remediated: 'Remediado', not_remediated: 'No remediado', verified_closed: 'Verificado y cerrado' };
+const REF_TYPE_LABEL = { target: 'Target', port: 'Puerto', endpoint: 'Endpoint', finding: 'Finding' };
+const TARGET_STATUS_LABEL = { active: 'Activo', completed: 'Completado', 'out-of-scope': 'Fuera de alcance' };
 const METHOD_COLOR = {
   GET: '#43a047', POST: '#1e88e5', PUT: '#f57c00', PATCH: '#f57c00',
   DELETE: '#e53935', HEAD: '#9e9e9e', OPTIONS: '#9e9e9e', OTHER: '#9e9e9e',
@@ -144,27 +169,26 @@ async function initWhiteboard() {
   const pid = state.currentProject.id;
 
   const [res] = await Promise.all([
-    api.whiteboard.get(pid).catch(() => ({ data: {} })),
+    // Si falla no se adivina nada (ni se auto-ubican targets): se vuelve a
+    // leer entero al reconectar o en la próxima lectura (_pullFromServer).
+    api.whiteboard.get(pid).catch(() => { _loadFailed = true; return { data: {}, revision: 0, initialized: true }; }),
     _loadPortsAndEndpoints(pid, state.targets),
   ]);
 
   const saved = res.data || {};
-  if (saved.nodes && saved.nodes.length > 0) {
-    wbData = { nodes: [], strokes: [], notes: [], edges: [], cards: [], view: { panX: 0, panY: 0, zoom: 1 }, ...saved };
-  } else {
-    wbData.strokes = saved.strokes || [];
-    wbData.notes   = saved.notes   || [];
-    // Tarjetas y flechas también: Claude Code puede haber agregado tarjetas
-    // a un tablero que todavía no tenía nodos, y este primer guardado las
-    // borraba.
-    wbData.cards   = saved.cards   || [];
-    wbData.edges   = saved.edges   || [];
-    wbData.images  = saved.images  || [];
-    wbData.view    = saved.view    || { panX: 0, panY: 0, zoom: 1 };
+  SYNC_KINDS.forEach(kind => { wbData[kind] = Array.isArray(saved[kind]) ? saved[kind] : []; });
+  wbData.view = saved.view || { panX: 0, panY: 0, zoom: 1 };
+  _syncRev = Number.isSafeInteger(res.revision) ? res.revision : 0;
+  _resetSyncBase();
+  // Los targets se ubican solos UNA vez por tablero (initialized lo guarda
+  // el servidor): si después se quitan todos los nodos, no vuelven al
+  // recargar. Notas/tarjetas/flechas de Claude Code en un tablero todavía sin
+  // nodos se conservan: el auto-layout va debajo de ellas.
+  const initialized = typeof res.initialized === 'boolean' ? res.initialized : wbData.nodes.length > 0;
+  if (!initialized) {
     _autoLayout(state.targets, _itemsBottom());
-    scheduleSave();
+    if (wbData.nodes.length) { _initPending = true; scheduleSave(); }
   }
-  if (!Array.isArray(wbData.images)) wbData.images = [];
   const v = wbData.view || {};
   wbData.view = { panX: _num(v.panX), panY: _num(v.panY), zoom: _num(v.zoom, 1) > 0 ? _num(v.zoom, 1) : 1 };
 
@@ -173,7 +197,9 @@ async function initWhiteboard() {
   _wireEvents();
   _wireKeyboard();
   _wireWs();
+  _updateHistoryButtons();
   _wbReady = true;
+  if (_loadFailed) _pullFromServer();
 }
 
 // ── Remote data loading ────────────────────────────────────────────────
@@ -287,13 +313,15 @@ function _buildNode(nodeData, target) {
   el.style.width = (_dim(nodeData.w, MIN_SIZE.node.w) || DEFAULT_SIZE.node.w) + 'px';
   if (_dim(nodeData.h, MIN_SIZE.node.h)) el.style.height = _dim(nodeData.h, MIN_SIZE.node.h) + 'px';
 
+  // A finding row can be dragged onto the board as a finding card (_startFindingDrag).
   const vulnRows = vulns.length
     ? vulns.map(v => `
-        <div class="wb-vuln-row" style="border-left-color:${SEV_COLOR[v.severity]||'#666'}">
-          <span class="wb-vuln-sev" style="color:${SEV_COLOR[v.severity]||'#666'}">${v.severity.slice(0,4).toUpperCase()}</span>
-          <span class="wb-vuln-name" title="${esc(v.name)}">${esc(v.name)}</span>
+        <div class="wb-vuln-row" data-vuln-id="${esc(v.id)}" style="border-left-color:${SEV_COLOR[v.severity]||'#666'}"
+             title="${esc(v.name)} · arrastrar al tablero para crear una tarjeta">
+          <span class="wb-vuln-sev" style="color:${SEV_COLOR[v.severity]||'#666'}">${SEV_SHORT[v.severity] || '?'}</span>
+          <span class="wb-vuln-name">${esc(v.name)}</span>
         </div>`).join('')
-    : '<div class="wb-empty-section">No findings yet</div>';
+    : '<div class="wb-empty-section">Sin findings</div>';
 
   const portChips = ports.length
     ? `<div class="wb-ports-wrap">`
@@ -303,31 +331,31 @@ function _buildNode(nodeData, target) {
            </span>`
         ).join('')
       + `</div>`
-    : '<div class="wb-empty-section">No ports</div>';
+    : '<div class="wb-empty-section">Sin puertos</div>';
 
   const epRows = endpoints.length
     ? endpoints.map(e =>
         `<div class="wb-ep-row" data-ep-id="${esc(e.id)}" data-ep-host="${esc(target.host)}" data-ep-path="${esc(e.path)}">
            <span class="wb-ep-method" style="color:${METHOD_COLOR[e.method]||'#aaa'}">${esc(e.method)}</span>
            <span class="wb-ep-path" title="${esc(e.path)}">${esc(e.path)}</span>
-           ${e.interesting ? `<span class="wb-ep-star" title="Interesting">${icon('star',{size:10})}</span>` : ''}
-           <span class="wb-ep-copy">copy</span>
+           ${e.interesting ? `<span class="wb-ep-star" title="Interesante">${icon('star',{size:10})}</span>` : ''}
+           <span class="wb-ep-copy">copiar</span>
          </div>`
       ).join('')
-    : '<div class="wb-empty-section">No endpoints</div>';
+    : '<div class="wb-empty-section">Sin endpoints</div>';
 
   el.innerHTML = `
     <div class="wb-node-head" data-drag-handle>
       <span class="wb-node-type">${esc(target.type)}</span>
       <span class="wb-node-host" title="${esc(target.host)}">${esc(target.host)}</span>
-      <span class="wb-node-status" style="background:${statusDot}" title="${esc(target.status)}"></span>
+      <span class="wb-node-status" style="background:${statusDot}" title="${esc(TARGET_STATUS_LABEL[target.status] || target.status)}"></span>
       <span class="wb-node-collapse" onclick="wbToggleCollapse('${target.id}')">${nodeData.collapsed ? icon('chevron-right',{size:11}) : icon('chevron-down',{size:11})}</span>
-      <span class="wb-node-remove" onclick="wbRemoveNode('${target.id}')" title="Remove from board">×</span>
+      <span class="wb-node-remove" onclick="wbRemoveNode('${target.id}')" title="Quitar del tablero">×</span>
     </div>
     <div class="wb-node-body">
       <div class="wb-section">
         <div class="wb-section-head">
-          <span class="wb-section-label">Vulnerabilities</span>
+          <span class="wb-section-label">Findings</span>
           <span class="wb-section-count">${vulns.length}</span>
         </div>
         ${vulnRows}
@@ -335,7 +363,7 @@ function _buildNode(nodeData, target) {
       <hr class="wb-section-divider">
       <div class="wb-section">
         <div class="wb-section-head">
-          <span class="wb-section-label">Ports</span>
+          <span class="wb-section-label">Puertos</span>
           <span class="wb-section-count">${ports.length}</span>
         </div>
         ${portChips}
@@ -349,7 +377,7 @@ function _buildNode(nodeData, target) {
         ${epRows}
       </div>
       <div class="wb-node-footer">
-        <a href="targets?pid=${pid}" target="_blank">View in Targets →</a>
+        <a href="targets?pid=${pid}" target="_blank">Ver en Targets →</a>
       </div>
     </div>`;
 
@@ -362,7 +390,14 @@ function _buildNode(nodeData, target) {
     const host = (row.dataset.epHost || '').replace(/\/$/, '');
     const path = row.dataset.epPath || '';
     const text = host + path;
-    navigator.clipboard.writeText(text).then(() => showToast(`Copied: ${text}`, 'success')).catch(() => showToast('Copy failed', 'error'));
+    navigator.clipboard.writeText(text).then(() => showToast(`Copiado: ${text}`, 'success')).catch(() => showToast('No se pudo copiar', 'error'));
+  });
+  body.addEventListener('pointerdown', e => {
+    const row = e.target.closest('.wb-vuln-row[data-vuln-id]');
+    if (!row || _mode !== 'select' || e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    _startFindingDrag(e, row, el);
   });
   // Arrows anchored on an endpoint/port row follow it while the body scrolls.
   body.addEventListener('scroll', _scheduleEdgeUpdate, { passive: true });
@@ -378,41 +413,68 @@ function _makeNodeDraggable(el, nodeData) {
     if (_mode !== 'select' || e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
-
-    const startX = e.clientX, startY = e.clientY;
-    const origX = nodeData.x, origY = nodeData.y;
-    let dragging = false;
-
-    function onMove(e) {
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (!dragging) {
-        if (dx * dx + dy * dy < 25) return;
-        dragging = true;
-        el.classList.add('dragging');
-        head.setPointerCapture(e.pointerId);
-      }
-      nodeData.x = origX + dx / wbData.view.zoom;
-      nodeData.y = origY + dy / wbData.view.zoom;
-      el.style.left = nodeData.x + 'px';
-      el.style.top  = nodeData.y + 'px';
-      _updateAllEdges();
-    }
-    function onUp() {
-      head.removeEventListener('pointermove', onMove);
-      if (!dragging) return;
-      el.classList.remove('dragging');
-      _broadcast({ op: 'node_move', nodeId: nodeData.id, x: nodeData.x, y: nodeData.y });
-      scheduleSave();
-    }
-    head.addEventListener('pointermove', onMove);
-    head.addEventListener('pointerup', onUp, { once: true });
+    _startItemDrag(e, head, `nodes:${nodeData.id}`);
   });
+}
+
+// Drag from an item's handle. Past the 5px threshold it moves the item, or
+// the whole selection when the item is part of a multi-selection, as one
+// undo entry. `onClick`: what a press without dragging does.
+function _startItemDrag(e, handle, key, onClick) {
+  const startX = e.clientX, startY = e.clientY;
+  const keys = _selection.has(key) && _selection.size > 1 ? [..._selection] : [key];
+  let group = null, before = null;
+
+  function onMove(ev) {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (!group) {
+      if (dx * dx + dy * dy < 25) return;
+      handle.setPointerCapture(ev.pointerId);
+      group = keys.map(k => {
+        const [kind, id] = _splitKey(k);
+        const data = _localItem(kind, id), el = _keyEl(k);
+        return data && el ? { kind, data, el, x: _num(data.x), y: _num(data.y) } : null;
+      }).filter(Boolean);
+      before = _snapshot(group.map(g => `${g.kind}:${g.data.id}`));
+      group.forEach(g => {
+        g.el.classList.add('dragging');
+        // Dismiss any open contenteditable inside the item
+        g.el.querySelectorAll('[contenteditable="true"]').forEach(ce => ce.blur());
+      });
+    }
+    const z = wbData.view.zoom;
+    group.forEach(g => {
+      g.data.x = g.x + dx / z;
+      g.data.y = g.y + dy / z;
+      g.el.style.left = g.data.x + 'px';
+      g.el.style.top  = g.data.y + 'px';
+    });
+    _updateAllEdges();
+  }
+  function onUp() {
+    handle.removeEventListener('pointermove', onMove);
+    if (!group) { onClick?.(); return; }
+    group.forEach(g => { g.el.classList.remove('dragging'); _broadcastMove(g.kind, g.data); });
+    _commitHistory(before);
+    scheduleSave();
+  }
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointerup', onUp, { once: true });
+}
+
+function _broadcastMove(kind, d) {
+  if (kind === 'nodes') _broadcast({ op: 'node_move', nodeId: d.id, x: d.x, y: d.y });
+  else if (kind === 'cards') _broadcast({ op: 'card_update', cardId: d.id, changes: { x: d.x, y: d.y } });
+  else if (kind === 'notes') _broadcast({ op: 'note_update', noteId: d.id, changes: { x: d.x, y: d.y } });
+  else if (kind === 'images') _broadcast({ op: 'image_update', imageId: d.id, changes: { x: d.x, y: d.y } });
 }
 
 function wbToggleCollapse(targetId) {
   const nd = wbData.nodes.find(n => n.id === targetId);
   if (!nd) return;
+  const before = _snapshot([`nodes:${targetId}`]);
   nd.collapsed = !nd.collapsed;
+  _commitHistory(before);
   const el = _nl.querySelector(`[data-node-id="${targetId}"]`);
   if (el) {
     el.classList.toggle('collapsed', nd.collapsed);
@@ -424,8 +486,12 @@ function wbToggleCollapse(targetId) {
   _updateAllEdges();
 }
 
+// Removes the node from the board only; the target itself stays.
 function wbRemoveNode(targetId) {
-  _removedIds.add(targetId);
+  _trackRemoval([`nodes:${targetId}`]);
+}
+
+function _removeNode(targetId) {
   wbData.nodes = wbData.nodes.filter(n => n.id !== targetId);
   _nl.querySelector(`[data-node-id="${targetId}"]`)?.remove();
   _removeItemEdges(targetId, true);
@@ -434,9 +500,46 @@ function wbRemoveNode(targetId) {
 }
 
 // ── Custom cards ───────────────────────────────────────────────────────
+// A finding card (ref.type 'finding') is a card about one custom_vuln. It
+// stores only the finding's id (plus its name when placed, ref.label, shown
+// if the finding is later deleted) and draws title, severity and remediation
+// status from state.customVulns, the same GET /vulns list this member already
+// sees, so it is always the CURRENT finding (wbRefreshFindings redraws it
+// when page.js refreshes the list). The card's own markdown body stays below.
+function _isFindingCard(cardData) {
+  return cardData?.ref?.type === 'finding' && typeof cardData.ref.id === 'string';
+}
+
+function _findingOf(ref) {
+  return (state.customVulns || []).find(v => v.id === ref.id) || null;
+}
+
+function _findingBlock(cardData) {
+  const v = _findingOf(cardData.ref);
+  if (!v) {
+    return `<div class="wb-finding wb-finding--gone">${icon('triangle-alert', { size: 11 })} Finding eliminado: ya no existe en el proyecto</div>`;
+  }
+  const t = v.target_id && (state.targets || []).find(x => x.id === v.target_id);
+  const cvss = v.cvss_score != null && v.cvss_score !== '' && Number.isFinite(+v.cvss_score) ? (+v.cvss_score).toFixed(1) : '';
+  const rem = v.remediation_status || 'open';
+  return `
+    <div class="wb-finding">
+      <span class="wb-finding-sev" style="background:${SEV_COLOR[v.severity] || '#666'}">${esc(SEV_LABEL[v.severity] || v.severity || '?')}</span>
+      <span class="wb-finding-status wb-finding-status--${rem === 'open' ? 'open' : 'closed'}">${esc(REMEDIATION_LABEL[rem] || rem)}</span>
+      ${cvss ? `<span class="wb-finding-cvss">CVSS ${cvss}</span>` : ''}
+    </div>
+    ${t ? `<div class="wb-card-ref" title="${esc(t.host)}">↳ ${esc(t.host)}</div>` : ''}`;
+}
+
 function _buildCard(cardData) {
+  const finding = _isFindingCard(cardData);
+  const vuln    = finding ? _findingOf(cardData.ref) : null;
+  // A finding card's title is the finding's current one; while it exists the
+  // header is not editable (the finding is edited on the Findings page).
+  const title = finding ? (vuln ? vuln.name : (cardData.ref.label || cardData.title || 'Finding')) : (cardData.title || '');
   const el = document.createElement('div');
-  el.className = 'wb-card';
+  el.className = 'wb-card' + (finding ? ' wb-card--finding' : '') + (finding && !vuln ? ' wb-card--gone' : '');
+  if (vuln) el.style.setProperty('--wb-sev', SEV_COLOR[vuln.severity] || '#666');
   el.dataset.nodeId = cardData.id; // same attr as target nodes → arrows work
   el.style.left  = _num(cardData.x) + 'px';
   el.style.top   = _num(cardData.y) + 'px';
@@ -450,23 +553,25 @@ function _buildCard(cardData) {
   el.innerHTML = `
     <div class="wb-card-head" data-drag-handle style="background:${_cardColor(cardData.color)}">
       ${icon('grip-vertical', { size: 13, class: 'wb-card-grip' })}
-      <span class="wb-card-title" data-title contenteditable="false">${esc(cardData.title || '')}</span>
+      <span class="wb-card-title" data-title contenteditable="false"${finding ? ` title="${esc(title)}"` : ''}>${esc(title)}</span>
       <div class="wb-card-colors">${colorDots}</div>
       <span class="wb-card-rm">×</span>
     </div>
     <div class="wb-card-body">
-      ${cardData.ref ? `<div class="wb-card-ref" title="${esc(cardData.ref.type)}">↳ ${esc(cardData.ref.label || '')}</div>` : ''}
+      ${finding ? _findingBlock(cardData)
+        : cardData.ref ? `<div class="wb-card-ref" title="${esc(REF_TYPE_LABEL[cardData.ref.type] || cardData.ref.type)}">↳ ${esc(cardData.ref.label || '')}</div>` : ''}
       <div class="wb-card-text" data-text contenteditable="false"
-           data-placeholder="Double-click to add notes…">${renderMd(cardData.body)}</div>
-      <div class="wb-card-hint">${cardData.created_by === 'claude_code' ? '<span class="wb-cc-tag">Claude Code</span> · ' : ''}dbl-click to edit · drag header to move</div>
+           data-placeholder="Doble clic para agregar notas…">${renderMd(cardData.body)}</div>
+      <div class="wb-card-hint">${cardData.created_by === 'claude_code' ? '<span class="wb-cc-tag">Claude Code</span> · ' : ''}doble clic para editar · arrastrar el encabezado para mover</div>
     </div>`;
 
   const titleEl = el.querySelector('[data-title]');
   const textEl  = el.querySelector('[data-text]');
 
-  // Title editing (double-click)
+  // Title editing (double-click); not on a finding card (see above)
   titleEl.addEventListener('dblclick', e => {
     e.stopPropagation();
+    if (finding) return;
     titleEl.contentEditable = 'true';
     titleEl.focus();
     const r = document.createRange();
@@ -476,8 +581,10 @@ function _buildCard(cardData) {
   });
   titleEl.addEventListener('blur', () => {
     titleEl.contentEditable = 'false';
-    cardData.title = titleEl.innerText.trim() || 'Card';
-    if (titleEl.innerText.trim() === '') titleEl.textContent = 'Card';
+    const before = _snapshot([`cards:${cardData.id}`]);
+    cardData.title = titleEl.innerText.trim() || 'Tarjeta';
+    _commitHistory(before);
+    if (titleEl.innerText.trim() === '') titleEl.textContent = 'Tarjeta';
     _broadcast({ op: 'card_update', cardId: cardData.id, changes: { title: cardData.title } });
     scheduleSave();
   });
@@ -503,7 +610,9 @@ function _buildCard(cardData) {
   textEl.addEventListener('blur', () => {
     const raw = textEl.innerText.replace(/\n$/, ''); // drop single trailing newline browsers add
     textEl.contentEditable = 'false';
+    const before = _snapshot([`cards:${cardData.id}`]);
     cardData.body = raw;
+    _commitHistory(before);
     textEl.innerHTML = renderMd(raw);
     _updateAllEdges(); // an unsized card's height follows its text
     _broadcast({ op: 'card_update', cardId: cardData.id, changes: { body: raw } });
@@ -542,36 +651,7 @@ function _makeCardDraggable(el, cardData) {
     if (_mode !== 'select') return;
     e.stopPropagation();
     // No preventDefault — allows dblclick editing to work normally
-
-    const startX = e.clientX, startY = e.clientY;
-    const origX  = cardData.x, origY = cardData.y;
-    let dragging = false;
-
-    function onMove(e) {
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (!dragging) {
-        if (dx * dx + dy * dy < 25) return; // 5px threshold before committing to drag
-        dragging = true;
-        el.classList.add('dragging');
-        head.setPointerCapture(e.pointerId);
-        // Dismiss any open contenteditable inside the card
-        el.querySelectorAll('[contenteditable="true"]').forEach(ce => ce.blur());
-      }
-      cardData.x = origX + dx / wbData.view.zoom;
-      cardData.y = origY + dy / wbData.view.zoom;
-      el.style.left = cardData.x + 'px';
-      el.style.top  = cardData.y + 'px';
-      _updateAllEdges();
-    }
-    function onUp() {
-      head.removeEventListener('pointermove', onMove);
-      if (!dragging) return;
-      el.classList.remove('dragging');
-      _broadcast({ op: 'card_update', cardId: cardData.id, changes: { x: cardData.x, y: cardData.y } });
-      scheduleSave();
-    }
-    head.addEventListener('pointermove', onMove);
-    head.addEventListener('pointerup', onUp, { once: true });
+    _startItemDrag(e, head, `cards:${cardData.id}`);
   });
 }
 
@@ -590,6 +670,7 @@ function _makeResizable(el, data, type) {
     const startX = e.clientX, startY = e.clientY;
     const startW = el.offsetWidth,  startH = el.offsetHeight;
     const ratio  = startH / (startW || 1);
+    const before = _snapshot([`${type}s:${data.id}`]);
 
     function onMove(e) {
       const z = wbData.view.zoom;
@@ -615,6 +696,7 @@ function _makeResizable(el, data, type) {
       } else {
         _broadcast({ op: 'node_resize', nodeId: data.id, w: data.w, h: data.h });
       }
+      _commitHistory(before);
       scheduleSave();
     }
     handle.addEventListener('pointermove', onMove);
@@ -624,10 +706,11 @@ function _makeResizable(el, data, type) {
 
 function _addCard(x, y) {
   const id = crypto.randomUUID();
-  const cardData = { id, x, y, title: 'Card', body: '', color: CARD_COLORS[0] };
+  const cardData = { id, x, y, title: 'Tarjeta', body: '', color: CARD_COLORS[0] };
   wbData.cards.push(cardData);
   const el = _nl.appendChild(_buildCard(cardData));
   _broadcast({ op: 'card_add', card: cardData });
+  _commitHistory(new Map([[`cards:${id}`, null]]));
   scheduleSave();
   setTimeout(() => {
     const titleEl = el.querySelector('[data-title]');
@@ -642,7 +725,10 @@ function _addCard(x, y) {
 }
 
 function wbRemoveCard(id) {
-  _removedIds.add(id);
+  _trackRemoval([`cards:${id}`]);
+}
+
+function _removeCard(id) {
   wbData.cards = wbData.cards.filter(c => c.id !== id);
   _nl.querySelector(`[data-node-id="${id}"]`)?.remove();
   _removeItemEdges(id, true);
@@ -653,11 +739,164 @@ function wbRemoveCard(id) {
 function wbCardColor(id, color) {
   const cd = wbData.cards.find(c => c.id === id);
   if (!cd) return;
+  const before = _snapshot([`cards:${id}`]);
   cd.color = color = _cardColor(color);
+  _commitHistory(before);
   const head = _nl.querySelector(`[data-node-id="${id}"] .wb-card-head`);
   if (head) head.style.background = color;
   _broadcast({ op: 'card_update', cardId: id, changes: { color } });
   scheduleSave();
+}
+
+// ── Finding cards ──────────────────────────────────────────────────────
+// Placed from the toolbar picker (wbPickFinding) or by dragging a finding row
+// out of a target node (_startFindingDrag). Like the MCP add_whiteboard_items
+// link, the card gets an arrow to its target's node when that node is on the
+// board; card and arrow are one undo entry.
+function _addFindingCard(v, wx, wy) {
+  const id = crypto.randomUUID();
+  const card = {
+    id, x: Math.round(wx - DEFAULT_SIZE.card.w / 2), y: Math.round(wy - 30),
+    title: String(v.name || 'Finding').slice(0, 500), body: '', color: CARD_COLORS[0],
+    ref: { type: 'finding', id: v.id, target_id: v.target_id || null, label: String(v.name || '').slice(0, 1000) },
+  };
+  wbData.cards.push(card);
+  _nl.appendChild(_buildCard(card));
+  _broadcast({ op: 'card_add', card });
+  const keys = [`cards:${id}`];
+  if (card.ref.target_id && _localItem('nodes', card.ref.target_id) && _itemEl('node', card.ref.target_id)) {
+    const edge = { id: crypto.randomUUID(), fromId: id, toId: card.ref.target_id, label: '' };
+    wbData.edges.push(edge);
+    _renderEdge(edge);
+    _broadcast({ op: 'edge_add', edge });
+    keys.push(`edges:${edge.id}`);
+  }
+  _commitHistory(new Map(keys.map(k => [k, null])));
+  _updateAllEdges();
+  scheduleSave();
+  if (_mode === 'select') _setSelection([`cards:${id}`]);
+}
+
+// Drag a finding row of a target node onto the board: a ghost follows the
+// pointer and dropping it outside that node places the finding card there.
+function _startFindingDrag(e, row, nodeEl) {
+  const vulnId = row.dataset.vulnId;
+  const startX = e.clientX, startY = e.clientY;
+  let ghost = null;
+  row.setPointerCapture(e.pointerId);
+
+  function onMove(ev) {
+    if (!ghost) {
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      if (dx * dx + dy * dy < 25) return;
+      ghost = document.createElement('div');
+      ghost.className = 'wb-drag-ghost';
+      ghost.textContent = row.querySelector('.wb-vuln-name')?.textContent || 'Finding';
+      _vp.appendChild(ghost);
+    }
+    const r = _vp.getBoundingClientRect();
+    ghost.style.left = (ev.clientX - r.left) + 'px';
+    ghost.style.top  = (ev.clientY - r.top) + 'px';
+  }
+  function onEnd(ev) {
+    row.removeEventListener('pointermove', onMove);
+    row.removeEventListener('pointerup', onEnd);
+    row.removeEventListener('pointercancel', onEnd);
+    if (!ghost) return;
+    ghost.remove();
+    if (ev.type === 'pointercancel') return;
+    const r = _vp.getBoundingClientRect();
+    const inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+    const over = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (!inside || (over && nodeEl.contains(over))) return;
+    const v = (state.customVulns || []).find(x => x.id === vulnId);
+    if (!v) { showToast('Ese finding ya no existe', 'error'); return; }
+    const w = _screenToWorld(ev.clientX, ev.clientY);
+    _addFindingCard(v, w.x, w.y);
+  }
+  row.addEventListener('pointermove', onMove);
+  row.addEventListener('pointerup', onEnd);
+  row.addEventListener('pointercancel', onEnd);
+}
+
+// Toolbar "Finding": searchable list of the project's findings (the same
+// state.customVulns this member already sees); picking one places its card
+// in the middle of the screen.
+function wbPickFinding() {
+  document.querySelector('.wb-picker-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'wb-modal-overlay wb-picker-overlay';
+  overlay.innerHTML = `
+    <div class="wb-modal wb-picker" role="dialog" aria-modal="true" aria-label="Agregar un finding al tablero">
+      <p class="wb-modal-title">Agregar un finding al tablero</p>
+      <input type="text" class="wb-picker-search" placeholder="Buscar por título, severidad o target…"
+             autocomplete="off" aria-label="Buscar findings">
+      <div class="wb-picker-list" role="listbox"></div>
+      <div class="wb-modal-btns"><button class="wb-modal-btn wb-modal-cancel">Cancelar</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const input = overlay.querySelector('.wb-picker-search');
+  const list  = overlay.querySelector('.wb-picker-list');
+  const hostOf = v => (v.target_id && (state.targets || []).find(t => t.id === v.target_id)?.host) || '';
+  let shown = [];
+
+  const render = () => {
+    const vulns = state.customVulns || [];
+    const q = input.value.trim().toLowerCase();
+    const onBoard = new Set(wbData.cards.filter(_isFindingCard).map(c => c.ref.id));
+    shown = vulns
+      .filter(v => !q || [v.name, SEV_LABEL[v.severity], v.severity, hostOf(v)].join(' ').toLowerCase().includes(q))
+      .sort((a, b) => (SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity)) || String(a.name).localeCompare(String(b.name)));
+    if (!vulns.length) { list.innerHTML = '<div class="wb-picker-empty">Este proyecto todavía no tiene findings</div>'; return; }
+    if (!shown.length) { list.innerHTML = '<div class="wb-picker-empty">Ningún finding coincide con la búsqueda</div>'; return; }
+    list.innerHTML = shown.map((v, i) => `
+      <button class="wb-picker-item" data-i="${i}" role="option">
+        <span class="wb-finding-sev" style="background:${SEV_COLOR[v.severity] || '#666'}">${esc(SEV_LABEL[v.severity] || v.severity || '?')}</span>
+        <span class="wb-picker-name">${esc(v.name)}</span>
+        ${hostOf(v) ? `<span class="wb-picker-host">${esc(hostOf(v))}</span>` : ''}
+        ${onBoard.has(v.id) ? '<span class="wb-picker-on">en el tablero</span>' : ''}
+      </button>`).join('');
+  };
+  const close = () => { overlay.remove(); };
+  const pick = v => {
+    close();
+    const c = _viewportCenter();
+    _addFindingCard(v, c.x, c.y);
+  };
+  overlay._render = render;
+
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Enter' && shown[0]) { e.preventDefault(); pick(shown[0]); }
+  });
+  list.addEventListener('click', e => {
+    const btn = e.target.closest('[data-i]');
+    if (btn && shown[+btn.dataset.i]) pick(shown[+btn.dataset.i]);
+  });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  overlay.querySelector('.wb-modal-cancel').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  render();
+  input.focus();
+}
+
+// The findings list changed (page.js scheduleVulnsRefresh: live through the
+// 'vulns:changed' WS ping and custom_vuln Activity events). Redraws what
+// shows findings — target nodes' finding rows and finding cards — keeping
+// each node's scroll, plus the open picker.
+function wbRefreshFindings() {
+  if (!_wbReady) return;
+  wbData.nodes.forEach(nd => {
+    const scroll = _itemEl('node', nd.id)?.querySelector('.wb-node-body')?.scrollTop || 0;
+    _renderItem('nodes', nd);
+    const body = _itemEl('node', nd.id)?.querySelector('.wb-node-body');
+    if (body && scroll) body.scrollTop = scroll;
+  });
+  wbData.cards.filter(_isFindingCard).forEach(c => _renderItem('cards', c));
+  _updateAllEdges();
+  if (_searchQuery) _applySearch();
+  document.querySelector('.wb-picker-overlay')?._render?.();
 }
 
 // ── Images ─────────────────────────────────────────────────────────────
@@ -776,7 +1015,9 @@ function _buildImage(im) {
     cap.contentEditable = 'false';
     const text = cap.innerText.trim().slice(0, 500);
     if ((im.caption || '') === text) { cap.textContent = text; return; }
+    const before = _snapshot([`images:${im.id}`]);
     if (text) im.caption = text; else delete im.caption;
+    _commitHistory(before);
     _applyImageCaption(el, im);
     _broadcast({ op: 'image_update', imageId: im.id, changes: { caption: text } });
     scheduleSave();
@@ -805,37 +1046,8 @@ function _makeImageDraggable(el, im) {
       if (e.target.closest('.wb-image-rm, .wb-image-cap')) return;
       e.stopPropagation();
       e.preventDefault();
-
-      const startX = e.clientX, startY = e.clientY;
-      const origX = _num(im.x), origY = _num(im.y);
-      let dragging = false;
-
-      function onMove(e) {
-        const dx = e.clientX - startX, dy = e.clientY - startY;
-        if (!dragging) {
-          if (dx * dx + dy * dy < 25) return;
-          dragging = true;
-          el.classList.add('dragging');
-          handle.setPointerCapture(e.pointerId);
-        }
-        im.x = origX + dx / wbData.view.zoom;
-        im.y = origY + dy / wbData.view.zoom;
-        el.style.left = im.x + 'px';
-        el.style.top  = im.y + 'px';
-        _updateAllEdges();
-      }
-      function onUp() {
-        handle.removeEventListener('pointermove', onMove);
-        if (!dragging) {
-          if (handle.classList.contains('wb-image-frame')) _openImageLightbox(im);
-          return;
-        }
-        el.classList.remove('dragging');
-        _broadcast({ op: 'image_update', imageId: im.id, changes: { x: im.x, y: im.y } });
-        scheduleSave();
-      }
-      handle.addEventListener('pointermove', onMove);
-      handle.addEventListener('pointerup', onUp, { once: true });
+      const zoomIn = handle.classList.contains('wb-image-frame') ? () => _openImageLightbox(im) : null;
+      _startItemDrag(e, handle, `images:${im.id}`, zoomIn);
     });
   });
 }
@@ -894,6 +1106,7 @@ async function _addImageFiles(files, wx, wy) {
       wbData.images.push(im);
       _nl.appendChild(_buildImage(im));
       _broadcast({ op: 'image_add', image: im });
+      _commitHistory(new Map([[`images:${im.id}`, null]]));
       scheduleSave();
       placed++;
     } catch (err) {
@@ -907,7 +1120,6 @@ function wbPickImages() {
 }
 
 function _removeImage(id, broadcast) {
-  _removedIds.add(id);
   const im = wbData.images.find(i => i.id === id);
   if (!im) return;
   wbData.images = wbData.images.filter(i => i.id !== id);
@@ -921,7 +1133,7 @@ function _removeImage(id, broadcast) {
 }
 
 function wbRemoveImage(id) {
-  _removeImage(id, true);
+  _trackRemoval([`images:${id}`]);
 }
 
 // ── Edges ──────────────────────────────────────────────────────────────
@@ -1239,6 +1451,13 @@ function _mergeEdgeChanges(edge, changes) {
 }
 
 function _setEdgeProps(edge, changes) {
+  const before = _snapshot([`edges:${edge.id}`]);
+  _applyEdgeProps(edge, changes);
+  _commitHistory(before);
+}
+
+// Same without an undo entry (undo/redo itself).
+function _applyEdgeProps(edge, changes) {
   _mergeEdgeChanges(edge, changes);
   _applyEdgeStyle(edge);
   _updateEdgePath(edge);
@@ -1259,12 +1478,12 @@ function _addEdge(from, to) {
   wbData.edges.push(edge);
   _renderEdge(edge);
   _broadcast({ op: 'edge_add', edge });
+  _commitHistory(new Map([[`edges:${edge.id}`, null]]));
   scheduleSave();
   showToast('Conexión creada — clic en la flecha para editarla', 'success');
 }
 
 function _removeEdge(edgeId) {
-  _removedIds.add(edgeId);
   if (_selectedEdgeId === edgeId) _deselectEdge();
   wbData.edges = wbData.edges.filter(e => e.id !== edgeId);
   _edgeEl(edgeId)?.remove();
@@ -1272,9 +1491,16 @@ function _removeEdge(edgeId) {
   scheduleSave();
 }
 
+function wbDeleteEdge(edgeId) {
+  const before = _snapshot([`edges:${edgeId}`]);
+  _removeEdge(edgeId);
+  _commitHistory(before);
+}
+
 function _selectEdge(edgeId) {
   if (_selectedEdgeId === edgeId) return;
   _deselectEdge();
+  _clearSelection();
   const edge = wbData.edges.find(e => e.id === edgeId);
   const g = _edgeEl(edgeId);
   if (!edge || !g) return;
@@ -1347,7 +1573,7 @@ function _buildEdgeToolbar() {
     else if (btn.dataset.edgeArrow) _setEdgeProps(edge, { arrow: btn.dataset.edgeArrow });
     else if (btn.dataset.edgeColor !== undefined) _setEdgeProps(edge, { color: btn.dataset.edgeColor || null });
     else if (btn.dataset.edgeAction === 'label') _editEdgeLabel(edge);
-    else if (btn.dataset.edgeAction === 'delete') _removeEdge(edge.id);
+    else if (btn.dataset.edgeAction === 'delete') wbDeleteEdge(edge.id);
   });
   _vp.appendChild(bar);
   return bar;
@@ -1491,7 +1717,7 @@ function _handleConnectClick(e) {
 async function syncTargets() {
   const existing = new Set(wbData.nodes.map(n => n.id));
   const toAdd = (state.targets || []).filter(t => !existing.has(t.id));
-  if (!toAdd.length) { showToast('All targets are already on the board', 'info'); return; }
+  if (!toAdd.length) { showToast('Todos los targets ya están en el tablero', 'info'); return; }
 
   await _loadPortsAndEndpoints(state.currentProject.id, toAdd);
 
@@ -1505,8 +1731,9 @@ async function syncTargets() {
     _nl.appendChild(_buildNode(nd, t));
   });
   _broadcast({ op: 'nodes_sync', nodes: newNodes });
+  _commitHistory(new Map(newNodes.map(nd => [`nodes:${nd.id}`, null])));
   scheduleSave();
-  showToast(`Added ${toAdd.length} target${toAdd.length > 1 ? 's' : ''}`, 'success');
+  showToast(toAdd.length > 1 ? `Se agregaron ${toAdd.length} targets` : 'Se agregó 1 target', 'success');
 }
 
 // ── Strokes ────────────────────────────────────────────────────────────
@@ -1538,8 +1765,8 @@ function _showConfirm(title, message) {
         <p class="wb-modal-title">${esc(title)}</p>
         <p class="wb-modal-msg">${esc(message)}</p>
         <div class="wb-modal-btns">
-          <button class="wb-modal-btn wb-modal-cancel">Cancel</button>
-          <button class="wb-modal-btn wb-modal-confirm">Confirm</button>
+          <button class="wb-modal-btn wb-modal-cancel">Cancelar</button>
+          <button class="wb-modal-btn wb-modal-confirm">Confirmar</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -1553,12 +1780,12 @@ function _showConfirm(title, message) {
 
 async function clearDrawing() {
   if (!wbData.strokes.length) return;
-  if (!await _showConfirm('Clear strokes', 'This will remove all drawing strokes from the board.')) return;
+  if (!await _showConfirm('Borrar trazos', 'Se quitarán todos los trazos del tablero. Se puede deshacer con Ctrl+Z.')) return;
+  const before = _snapshot(wbData.strokes.map(s => `strokes:${s.id}`));
   wbData.strokes = [];
-  _undoStack = [];
-  _redoStack = [];
   _svg.querySelectorAll('path[data-stroke]').forEach(p => p.remove());
   _broadcast({ op: 'strokes_clear' });
+  _commitHistory(before);
   scheduleSave();
 }
 
@@ -1609,7 +1836,9 @@ function _buildNote(noteData) {
   });
   textEl.addEventListener('blur', () => {
     textEl.contentEditable = 'false';
+    const before = _snapshot([`notes:${noteData.id}`]);
     noteData.text = textEl.innerText.trim();
+    _commitHistory(before);
     _updateAllEdges(); // an unsized note's height follows its text
     _broadcast({ op: 'note_update', noteId: noteData.id, changes: { text: noteData.text } });
     scheduleSave();
@@ -1640,32 +1869,7 @@ function _makeNoteDraggable(el, noteData) {
     if (e.target.closest('.wb-sticky-rm, [data-color]')) return;
     e.stopPropagation();
     e.preventDefault();
-
-    const startX = e.clientX, startY = e.clientY;
-    const origX = noteData.x, origY = noteData.y;
-    let dragging = false;
-
-    function onMove(e) {
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (!dragging) {
-        if (dx * dx + dy * dy < 25) return;
-        dragging = true;
-        head.setPointerCapture(e.pointerId);
-      }
-      noteData.x = origX + dx / wbData.view.zoom;
-      noteData.y = origY + dy / wbData.view.zoom;
-      el.style.left = noteData.x + 'px';
-      el.style.top  = noteData.y + 'px';
-      _updateAllEdges();
-    }
-    function onUp() {
-      head.removeEventListener('pointermove', onMove);
-      if (!dragging) return;
-      _broadcast({ op: 'note_update', noteId: noteData.id, changes: { x: noteData.x, y: noteData.y } });
-      scheduleSave();
-    }
-    head.addEventListener('pointermove', onMove);
-    head.addEventListener('pointerup', onUp, { once: true });
+    _startItemDrag(e, head, `notes:${noteData.id}`);
   });
 }
 
@@ -1675,6 +1879,7 @@ function _addNote(wx, wy) {
   wbData.notes.push(noteData);
   _nl.appendChild(_buildNote(noteData));
   _broadcast({ op: 'note_add', note: noteData });
+  _commitHistory(new Map([[`notes:${id}`, null]]));
   scheduleSave();
   setTimeout(() => {
     const textEl = _nl.querySelector(`[data-note-id="${id}"] [data-text]`);
@@ -1683,7 +1888,10 @@ function _addNote(wx, wy) {
 }
 
 function wbRemoveNote(id) {
-  _removedIds.add(id);
+  _trackRemoval([`notes:${id}`]);
+}
+
+function _removeNote(id) {
   wbData.notes = wbData.notes.filter(n => n.id !== id);
   _nl.querySelector(`[data-note-id="${id}"]`)?.remove();
   _removeItemEdges(id, true);
@@ -1694,7 +1902,9 @@ function wbRemoveNote(id) {
 function wbNoteColor(id, color) {
   const nd = wbData.notes.find(n => n.id === id);
   if (!nd) return;
+  const before = _snapshot([`notes:${id}`]);
   nd.color = color = _noteColor(color);
+  _commitHistory(before);
   const el = _nl.querySelector(`[data-note-id="${id}"]`);
   if (el) el.style.background = color;
   _broadcast({ op: 'note_update', noteId: id, changes: { color } });
@@ -1774,11 +1984,10 @@ function _startDraw(e) {
     if (pts.length > 1) {
       const stroke = { id, d: _pointsToPath(pts), color: _drawColor, width: _drawWidth };
       wbData.strokes.push(stroke);
-      _undoStack.push({ type: 'add', id });
       _activeStrokeEl.dataset.stroke  = id;
       _activeStrokeEl.dataset.strokeW = String(_drawWidth);
-      _redoStack = [];
       _broadcast({ op: 'stroke_add', stroke });
+      _commitHistory(new Map([[`strokes:${id}`, null]]));
       scheduleSave();
     } else {
       _activeStrokeEl.remove();
@@ -1789,53 +1998,329 @@ function _startDraw(e) {
   _vp.addEventListener('pointerup', onUp, { once: true });
 }
 
-// ── Undo ───────────────────────────────────────────────────────────────
-// Stack entries: { type:'add', id } | { type:'erase', strokes:[] }
-function undoStroke() {
-  if (!_undoStack.length) return;
-  const op = _undoStack.pop();
-  if (op.type === 'add') {
-    const stroke = wbData.strokes.find(s => s.id === op.id);
-    wbData.strokes = wbData.strokes.filter(s => s.id !== op.id);
-    _svg.querySelector(`path[data-stroke="${op.id}"]`)?.remove();
-    _broadcast({ op: 'stroke_remove', strokeId: op.id });
-    if (stroke) _redoStack.push({ type: 'add', stroke });
-  } else if (op.type === 'erase') {
-    op.strokes.forEach(stroke => {
-      if (!wbData.strokes.find(s => s.id === stroke.id)) {
-        wbData.strokes.push(stroke);
-        _renderStroke(stroke);
-        _broadcast({ op: 'stroke_add', stroke });
-      }
+// ── History (undo / redo) ──────────────────────────────────────────────
+// Every local action records the items it touched as before/after JSON
+// copies; a multi-item action (group move, multi-delete, removing an item
+// with its arrows) is one entry. Undo/redo writes the copies back through the
+// same paths as a local edit: wbData + DOM, the wb:patch op the single-item
+// action broadcasts, and scheduleSave (the sync diff sends what changed or
+// was removed). A removed item comes back with its own id: the next save's
+// base revision already includes the removal, so the server lifts the
+// tombstone (see mergeBoard).
+//
+// Changes from others are never undone: an item that another tab, user or
+// Claude Code changed after the entry was recorded (_remoteTouched) is
+// skipped, the rest of the entry still applies, and a toast says so. An
+// arrow whose ends are no longer on the board is skipped too.
+
+function _snap(key) {
+  const [kind, id] = _splitKey(key);
+  const it = _localItem(kind, id);
+  return it ? JSON.parse(JSON.stringify(it)) : null;
+}
+
+function _snapshot(keys) {
+  return new Map(keys.map(k => [k, _snap(k)]));
+}
+
+// Keys of the arrows touching these items (they go with a removed item).
+function _withEdgeKeys(keys) {
+  const ids = new Set(keys.map(k => _splitKey(k)[1]));
+  const edges = wbData.edges.filter(e => ids.has(e.fromId) || ids.has(e.toId)).map(e => `edges:${e.id}`);
+  return [...new Set([...keys, ...edges])];
+}
+
+// Records an entry from the `before` copies (and null for items that did not
+// exist yet) against the current state. `tag`: consecutive entries with the
+// same tag within a second merge into one (arrow-key nudges).
+function _commitHistory(before, tag) {
+  const items = [];
+  before.forEach((b, key) => {
+    const a = _snap(key);
+    if (_canon(a) !== _canon(b)) items.push({ key, before: b, after: a });
+  });
+  if (!items.length) return;
+  const top = _undoStack[_undoStack.length - 1];
+  const now = Date.now();
+  if (tag && top && top.tag === tag && now - top.at < 1000 && !_redoStack.length) {
+    items.forEach(it => {
+      const prev = top.items.find(x => x.key === it.key);
+      if (prev) prev.after = it.after; else top.items.push(it);
     });
-    _redoStack.push({ type: 'erase', strokeIds: op.strokes.map(s => s.id) });
+    top.at = now;
+    top.seq = _remoteSeq;
+  } else {
+    _undoStack.push({ items, seq: _remoteSeq, tag, at: now });
+    if (_undoStack.length > HISTORY_MAX) _undoStack.shift();
   }
+  _redoStack = [];
+  _updateHistoryButtons();
+}
+
+// Removes items (and their arrows) as one undo entry.
+function _trackRemoval(keys) {
+  const before = _snapshot(_withEdgeKeys(keys));
+  keys.forEach(k => _setItemState(k, null));
+  _commitHistory(before);
+}
+
+function _markRemote(keys) {
+  _remoteSeq++;
+  keys.forEach(k => _remoteTouched.set(k, _remoteSeq));
+}
+
+function wbUndo() { _stepHistory(_undoStack, _redoStack, 'before'); }
+function wbRedo() { _stepHistory(_redoStack, _undoStack, 'after'); }
+
+function _stepHistory(from, to, side) {
+  const entry = from.pop();
+  if (!entry) return;
+  const skipped = _applyHistoryEntry(entry, side);
+  entry.seq = _remoteSeq;
+  entry.tag = null;
+  to.push(entry);
+  _updateHistoryButtons();
+  if (skipped) showToast('Algunos elementos cambiaron por otra persona y no se modificaron', 'info');
+}
+
+// Writes `side` ('before' | 'after') of every item. Removals go first
+// (arrows before their items), then additions/updates (items before the
+// arrows that point at them). Returns how many items were skipped.
+function _applyHistoryEntry(entry, side) {
+  const isEdge = it => it.key.startsWith('edges:');
+  const removals  = entry.items.filter(it => !it[side]).sort((a, b) => isEdge(b) - isEdge(a));
+  const additions = entry.items.filter(it => it[side]).sort((a, b) => isEdge(a) - isEdge(b));
+  let skipped = 0;
+  for (const it of [...removals, ...additions]) {
+    if ((_remoteTouched.get(it.key) || 0) > entry.seq) { skipped++; continue; }
+    if (_canon(_snap(it.key)) === _canon(it[side])) continue;
+    if (!_setItemState(it.key, it[side])) skipped++;
+  }
+  _updateAllEdges();
+  if (_searchQuery) _applySearch();
+  return skipped;
+}
+
+// Puts one item in the given state (null = removed) as a local edit: DOM,
+// wb:patch broadcast and save. Returns false when it cannot be applied.
+function _setItemState(key, snap) {
+  const [kind, id] = _splitKey(key);
+  const local = _localItem(kind, id);
+  if (!snap) {
+    if (!local) return true;
+    if (kind === 'nodes') _removeNode(id);
+    else if (kind === 'cards') _removeCard(id);
+    else if (kind === 'notes') _removeNote(id);
+    else if (kind === 'images') _removeImage(id, true);
+    else if (kind === 'edges') _removeEdge(id);
+    else if (kind === 'strokes') _removeStroke(id);
+    _selection.delete(key);
+    return true;
+  }
+  const item = JSON.parse(JSON.stringify(snap));
+  if (kind === 'edges') {
+    if (!_findItem(item.fromId) || !_findItem(item.toId)) return false;
+    if (local) {
+      // Every field, null for the optional ones it does not have.
+      const changes = { label: item.label || '', fromId: item.fromId, toId: item.toId };
+      ['fromEp', 'toEp', 'fromPort', 'toPort', 'style', 'arrow', 'color'].forEach(k => { changes[k] = item[k] ?? null; });
+      _applyEdgeProps(local, changes);
+      return true;
+    }
+  }
+  if (kind === 'nodes' && !local && !state.targets.find(t => t.id === id)) return false;
+  if (local) {
+    // Same object: the DOM handlers hold it.
+    Object.keys(local).forEach(k => delete local[k]);
+    Object.assign(local, item);
+    _renderItem(kind, local);
+    _broadcastItem(kind, local, false);
+  } else {
+    wbData[kind].push(item);
+    _renderItem(kind, item);
+    _broadcastItem(kind, item, true);
+  }
+  scheduleSave();
+  return true;
+}
+
+// The wb:patch op of an added or replaced item (the same ops the single-item
+// actions send). A field an op cannot clear (e.g. a node's w/h) reaches the
+// other tabs with the next save's rev notice.
+function _broadcastItem(kind, item, isNew) {
+  const { id, ...fields } = item;
+  if (kind === 'nodes') {
+    if (isNew) { _broadcast({ op: 'nodes_sync', nodes: [item] }); return; }
+    _broadcast({ op: 'node_move', nodeId: id, x: item.x, y: item.y });
+    _broadcast({ op: 'node_toggle', nodeId: id, collapsed: !!item.collapsed });
+    if (item.w || item.h) _broadcast({ op: 'node_resize', nodeId: id, w: item.w, h: item.h });
+  } else if (kind === 'cards') {
+    _broadcast(isNew ? { op: 'card_add', card: item } : { op: 'card_update', cardId: id, changes: fields });
+  } else if (kind === 'notes') {
+    _broadcast(isNew ? { op: 'note_add', note: item } : { op: 'note_update', noteId: id, changes: fields });
+  } else if (kind === 'images') {
+    _broadcast(isNew ? { op: 'image_add', image: item }
+      : { op: 'image_update', imageId: id, changes: { x: item.x, y: item.y, w: item.w, h: item.h, caption: item.caption || '' } });
+  } else if (kind === 'edges') {
+    _broadcast({ op: 'edge_add', edge: item });
+  } else if (kind === 'strokes') {
+    _broadcast({ op: 'stroke_add', stroke: item });
+  }
+}
+
+function _removeStroke(id) {
+  wbData.strokes = wbData.strokes.filter(s => s.id !== id);
+  _svg.querySelector(`path[data-stroke="${CSS.escape(id)}"]`)?.remove();
+  _broadcast({ op: 'stroke_remove', strokeId: id });
   scheduleSave();
 }
 
-function redoStroke() {
-  if (!_redoStack.length) return;
-  const op = _redoStack.pop();
-  if (op.type === 'add') {
-    if (!wbData.strokes.find(s => s.id === op.stroke.id)) {
-      wbData.strokes.push(op.stroke);
-      _renderStroke(op.stroke);
-      _broadcast({ op: 'stroke_add', stroke: op.stroke });
+function _updateHistoryButtons() {
+  const u = document.getElementById('wb-btn-undo'), r = document.getElementById('wb-btn-redo');
+  if (u) u.disabled = !_undoStack.length;
+  if (r) r.disabled = !_redoStack.length;
+}
+
+// ── Selection ──────────────────────────────────────────────────────────
+// Click selects an item, Shift/Ctrl/Cmd+click toggles it, dragging on the
+// empty board (select mode) draws a selection box, Ctrl/Cmd+A selects all
+// and Esc clears. Dragging a selected item moves the whole selection.
+const ITEM_SELECTOR = '.wb-node, .wb-card, .wb-sticky, .wb-image';
+
+function _keyOfEl(el) {
+  const itemEl = el instanceof Element && _nl.contains(el) ? el.closest(ITEM_SELECTOR) : null;
+  return itemEl ? _keyOfItemEl(itemEl) : null;
+}
+
+// 'kind:id' of an item element (also of html2canvas' clone of one).
+function _keyOfItemEl(itemEl) {
+  if (itemEl.classList.contains('wb-sticky')) return `notes:${itemEl.dataset.noteId}`;
+  const kind = itemEl.classList.contains('wb-node') ? 'nodes' : itemEl.classList.contains('wb-card') ? 'cards' : 'images';
+  return `${kind}:${itemEl.dataset.nodeId}`;
+}
+
+function _keyEl(key) {
+  const [kind, id] = _splitKey(key);
+  return _itemEl(kind === 'notes' ? 'note' : 'node', id);
+}
+
+// Every selectable item drawn on the board.
+function _allItemKeys() {
+  return ['nodes', 'cards', 'notes', 'images']
+    .flatMap(kind => wbData[kind].map(it => `${kind}:${it.id}`))
+    .filter(k => _keyEl(k));
+}
+
+function _setSelection(keys) {
+  _selection.forEach(k => _keyEl(k)?.classList.remove('wb-selected'));
+  _selection.clear();
+  keys.forEach(k => { const el = _keyEl(k); if (el) { _selection.add(k); el.classList.add('wb-selected'); } });
+}
+
+function _toggleSelected(key) {
+  const next = new Set(_selection);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  _setSelection([...next]);
+}
+
+function _clearSelection() {
+  if (_selection.size) _setSelection([]);
+}
+
+// Drops keys whose item is gone (removed here or by someone else).
+function _liveSelection() {
+  [..._selection].forEach(k => { if (!_snap(k) || !_keyEl(k)) _selection.delete(k); });
+  return [..._selection];
+}
+
+function _startMarquee(e) {
+  // preventDefault keeps the drag from selecting page text, but also the
+  // focus change: an item being edited is closed (and saved) by hand.
+  e.preventDefault();
+  if (document.activeElement?.isContentEditable || document.activeElement?.tagName === 'INPUT') document.activeElement.blur();
+  const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+  const base = additive ? _liveSelection() : [];
+  const startX = e.clientX, startY = e.clientY;
+  const rect = _vp.getBoundingClientRect();
+  let box = null;
+  _vp.setPointerCapture(e.pointerId);
+
+  function onMove(ev) {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (!box) {
+      if (dx * dx + dy * dy < 25) return;
+      box = document.createElement('div');
+      box.className = 'wb-marquee';
+      _vp.appendChild(box);
     }
-    _undoStack.push({ type: 'add', id: op.stroke.id });
-  } else if (op.type === 'erase') {
-    const erased = [];
-    op.strokeIds.forEach(id => {
-      const stroke = wbData.strokes.find(s => s.id === id);
-      if (!stroke) return;
-      erased.push(stroke);
-      wbData.strokes = wbData.strokes.filter(s => s.id !== id);
-      _svg.querySelector(`path[data-stroke="${id}"]`)?.remove();
-      _broadcast({ op: 'stroke_remove', strokeId: id });
+    const l = Math.min(startX, ev.clientX), t = Math.min(startY, ev.clientY);
+    const w = Math.abs(dx), h = Math.abs(dy);
+    box.style.left = (l - rect.left) + 'px';
+    box.style.top = (t - rect.top) + 'px';
+    box.style.width = w + 'px';
+    box.style.height = h + 'px';
+    const a = _screenToWorld(l, t), b = _screenToWorld(l + w, t + h);
+    const hits = _allItemKeys().filter(k => {
+      const [kind, id] = _splitKey(k);
+      const bx = _itemBox(kind.slice(0, -1), _localItem(kind, id));
+      return bx.x < b.x && bx.x + bx.w > a.x && bx.y < b.y && bx.y + bx.h > a.y;
     });
-    if (erased.length) _undoStack.push({ type: 'erase', strokes: erased });
+    _setSelection([...new Set([...base, ...hits])]);
   }
+  function onUp() {
+    _vp.removeEventListener('pointermove', onMove);
+    if (box) box.remove();
+    else if (!additive) _clearSelection();
+  }
+  _vp.addEventListener('pointermove', onMove);
+  _vp.addEventListener('pointerup', onUp, { once: true });
+}
+
+// Delete/Backspace: the selected items with their arrows, as one undo entry.
+function _deleteSelection() {
+  const keys = _liveSelection();
+  if (!keys.length) return;
+  _trackRemoval(keys);
+  _clearSelection();
+}
+
+// Arrow keys move the selection 1px (10px with Shift); a run of presses is
+// one undo entry.
+function _nudgeSelection(dx, dy) {
+  const keys = _liveSelection();
+  if (!keys.length) return;
+  const before = _snapshot(keys);
+  keys.forEach(k => {
+    const [kind, id] = _splitKey(k);
+    const d = _localItem(kind, id), el = _keyEl(k);
+    d.x = _num(d.x) + dx;
+    d.y = _num(d.y) + dy;
+    if (el) { el.style.left = d.x + 'px'; el.style.top = d.y + 'px'; }
+    _broadcastMove(kind, d);
+  });
+  _updateAllEdges();
+  _commitHistory(before, `nudge:${keys.sort().join(',')}`);
   scheduleSave();
+}
+
+// Ctrl/Cmd+D: copies of the selected cards, notes and images (target nodes
+// are one per target), 24px down-right, selected afterwards.
+function _duplicateSelection() {
+  const keys = _liveSelection().filter(k => !k.startsWith('nodes:'));
+  if (!keys.length) return;
+  const added = keys.map(k => {
+    const [kind] = _splitKey(k);
+    const copy = _snap(k);
+    delete copy.created_by; // the copy is this user's, not Claude Code's
+    copy.id = crypto.randomUUID();
+    copy.x = _num(copy.x) + 24;
+    copy.y = _num(copy.y) + 24;
+    _setItemState(`${kind}:${copy.id}`, copy);
+    return `${kind}:${copy.id}`;
+  });
+  _commitHistory(new Map(added.map(k => [k, null])));
+  _updateAllEdges();
+  _setSelection(added);
 }
 
 // ── Eraser ─────────────────────────────────────────────────────────────
@@ -1870,10 +2355,8 @@ function _startErase(e) {
   _vp.addEventListener('pointermove', erase);
   _vp.addEventListener('pointerup', () => {
     _vp.removeEventListener('pointermove', erase);
-    if (erasedStrokes.length) {
-      _undoStack.push({ type: 'erase', strokes: erasedStrokes });
-      _redoStack = [];
-    }
+    // One undo entry per eraser drag; the copies were taken as they went.
+    if (erasedStrokes.length) _commitHistory(new Map(erasedStrokes.map(s => [`strokes:${s.id}`, s])));
   }, { once: true });
 }
 
@@ -1924,13 +2407,30 @@ function _wireEvents() {
     if (!e.target.closest(ITEM_CONTROLS)) e.stopPropagation();
   }, true);
 
+  // Selecting items (select mode), before the item's own drag/edit handlers:
+  // a press selects the item (a selected one keeps the group, so dragging it
+  // moves the whole selection); with Shift/Ctrl/Cmd it only toggles it.
+  _vp.addEventListener('pointerdown', e => {
+    if (_mode !== 'select' || e.button !== 0) return;
+    const key = _keyOfEl(e.target);
+    if (!key || e.target.closest(ITEM_CONTROLS)) return;
+    _deselectEdge();
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      e.stopPropagation();
+      e.preventDefault();
+      _toggleSelected(key);
+    } else if (!_selection.has(key)) {
+      _setSelection([key]);
+    }
+  }, true);
+
   // Pan / Draw / Erase / Note placement
   _vp.addEventListener('pointerdown', e => {
     if (_mode === 'draw'   && e.button === 0) { _startDraw(e);  return; }
     if (_mode === 'eraser'  && e.button === 0) { _startErase(e);         return; }
     if (_mode === 'connect' && e.button === 0) return; // handled in the capture phase above
     const onBg = e.target === _vp || e.target === _ws || e.target === _svg || e.target === _nl;
-    if (_mode === 'select' && e.button === 0 && onBg) _deselectEdge();
+    if (_mode === 'select' && e.button === 0 && onBg) { _deselectEdge(); _startMarquee(e); return; }
     if ((_mode === 'pan' && onBg) || e.button === 1) { _startPan(e); return; }
     if (_mode === 'note' && e.button === 0 && onBg) {
       e.preventDefault();
@@ -2041,23 +2541,43 @@ function _wireKeyboard() {
       return;
     }
     if (e.target.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-    if (e.key === 'v' || e.key === 'V') setWbMode('select');
-    if (e.key === 'h' || e.key === 'H') setWbMode('pan');
-    if (e.key === 'd' || e.key === 'D') setWbMode('draw');
-    if (e.key === 'e' || e.key === 'E') setWbMode('eraser');
-    if (e.key === 'n' || e.key === 'N') setWbMode('note');
-    if (e.key === 'f' || e.key === 'F') fitToScreen();
-    if (e.key === 'a' || e.key === 'A') setWbMode('card');
-    if (e.key === 'c' || e.key === 'C') setWbMode('connect');
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoStroke(); }
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redoStroke(); }
+    // A modal (confirm, image lightbox) owns the keyboard.
+    if (document.querySelector('.wb-modal-overlay, #img-lb')) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (mod) {
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); wbUndo(); }
+      else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); wbRedo(); }
+      else if (key === 'a') { e.preventDefault(); setWbMode('select'); _setSelection(_allItemKeys()); }
+      else if (key === 'd') { e.preventDefault(); _duplicateSelection(); }
+      return;
+    }
+    if (!e.altKey) {
+      if (key === 'v') setWbMode('select');
+      if (key === 'h') setWbMode('pan');
+      if (key === 'd') setWbMode('draw');
+      if (key === 'e') setWbMode('eraser');
+      if (key === 'n') setWbMode('note');
+      if (key === 'f') fitToScreen();
+      if (key === 'a') setWbMode('card');
+      if (key === 'c') setWbMode('connect');
+    }
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (_selectedEdgeId) _removeEdge(_selectedEdgeId);
+      e.preventDefault();
+      if (_selectedEdgeId) wbDeleteEdge(_selectedEdgeId);
+      else _deleteSelection();
+    }
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[e.key] && _selection.size) {
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      _nudgeSelection(arrows[e.key][0] * step, arrows[e.key][1] * step);
     }
     if (e.key === 'Escape') {
       if (_searchQuery) { wbSearchClear(); return; }
       _clearConnectFrom();
       _deselectEdge();
+      _clearSelection();
     }
   });
 }
@@ -2126,24 +2646,17 @@ function _memberColor(userId) {
   return m?.avatar_color || '#7c3aed';
 }
 
-// Suma ítems que no están en wbData (por id) ni se borraron acá. Devuelve
-// cuántos agregó. Compartido por el patch 'items_add' del servidor y por la
-// re-lectura al reconectar.
-// `explicit`: altas nuevas del servidor (items_add). Un nodo de target usa el
-// id del target, así que si acá se había quitado ese nodo y Claude Code lo
-// vuelve a agregar, es un alta nueva y se respeta.
-async function _mergeItems({ nodes = [], cards = [], notes = [], images = [], edges = [] }, { explicit = false } = {}) {
-  const fresh = (list, item) => item?.id && (explicit || !_removedIds.has(item.id)) && !list.some(x => x.id === item.id);
-  if (explicit) [...nodes, ...cards, ...notes, ...images, ...edges].forEach(it => it?.id && _removedIds.delete(it.id));
+// Altas que hizo el servidor (Claude Code vía MCP, op 'items_add'), ya
+// guardadas en la base: se suman a wbData las que falten. Devuelve cuántas
+// agregó. Un nodo de target usa el id del target, así que si acá se había
+// quitado ese nodo y Claude Code lo vuelve a agregar, es un alta nueva.
+async function _mergeItems({ nodes = [], cards = [], notes = [], images = [], edges = [] }) {
+  const fresh = (list, item) => item?.id && !list.some(x => x.id === item.id);
   let n = 0;
   // Un nodo de un target que esta pestaña todavía no conoce (agregado
   // después de cargarla): se recargan los targets para poder dibujarlo.
   const newNodes = nodes.filter(nd => fresh(wbData.nodes, nd));
-  if (newNodes.some(nd => !state.targets.find(t => t.id === nd.id))) {
-    try { state.targets = await api.targets.list(state.currentProject.id); } catch {}
-  }
-  const missing = newNodes.map(nd => state.targets.find(t => t.id === nd.id)).filter(Boolean);
-  if (missing.length) await _loadPortsAndEndpoints(state.currentProject.id, missing);
+  await _ensureTargets(newNodes);
   newNodes.forEach(nd => {
     if (!fresh(wbData.nodes, nd)) return; // llegó por otro lado mientras se esperaba
     wbData.nodes.push(nd);
@@ -2160,28 +2673,89 @@ async function _mergeItems({ nodes = [], cards = [], notes = [], images = [], ed
   return n;
 }
 
-// Re-lectura al reconectar: los patches que se emitieron con el socket
-// caído no llegan nunca, y el próximo autosave (PUT del blob entero) los
-// borraría del servidor.
-async function _resyncFromServer() {
-  if (!_wbReady) return;
-  try {
-    const res = await api.whiteboard.get(state.currentProject.id);
-    const n = await _mergeItems(res.data || {});
-    if (n) scheduleSave();
-  } catch {}
+// Nodos de targets que esta pestaña no conoce: recarga la lista de targets
+// y sus puertos/endpoints para poder dibujarlos.
+async function _ensureTargets(nodes) {
+  if (nodes.some(nd => !state.targets.find(t => t.id === nd.id))) {
+    try { state.targets = await api.targets.list(state.currentProject.id); } catch {}
+  }
+  const missing = nodes.map(nd => state.targets.find(t => t.id === nd.id)).filter(Boolean)
+    .filter(t => !_portsMap[t.id]);
+  if (missing.length) {
+    const ports = _portsMap, eps = _endpointsMap;
+    await _loadPortsAndEndpoints(state.currentProject.id, missing);
+    _portsMap = { ...ports, ..._portsMap };
+    _endpointsMap = { ...eps, ..._endpointsMap };
+  }
 }
 
+// Al reconectar: los patches emitidos con el socket caído no llegan nunca.
+// Se pide al servidor lo que cambió desde _syncRev (altas, ediciones Y
+// borrados) y se manda lo pendiente de esta pestaña.
+async function _resyncFromServer() {
+  if (!_wbReady) return;
+  _pullFromServer();
+  if (_hasLocalChanges()) scheduleSave();
+}
+
+// Patch de otra pestaña o del servidor. Lo que cambia NO es una edición de
+// esta pestaña: los ítems que tenían la base al día la siguen teniendo (no se
+// re-mandan al guardar); uno con una edición local pendiente la conserva.
 function _handleRemotePatch(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  // El servidor guardó cambios (de otra pestaña): se piden los que falten.
+  if (msg.op === 'rev') {
+    if (Number.isSafeInteger(msg.revision) && msg.revision > _syncRev) _schedulePull();
+    return;
+  }
+  const keys = _patchKeys(msg);
+  const clean = keys.filter(_isSynced);
+  _markRemote(keys);
+  // Altas que hizo el servidor (Claude Code vía MCP), ya guardadas en la
+  // base: el merge del servidor las conserva aunque un guardado de acá no
+  // las incluya. No entran al undo: no son acciones locales.
+  if (msg.op === 'items_add') {
+    _mergeItems(msg).then(() => clean.forEach(_rebaseKey));
+    return;
+  }
+  _applyRemotePatch(msg);
+  clean.forEach(_rebaseKey);
+}
+
+// Claves 'kind:id' que toca un patch, incluidas las flechas que se van con
+// un ítem borrado.
+function _patchKeys(msg) {
+  const withEdges = (kind, id) => [
+    `${kind}:${id}`,
+    ...wbData.edges.filter(e => e.fromId === id || e.toId === id).map(e => `edges:${e.id}`),
+  ];
+  const listKeys = (kind, list) => (Array.isArray(list) ? list : []).filter(it => it?.id).map(it => `${kind}:${it.id}`);
   switch (msg.op) {
-    // Altas que hizo el servidor (Claude Code vía MCP), ya guardadas en la
-    // base. Se mezclan en wbData y se agenda un guardado: así un autosave de
-    // esta pestaña que viajaba con datos viejos (un PUT en vuelo cuando
-    // Claude Code escribió) no deja al servidor sin estos ítems. No entran
-    // al undo: no son acciones locales.
     case 'items_add':
-      _mergeItems(msg, { explicit: true }).then(n => { if (n) scheduleSave(); });
-      break;
+      return SYNC_KINDS.flatMap(kind => listKeys(kind, msg[kind]));
+    case 'node_move': case 'node_toggle': case 'node_resize': return [`nodes:${msg.nodeId}`];
+    case 'node_remove': return withEdges('nodes', msg.nodeId);
+    case 'nodes_sync': return listKeys('nodes', msg.nodes);
+    case 'stroke_add': return [`strokes:${msg.stroke?.id}`];
+    case 'stroke_remove': return [`strokes:${msg.strokeId}`];
+    case 'strokes_clear': return listKeys('strokes', wbData.strokes);
+    case 'note_add': return [`notes:${msg.note?.id}`];
+    case 'note_update': return [`notes:${msg.noteId}`];
+    case 'note_remove': return withEdges('notes', msg.noteId);
+    case 'edge_add': return [`edges:${msg.edge?.id}`];
+    case 'edge_update': case 'edge_remove': return [`edges:${msg.edgeId}`];
+    case 'image_add': return [`images:${msg.image?.id}`];
+    case 'image_update': return [`images:${msg.imageId}`];
+    case 'image_remove': return withEdges('images', msg.imageId);
+    case 'card_add': return [`cards:${msg.card?.id}`];
+    case 'card_update': return [`cards:${msg.cardId}`];
+    case 'card_remove': return withEdges('cards', msg.cardId);
+    default: return [];
+  }
+}
+
+function _applyRemotePatch(msg) {
+  switch (msg.op) {
     case 'node_move': {
       const nd = wbData.nodes.find(n => n.id === msg.nodeId);
       if (!nd) return;
@@ -2219,7 +2793,6 @@ function _handleRemotePatch(msg) {
       break;
     }
     case 'node_remove':
-      _removedIds.add(msg.nodeId);
       wbData.nodes = wbData.nodes.filter(n => n.id !== msg.nodeId);
       _nl.querySelector(`[data-node-id="${msg.nodeId}"]`)?.remove();
       _removeItemEdges(msg.nodeId, false);
@@ -2241,16 +2814,10 @@ function _handleRemotePatch(msg) {
       break;
     case 'stroke_remove':
       wbData.strokes = wbData.strokes.filter(s => s.id !== msg.strokeId);
-      _undoStack = _undoStack.filter(op => {
-        if (op.type === 'add') return op.id !== msg.strokeId;
-        if (op.type === 'erase') { op.strokes = op.strokes.filter(s => s.id !== msg.strokeId); return op.strokes.length > 0; }
-        return true;
-      });
       _svg.querySelector(`path[data-stroke="${msg.strokeId}"]`)?.remove();
       break;
     case 'strokes_clear':
       wbData.strokes = [];
-      _undoStack = [];
       _svg.querySelectorAll('path[data-stroke]').forEach(p => p.remove());
       break;
     case 'note_add':
@@ -2278,7 +2845,6 @@ function _handleRemotePatch(msg) {
       break;
     }
     case 'note_remove':
-      _removedIds.add(msg.noteId);
       wbData.notes = wbData.notes.filter(n => n.id !== msg.noteId);
       _nl.querySelector(`[data-note-id="${msg.noteId}"]`)?.remove();
       _removeItemEdges(msg.noteId, false);
@@ -2290,7 +2856,6 @@ function _handleRemotePatch(msg) {
       }
       break;
     case 'edge_remove':
-      _removedIds.add(msg.edgeId);
       if (_selectedEdgeId === msg.edgeId) _deselectEdge();
       wbData.edges = wbData.edges.filter(e => e.id !== msg.edgeId);
       _edgeEl(msg.edgeId)?.remove();
@@ -2338,7 +2903,6 @@ function _handleRemotePatch(msg) {
       }
       break;
     case 'card_remove':
-      _removedIds.add(msg.cardId);
       wbData.cards = wbData.cards.filter(c => c.id !== msg.cardId);
       _nl.querySelector(`[data-node-id="${msg.cardId}"]`)?.remove();
       _removeItemEdges(msg.cardId, false);
@@ -2357,7 +2921,8 @@ function _handleRemotePatch(msg) {
         const head = el.querySelector('.wb-card-head');
         if (head) head.style.background = _cardColor(msg.changes.color);
       }
-      if (msg.changes.title !== undefined) {
+      if (msg.changes.ref !== undefined) { _renderItem('cards', cd); _updateAllEdges(); break; }
+      if (msg.changes.title !== undefined && !_isFindingCard(cd)) {
         const t = el.querySelector('[data-title]');
         if (t && t.contentEditable !== 'true') t.textContent = msg.changes.title;
       }
@@ -2380,6 +2945,7 @@ function _broadcast(patch) {
 function setWbMode(m) {
   if (m !== 'connect') _clearConnectFrom();
   if (m !== 'select') _deselectEdge();
+  if (m !== 'select' && m !== 'pan') _clearSelection();
   _mode = m;
   ['select','pan','draw','eraser','note','card','connect'].forEach(k => {
     document.getElementById(`wb-btn-${k}`)?.classList.toggle('active', k === m);
@@ -2458,7 +3024,8 @@ function _applySearch() {
     const el = _nl.querySelector(`[data-node-id="${cd.id}"]`);
     if (!el) return;
     total++;
-    const match = `${cd.title} ${cd.body}`.toLowerCase().includes(q);
+    const finding = _isFindingCard(cd) ? _findingOf(cd.ref) : null;
+    const match = `${cd.title} ${cd.body} ${finding ? `${finding.name} ${SEV_LABEL[finding.severity] || ''}` : ''}`.toLowerCase().includes(q);
     el.classList.toggle('wb-highlight', match);
     el.classList.toggle('wb-dimmed',    !match);
     if (match) hits++;
@@ -2485,71 +3052,433 @@ function _applySearch() {
 function scheduleSave() {
   _updateSaveStatus('saving');
   clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(async () => {
+  _saveTimer = setTimeout(() => _enqueueSync(async () => {
     try {
-      await api.whiteboard.save(state.currentProject.id, wbData);
+      await _pushChanges();
       _updateSaveStatus('saved');
     } catch {
       _updateSaveStatus('error');
     }
-  }, 1500);
+  }), 1500);
+}
+
+// ── Sync ───────────────────────────────────────────────────────────────
+// Ver SYNC_KINDS/_syncBase arriba y backend services/whiteboardSync.js.
+
+// JSON con las claves ordenadas: la misma nota armada acá o devuelta por el
+// servidor da el mismo texto.
+function _canon(v) {
+  return JSON.stringify(v, (k, val) => (val && typeof val === 'object' && !Array.isArray(val)
+    ? Object.fromEntries(Object.keys(val).sort().map(key => [key, val[key]]))
+    : val));
+}
+
+function _splitKey(key) {
+  const i = key.indexOf(':');
+  return [key.slice(0, i), key.slice(i + 1)];
+}
+
+function _localItem(kind, id) {
+  return (wbData[kind] || []).find(it => it.id === id);
+}
+
+function _resetSyncBase() {
+  _syncBase.clear();
+  SYNC_KINDS.forEach(kind => wbData[kind].forEach(it => _syncBase.set(`${kind}:${it.id}`, _canon(it))));
+}
+
+// El ítem local coincide con lo que conoce el servidor (o no existe en
+// ninguno de los dos): no hay edición local pendiente.
+function _isSynced(key) {
+  const [kind, id] = _splitKey(key);
+  const it = _localItem(kind, id);
+  return (it ? _canon(it) : undefined) === _syncBase.get(key);
+}
+
+function _rebaseKey(key) {
+  const [kind, id] = _splitKey(key);
+  const it = _localItem(kind, id);
+  if (it) _syncBase.set(key, _canon(it)); else _syncBase.delete(key);
+}
+
+// Lo que esta pestaña cambió/agregó (ítems enteros) y borró (ids) desde la base.
+function _collectChanges() {
+  const data = {}, removed = {}, sent = new Map();
+  const seen = new Set();
+  SYNC_KINDS.forEach(kind => {
+    data[kind] = [];
+    removed[kind] = [];
+    wbData[kind].forEach(it => {
+      const key = `${kind}:${it.id}`, json = _canon(it);
+      seen.add(key);
+      if (_syncBase.get(key) !== json) { data[kind].push(it); sent.set(key, json); }
+    });
+  });
+  _syncBase.forEach((_, key) => {
+    if (seen.has(key)) return;
+    const [kind, id] = _splitKey(key);
+    removed[kind].push(id);
+    sent.set(key, null);
+  });
+  return { data, removed, sent };
+}
+
+function _hasLocalChanges() {
+  return _collectChanges().sent.size > 0;
+}
+
+function _enqueueSync(fn) {
+  _syncChain = _syncChain.then(fn, fn);
+  return _syncChain;
+}
+
+async function _pushChanges() {
+  const { data, removed, sent } = _collectChanges();
+  data.view = wbData.view;
+  const initSent = _initPending;
+  if (initSent) data.initialized = true;
+  const res = await api.whiteboard.save(state.currentProject.id, data, { base_revision: _syncRev, removed });
+  // Lo mandado ya es lo que conoce el servidor; si lo cambió (sanitizado) o
+  // descartó (borrado por otro), la respuesta lo corrige abajo.
+  sent.forEach((json, key) => { if (json === null) _syncBase.delete(key); else _syncBase.set(key, json); });
+  if (initSent && res.initialized) _initPending = false;
+  // The response lists this save's own removals as deleted. One that is back
+  // on the board by now (undo while the save was in flight) is a pending
+  // re-add, sent next with a base revision that already has the removal.
+  const ownRemoved = new Set([...sent].filter(([, json]) => json === null).map(([key]) => key));
+  await _applyServerChanges(res, ownRemoved);
+}
+
+function _schedulePull() {
+  clearTimeout(_pullTimer);
+  _pullTimer = setTimeout(_pullFromServer, 300);
+}
+
+function _pullFromServer() {
+  return _enqueueSync(async () => {
+    try {
+      const pid = state.currentProject.id;
+      if (_loadFailed) {
+        await _applyServerChanges({ ...await api.whiteboard.get(pid), full: true });
+        _loadFailed = false;
+      } else {
+        await _applyServerChanges(await api.whiteboard.get(pid, _syncRev));
+      }
+    } catch {}
+  });
+}
+
+// Aplica lo que devolvió el servidor ({ revision, full, changes, deleted } o
+// { full, data }). Una edición local pendiente gana (se manda en el próximo
+// guardado), salvo contra un borrado: lo borrado por otro no vuelve.
+async function _applyServerChanges(res, ownRemoved = new Set()) {
+  if (!res || !Number.isSafeInteger(res.revision)) return;
+  let changes = res.changes || {}, deleted = res.deleted || {};
+  if (res.full) {
+    const data = res.data || {};
+    changes = data; deleted = {};
+    SYNC_KINDS.forEach(kind => {
+      const ids = new Set((Array.isArray(data[kind]) ? data[kind] : []).map(it => it?.id));
+      // Lo que el servidor conocía y ya no tiene, se borró. Lo que nunca
+      // conoció es un alta local pendiente.
+      deleted[kind] = [..._syncBase.keys()].map(_splitKey)
+        .filter(([k, id]) => k === kind && !ids.has(id)).map(([, id]) => id);
+    });
+  }
+  const nodes = Array.isArray(changes.nodes) ? changes.nodes : [];
+  await _ensureTargets(nodes.filter(nd => nd?.id && !_localItem('nodes', nd.id)));
+
+  let touched = 0;
+  SYNC_KINDS.forEach(kind => {
+    (Array.isArray(deleted[kind]) ? deleted[kind] : []).forEach(id => {
+      const key = `${kind}:${id}`;
+      if (ownRemoved.has(key) || !_dropLocalItem(kind, id)) return;
+      _markRemote([key]);
+      touched++;
+    });
+    (Array.isArray(changes[kind]) ? changes[kind] : []).forEach(it => {
+      if (!_applyServerItem(kind, it)) return;
+      _markRemote([`${kind}:${it.id}`]);
+      touched++;
+    });
+  });
+  if (res.revision > _syncRev || res.full) _syncRev = res.revision;
+  if (touched) {
+    _updateAllEdges();
+    if (_searchQuery) _applySearch();
+  }
+  if (_hasLocalChanges()) scheduleSave();
+}
+
+// Un ítem del servidor. Devuelve 1 si cambió algo en pantalla.
+function _applyServerItem(kind, item) {
+  if (!item || !_validId(item.id) || (kind === 'images' && !_validImage(item))) return 0;
+  const key = `${kind}:${item.id}`, json = _canon(item);
+  const local = _localItem(kind, item.id);
+  if (!local) {
+    // Borrado acá y todavía sin guardar: el borrado se manda igual.
+    if (_syncBase.has(key)) { _syncBase.set(key, json); return 0; }
+    _syncBase.set(key, json);
+    wbData[kind].push(item);
+    _renderItem(kind, item);
+    return 1;
+  }
+  const pending = _canon(local) !== _syncBase.get(key);
+  _syncBase.set(key, json);
+  if (pending || _canon(local) === json) return 0;
+  // Se reemplaza en el mismo objeto: los handlers del DOM lo tienen tomado.
+  Object.keys(local).forEach(k => delete local[k]);
+  Object.assign(local, item);
+  _renderItem(kind, local);
+  return 1;
+}
+
+// Dibuja (o vuelve a dibujar) un ítem. Si se está editando su texto o
+// arrastrando, solo se mueve: la edición en curso termina y se guarda encima.
+function _renderItem(kind, item) {
+  if (kind === 'edges') {
+    _edgeEl(item.id)?.remove();
+    _renderEdge(item);
+    if (item.id === _selectedEdgeId) _refreshEdgeToolbar(item);
+    return;
+  }
+  if (kind === 'strokes') {
+    _svg.querySelector(`path[data-stroke="${CSS.escape(item.id)}"]`)?.remove();
+    _renderStroke(item);
+    return;
+  }
+  const el = _itemEl(kind === 'notes' ? 'note' : 'node', item.id);
+  if (el && (el.classList.contains('dragging') || el.querySelector('[contenteditable="true"]'))) {
+    el.style.left = _num(item.x) + 'px';
+    el.style.top  = _num(item.y) + 'px';
+    return;
+  }
+  let built = null;
+  if (kind === 'nodes') {
+    const t = state.targets.find(t => t.id === item.id);
+    if (t) built = _buildNode(item, t);
+  } else if (kind === 'cards') built = _buildCard(item);
+  else if (kind === 'notes') built = _buildNote(item);
+  else if (kind === 'images') built = _buildImage(item);
+  if (built && _selection.has(`${kind}:${item.id}`)) built.classList.add('wb-selected');
+  if (el && built) el.replaceWith(built);
+  else if (el) el.remove();
+  else if (built) _nl.appendChild(built);
+}
+
+// Quita un ítem que se borró en el servidor. Devuelve 1 si estaba.
+function _dropLocalItem(kind, id) {
+  _syncBase.delete(`${kind}:${id}`);
+  const it = _localItem(kind, id);
+  if (!it) return 0;
+  if (kind === 'images') {
+    _removeImage(id, false);
+  } else if (kind === 'edges') {
+    if (_selectedEdgeId === id) _deselectEdge();
+    wbData.edges = wbData.edges.filter(e => e.id !== id);
+    _edgeEl(id)?.remove();
+  } else if (kind === 'strokes') {
+    _applyRemotePatch({ op: 'stroke_remove', strokeId: id });
+  } else {
+    wbData[kind] = wbData[kind].filter(x => x.id !== id);
+    _itemEl(kind === 'notes' ? 'note' : 'node', id)?.remove();
+    _removeItemEdges(id, false);
+  }
+  return 1;
 }
 
 function _updateSaveStatus(s) {
   const el = document.getElementById('wb-save-status');
   if (!el) return;
   el.className = `wb-save-status ${s}`;
-  el.innerHTML = s === 'saving' ? 'Saving…' : s === 'error' ? `Save failed ${icon('x',{size:11})}` : `Saved ${icon('check',{size:11})}`;
+  el.innerHTML = s === 'saving' ? 'Guardando…' : s === 'error' ? `Error al guardar ${icon('x',{size:11})}` : `Guardado ${icon('check',{size:11})}`;
 }
 
 // ── Export PNG ─────────────────────────────────────────────────────────
-async function exportPng() {
+// html2canvas is vendored (js/vendor/README.md) and loaded on the first
+// export. It renders its own clone of the page, so the live board is never
+// touched: in the clone the viewport becomes a fixed box the size of the
+// exported area and the workspace is shifted into it at zoom 1. The two SVG
+// layers get a real size, a viewBox and inline styles: html2canvas draws each
+// <svg> as a standalone image of its own box, where the page CSS and
+// var(--…) colors do not apply, and at their live 1×1 size the arrows and
+// strokes would be lost. Board images are same-origin blob: URLs, which
+// html2canvas loads like any image without tainting the canvas (useCORS off:
+// a blob: URL needs no CORS request).
+const EXPORT_PAD      = 40;
+const EXPORT_SCALE    = 2;
+const EXPORT_MAX_DIM  = 16384; // per-side canvas limit of current browsers
+const EXPORT_MAX_AREA = 120e6; // well under the canvas area limits
+const SVG_STYLE_PROPS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap',
+  'stroke-linejoin', 'stroke-opacity', 'opacity', 'font-family', 'font-size', 'font-weight', 'paint-order',
+  'dominant-baseline', 'text-anchor'];
+
+let _html2canvasLoad = null;
+function _loadHtml2canvas() {
+  if (window.html2canvas) return Promise.resolve();
+  if (!_html2canvasLoad) {
+    _html2canvasLoad = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'js/vendor/html2canvas.min.js?v=1';
+      s.onload = resolve;
+      s.onerror = () => { _html2canvasLoad = null; s.remove(); reject(new Error('no se pudo cargar html2canvas')); };
+      document.head.appendChild(s);
+    });
+  }
+  return _html2canvasLoad;
+}
+
+// World-space box of the given items; for the whole board also the strokes
+// and arrows (a curve can leave the items' boxes). null when there is nothing.
+function _exportBounds(keys, withLines) {
+  const boxes = keys.map(k => {
+    const [kind, id] = _splitKey(k);
+    const d = _localItem(kind, id);
+    return d && _itemBox(kind.slice(0, -1), d);
+  }).filter(Boolean);
+  if (withLines) {
+    const lines = [..._svg.querySelectorAll('path[data-stroke]'),
+      ..._edgeSvg.querySelectorAll('.wb-edge-group:not([style*="display: none"]) .wb-edge-line')];
+    lines.forEach(p => {
+      try { const b = p.getBBox(); if (b.width || b.height) boxes.push({ x: b.x, y: b.y, w: b.width, h: b.height }); } catch {}
+    });
+  }
+  if (!boxes.length) return null;
+  return {
+    minX: Math.min(...boxes.map(b => b.x)), minY: Math.min(...boxes.map(b => b.y)),
+    maxX: Math.max(...boxes.map(b => b.x + b.w)), maxY: Math.max(...boxes.map(b => b.y + b.h)),
+  };
+}
+
+// pizarra-<proyecto>-<AAAA-MM-DD>.png
+function _exportFilename() {
+  const slug = String(state.currentProject?.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'proyecto';
+  const d = new Date(), two = n => String(n).padStart(2, '0');
+  return `pizarra-${slug}-${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}.png`;
+}
+
+function wbExportMenu() {
+  const menu = document.getElementById('wb-export-menu');
+  if (!menu) { exportPng(false); return; }
+  if (menu.classList.contains('visible')) { _closeExportMenu(); return; }
+  const n = _liveSelection().length;
+  const sel = menu.querySelector('[data-export="selection"]');
+  sel.disabled = !n;
+  sel.querySelector('.wb-export-sub').textContent = n
+    ? `${n} elemento${n > 1 ? 's' : ''} seleccionado${n > 1 ? 's' : ''}`
+    : 'No hay nada seleccionado';
+  menu.classList.add('visible');
+  document.getElementById('wb-export-btn')?.setAttribute('aria-expanded', 'true');
+  document.addEventListener('pointerdown', _exportMenuOutside, true);
+  document.addEventListener('keydown', _exportMenuKey, true);
+  menu.querySelector('button:not(:disabled)')?.focus();
+}
+
+function _closeExportMenu() {
+  document.getElementById('wb-export-menu')?.classList.remove('visible');
+  document.getElementById('wb-export-btn')?.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('pointerdown', _exportMenuOutside, true);
+  document.removeEventListener('keydown', _exportMenuKey, true);
+}
+
+function _exportMenuOutside(e) {
+  if (!e.target.closest?.('#wb-export-wrap')) _closeExportMenu();
+}
+
+function _exportMenuKey(e) {
+  if (e.key !== 'Escape') return;
+  e.stopPropagation();
+  _closeExportMenu();
+}
+
+// onlySelection: the selected items (others and their arrows are left out),
+// cropped to their bounding box; otherwise the whole board fit to its content.
+async function exportPng(onlySelection = false) {
+  _closeExportMenu();
+  const keys = onlySelection ? _liveSelection() : _allItemKeys();
+  if (onlySelection && !keys.length) { showToast('No hay elementos seleccionados para exportar', 'info'); return; }
+  const box = _exportBounds(keys, !onlySelection);
+  if (!box) { showToast('El tablero está vacío: no hay nada para exportar', 'info'); return; }
+
   const btn = document.getElementById('wb-export-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
-
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
   try {
-    if (!window.html2canvas) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
-    }
+    await _loadHtml2canvas();
+    _deselectEdge(); // its accent color and handles would be captured
+    const x0 = Math.floor(box.minX - EXPORT_PAD), y0 = Math.floor(box.minY - EXPORT_PAD);
+    const W = Math.ceil(box.maxX + EXPORT_PAD) - x0, H = Math.ceil(box.maxY + EXPORT_PAD) - y0;
+    const scale = Math.max(0.1, Math.min(EXPORT_SCALE, EXPORT_MAX_DIM / W, EXPORT_MAX_DIM / H, Math.sqrt(EXPORT_MAX_AREA / (W * H))));
+    const bg = getComputedStyle(_vp).backgroundColor || getComputedStyle(document.body).backgroundColor;
+    // Resolved styles of every SVG element, read here where the page CSS applies.
+    const svgStyles = [_svg, _edgeSvg].map(svg => [...svg.querySelectorAll('*')].map(n => {
+      const cs = getComputedStyle(n);
+      return SVG_STYLE_PROPS.map(p => [p, cs.getPropertyValue(p)]);
+    }));
+    const keep = onlySelection ? new Set(keys) : null;
+    const keepIds = new Set(keys.map(k => _splitKey(k)[1]));
 
-    _deselectEdge(); // the edge toolbar lives in the viewport and would be captured
-    // Save current view, then fit to screen for capture
-    const savedView = { ...wbData.view };
-    fitToScreen();
-    // Wait for layout
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-    const canvas = await html2canvas(_vp, {
-      backgroundColor: '#0f1117',
-      useCORS: true,
-      scale: window.devicePixelRatio || 1,
+    const canvas = await window.html2canvas(_vp, {
+      backgroundColor: bg,
+      scale,
+      useCORS: false,
       logging: false,
+      width: W,
+      height: H,
+      windowWidth: Math.max(W, window.innerWidth),
+      windowHeight: Math.max(H, window.innerHeight),
+      scrollX: 0,
+      scrollY: 0,
+      onclone: (doc, vp) => {
+        vp.className = '';
+        Object.assign(vp.style, {
+          position: 'fixed', left: '0', top: '0', width: `${W}px`, height: `${H}px`, zIndex: '2147483647',
+          backgroundColor: bg, backgroundImage: 'none', boxShadow: 'none',
+        });
+        Object.assign(vp.querySelector('#wb-workspace').style, { transform: 'none', left: `${-x0}px`, top: `${-y0}px` });
+        ['#wb-svg', '#wb-edges-svg'].forEach((sel, i) => {
+          const svg = vp.querySelector(sel);
+          const nodes = svg.querySelectorAll('*');
+          svgStyles[i].forEach((props, j) => props.forEach(([p, v]) => { if (v && nodes[j]) nodes[j].style.setProperty(p, v); }));
+          svg.setAttribute('viewBox', `${x0} ${y0} ${W} ${H}`);
+          svg.setAttribute('width', W);
+          svg.setAttribute('height', H);
+          Object.assign(svg.style, { left: `${x0}px`, top: `${y0}px`, width: `${W}px`, height: `${H}px`, overflow: 'hidden' });
+        });
+        // Strokes keep their width in board px (live it is divided by the zoom).
+        vp.querySelectorAll('#wb-svg path[data-stroke]').forEach(p => p.style.setProperty('stroke-width', p.dataset.strokeW || '2'));
+        vp.querySelectorAll('#wb-cursor-layer, .wb-edge-toolbar, .wb-eraser-ring, .wb-marquee, .wb-label-input, .wb-drag-ghost, .wb-resize-handle, .wb-edge-hit, .wb-edge-handle')
+          .forEach(n => n.remove());
+        vp.querySelectorAll('.wb-selected, .wb-highlight, .wb-dimmed, .connect-from, .connect-target')
+          .forEach(n => n.classList.remove('wb-selected', 'wb-highlight', 'wb-dimmed', 'connect-from', 'connect-target'));
+        if (keep) {
+          vp.querySelectorAll(ITEM_SELECTOR).forEach(n => { if (!keep.has(_keyOfItemEl(n))) n.remove(); });
+          vp.querySelectorAll('.wb-edge-group').forEach(g => {
+            const e = wbData.edges.find(x => x.id === g.dataset.edgeId);
+            if (!e || !keepIds.has(e.fromId) || !keepIds.has(e.toId)) g.remove();
+          });
+        }
+      },
     });
 
-    // Restore view
-    wbData.view = savedView;
-    _applyTransform();
-
+    const blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('el navegador no pudo generar la imagen'))), 'image/png'));
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.download = `whiteboard-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.download = _exportFilename();
+    link.href = url;
     link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   } catch (err) {
-    showToast('Export failed: ' + err.message, 'error');
+    showToast(`No se pudo exportar la imagen: ${err?.message || err}`, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = ''; btn.innerHTML = icon('download', { size: 16 }); }
+    if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
   }
 }
 
 // ── Exports ────────────────────────────────────────────────────────────
 window.initWhiteboard   = initWhiteboard;
-window.undoStroke       = undoStroke;
+window.wbUndo           = wbUndo;
 window.setWbMode        = setWbMode;
 window.setDrawColor     = setDrawColor;
 window.setDrawWidth     = setDrawWidth;
@@ -2566,5 +3495,8 @@ window.wbPickImages     = wbPickImages;
 window.wbRemoveImage    = wbRemoveImage;
 window.wbSearch         = wbSearch;
 window.wbSearchClear    = wbSearchClear;
-window.redoStroke       = redoStroke;
+window.wbRedo           = wbRedo;
 window.exportPng        = exportPng;
+window.wbExportMenu     = wbExportMenu;
+window.wbPickFinding    = wbPickFinding;
+window.wbRefreshFindings = wbRefreshFindings;

@@ -346,6 +346,11 @@ const migrations = [
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS idx_whiteboard_state_project ON whiteboard_state(project_id)`,
+  // Sync por ítem (services/whiteboardSync.js): revisión del tablero y, en
+  // sync, la revisión de cada ítem, los tombstones de lo borrado y el flag
+  // initialized. `data` no cambia de forma: un tablero existente carga igual.
+  `ALTER TABLE whiteboard_state ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 0`,
+  `ALTER TABLE whiteboard_state ADD COLUMN IF NOT EXISTS sync JSONB NOT NULL DEFAULT '{}'`,
 
   // ── VULN TEMPLATES ───────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS vuln_templates (
