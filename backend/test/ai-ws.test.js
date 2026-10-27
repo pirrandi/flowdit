@@ -106,7 +106,7 @@ test('editing a finding pings writers with vulns:changed, never the client socke
   viewerSocket.close();
 });
 
-test('a proposal status change broadcasts the pending count to writers only', async () => {
+test('a proposal status change broadcasts the pending count to writers only, report proposals counted apart', async () => {
   const { owner, viewer, project } = await setup();
   const proposals = require('../src/services/mcp/proposals');
   const { rows: [p] } = await db.query(
@@ -117,6 +117,11 @@ test('a proposal status change broadcasts the pending count to writers only', as
     `INSERT INTO mcp_proposals (project_id, kind, payload, proposed_by) VALUES ($1,'note',$2,$3)`,
     [project.id, JSON.stringify({ text: 'n2', entity_name: 'x' }), owner.user.id]
   );
+  // Reviewed in the report builder: not part of the Findings count.
+  await db.query(
+    `INSERT INTO mcp_proposals (project_id, kind, payload, proposed_by) VALUES ($1,'report_section',$2,$3)`,
+    [project.id, JSON.stringify({ section_id: 'custom-1', field: 'content', content: '<p>x</p>' }), owner.user.id]
+  );
   const ownerSocket  = await connect(project.id, owner.accessToken);
   const viewerSocket = await connect(project.id, viewer.accessToken);
   const toOwner = collect(ownerSocket, 'mcp_proposals:changed');
@@ -125,7 +130,7 @@ test('a proposal status change broadcasts the pending count to writers only', as
   await proposals.rejectProposal({ projectId: project.id, proposalId: p.id, user: { id: owner.user.id, username: owner.user.username } });
   for (let i = 0; i < 30 && !toOwner.length; i++) await sleep(25);
   await sleep(100);
-  assert.deepEqual(toOwner.map(m => m.pending), [1]);
+  assert.deepEqual(toOwner.map(m => [m.pending, m.report_pending]), [[1, 1]]);
   assert.equal(toViewer.length, 0);
   ownerSocket.close();
   viewerSocket.close();

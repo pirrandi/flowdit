@@ -229,10 +229,12 @@ function broadcastScanEvent(projectId, data) {
 // Cantidad de propuestas de Claude Code pendientes en el proyecto, para el
 // punto en "Findings" del nav (page.js) y para refrescar el inbox abierto.
 // Las propuestas son trabajo interno: no llega a sockets de cliente.
-function broadcastProposalsChanged(projectId, pending) {
+// `pending` excludes report_section proposals (reviewed in the report
+// builder, export.html), which get their own `report_pending` count.
+function broadcastProposalsChanged(projectId, pending, reportPending = 0) {
   const room = rooms.get(projectId);
   if (!room) return;
-  const msg = JSON.stringify({ type: 'mcp_proposals:changed', pending });
+  const msg = JSON.stringify({ type: 'mcp_proposals:changed', pending, report_pending: reportPending });
   room.forEach(ws => {
     if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
   });
@@ -247,6 +249,19 @@ function broadcastVulnsChanged(projectId) {
   const room = rooms.get(projectId);
   if (!room) return;
   const msg = JSON.stringify({ type: 'vulns:changed' });
+  room.forEach(ws => {
+    if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
+// The report config was written by the server (an approved Claude Code
+// report_section proposal). Open report builders (export.html) pull the new
+// copy so their next autosave does not hit a 409. Internal: the report draft
+// never reaches a client socket.
+function broadcastReportChanged(projectId, updatedAt) {
+  const room = rooms.get(projectId);
+  if (!room) return;
+  const msg = JSON.stringify({ type: 'report_config:changed', updated_at: updatedAt });
   room.forEach(ws => {
     if (!ws._client && ws.readyState === WebSocket.OPEN) ws.send(msg);
   });
@@ -280,4 +295,4 @@ function broadcastPresence(projectId) {
   });
 }
 
-module.exports = { setup, broadcastActivity, broadcastScanEvent, broadcastProposalsChanged, broadcastVulnsChanged, broadcastWhiteboardPatch, disconnectUser, sendToUser, canOperateAiScan };
+module.exports = { setup, broadcastActivity, broadcastScanEvent, broadcastProposalsChanged, broadcastVulnsChanged, broadcastReportChanged, broadcastWhiteboardPatch, disconnectUser, sendToUser, canOperateAiScan };

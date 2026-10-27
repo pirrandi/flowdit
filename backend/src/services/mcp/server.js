@@ -7,12 +7,21 @@
 //   - Hallazgos, notas y TARGETS: solo propuestas. Proponer deja una fila en
 //     mcp_proposals que un humano aprueba desde el inbox
 //     (services/mcp/proposals.js); un target recién entra al proyecto con el
-//     scope que elige el humano al aprobar. Lo único que se puede cambiar son
-//     las PROPIAS propuestas pendientes (update_proposal / withdraw_proposal).
+//     scope que elige el humano al aprobar. Lo único que se puede cambiar
+//     directo son las PROPIAS propuestas pendientes (update_proposal /
+//     withdraw_proposal).
+//   - Hallazgos EXISTENTES: tampoco se editan directo. propose_finding_update
+//     deja una propuesta con solo los campos que cambian, y el cambio se
+//     aplica a custom_vulns cuando un writer la aprueba.
 //   - Puertos y endpoints: escritura directa (add_ports / add_endpoints),
 //     solo sobre targets en scope y activos, solo agregar (services/mcp/recon.js).
-//   - Whiteboard: escritura directa SOLO de altas (notas, tarjetas, nodos,
-//     flechas); nunca mueve, edita ni borra lo existente (services/mcp/whiteboard.js).
+//   - Whiteboard: escritura directa de altas (notas, tarjetas, nodos,
+//     flechas) y de posición (move_whiteboard_items); nunca edita el
+//     contenido ni borra lo existente (services/mcp/whiteboard.js).
+//   - Report sections: proposal only (propose_report_section), behind a
+//     second per-project opt-in (claude_code_report_enabled). Only a lead's
+//     approval writes the proposed HTML into report_config
+//     (services/mcp/report.js).
 // Ninguna tool borra ni cambia estados/scope de datos del proyecto.
 //
 // Las descripciones y los errores van en inglés a propósito: los lee el
@@ -25,6 +34,7 @@ const { projectAccessSql } = require('../ownership');
 const proposals = require('./proposals');
 const recon = require('./recon');
 const whiteboard = require('./whiteboard');
+const report = require('./report');
 const { MAX_UPLOADS_PER_PROPOSAL, MAX_UPLOAD_BYTES } = require('./uploads');
 const { version } = require('../../../package.json');
 
@@ -55,11 +65,12 @@ const LANGUAGE_RULE =
 const INSTRUCTIONS =
   'Flowdit is a pentest management platform. These tools let you READ project data ' +
   '(projects, targets, ports, endpoints, findings, whiteboard), PROPOSE new findings, notes ' +
-  'or targets, and directly ADD observed ports/endpoints and whiteboard items. ' +
+  'or targets, PROPOSE changes to existing findings (propose_finding_update), directly ADD observed ports/endpoints and whiteboard items, and MOVE whiteboard items. ' +
   'Proposals are drafts: a human must approve them in Flowdit before they become real ' +
-  'findings/notes/targets (a human also decides the scope of a proposed target). Ports and ' +
-  'endpoints can only be added to targets with scope "in" and status "active". Nothing here can ' +
-  'edit, delete or publish existing data, or change any scope. Only propose ' +
+  'findings/notes/targets or before a proposed finding change is applied (a human also decides the ' +
+  'scope of a proposed target). Ports and endpoints can only be added to targets with scope "in" and ' +
+  'status "active". Nothing here can directly edit, delete or publish existing data, or change any ' +
+  'scope: to correct an existing finding, propose the change with propose_finding_update. Only propose ' +
   'findings against targets that are in scope (list_targets shows scope/status), and ' +
   'check list_findings first to avoid duplicates. While a proposal is still pending you can ' +
   'fix it with update_proposal or withdraw it with withdraw_proposal. Screenshots are ' +
@@ -67,6 +78,12 @@ const INSTRUCTIONS =
   'Prefer a REAL screenshot; only if a real capture is impossible, generate an illustrative image and ' +
   'label it as reconstructed. Follow the cropping rules it returns and use the shell_prompt it gives ' +
   'for any terminal capture — never a placeholder prompt. ' +
+  'REPORT SECTIONS (only when get_project says can_write_report): you can PROPOSE prose for the report ' +
+  'with propose_report_section; a lead approves it before it is written into the report. First read the ' +
+  'context: get_project, list_findings (and get_finding), list_targets and get_report_sections. Write in the ' +
+  'tone and style of the existing sections and keep the user\'s structure (headings, lists, tables) unless ' +
+  'asked otherwise. Output HTML, one proposal per section or subsection. Never invent findings, numbers, ' +
+  'dates, systems or other facts that are not in the project data. ' +
   LANGUAGE_RULE;
 
 // Campos de un hallazgo, compartidos por propose_finding (obligatorios los
@@ -97,6 +114,15 @@ const TARGET_FIELDS = {
   host: z.string().trim().min(1).max(500).describe('Hostname, IP, CIDR or URL exactly as it should appear in the target list, e.g. "api.example.com"'),
   type: z.enum(TARGET_TYPES).describe('domain, ip, cidr, url or other'),
   notes: z.string().trim().max(10000).optional().describe('Why this target is relevant / how it was discovered (in Spanish)'),
+};
+
+// Fields of a report section proposal, shared by propose_report_section and
+// update_proposal. The HTML is sanitized server-side (services/mcp/report.js).
+const REPORT_FIELDS = {
+  content: z.string().trim().min(1).max(report.MAX_CONTENT_CHARS)
+    .describe('The full HTML for the section, in Spanish. Allowed: p, br, strong/b, em/i, u, ul/ol/li, h3, h4, table (thead/tbody/tr/th/td), code, pre, blockquote and a[href http/https/mailto]; anything else is stripped. Replaces the current content entirely.'),
+  rationale: z.string().trim().max(report.MAX_RATIONALE_CHARS).optional()
+    .describe('Short note for the reviewer: what changed and which project data it is based on (in Spanish)'),
 };
 
 // Host de shell a partir del nombre de la organización: minúsculas, lo que no
@@ -139,7 +165,7 @@ function uploadInstructions(uploadsUrl, shellPrompt) {
     rendering,
     ...(shellPrompt ? { shell_prompt: shellPrompt } : {}),
     response: '{ "upload_id": "...", "name": "...", "size": 123, "mime": "image/png" }',
-    next_step: `Pass the upload_id values in evidence_upload_ids of propose_finding or update_proposal (max ${MAX_UPLOADS_PER_PROPOSAL} per proposal), or in images[].upload_id of add_whiteboard_items to place them on the whiteboard. Unattached uploads expire after 24h and each upload can be used only once (one proposal or one whiteboard image).`,
+    next_step: `Pass the upload_id values in evidence_upload_ids of propose_finding, propose_finding_update or update_proposal (max ${MAX_UPLOADS_PER_PROPOSAL} per proposal), or in images[].upload_id of add_whiteboard_items to place them on the whiteboard. Unattached uploads expire after 24h and each upload can be used only once (one proposal or one whiteboard image).`,
   };
 }
 
@@ -200,6 +226,14 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     return project;
   }
 
+  // Report tools need the second opt-in (claude_code_report_enabled) on top
+  // of projectFor's checks. Same error for both report tools.
+  async function reportProjectFor(projectId, opts) {
+    const project = await projectFor(projectId, opts);
+    if (!project.claude_code_report_enabled) throw new Error(proposals.REPORT_DISABLED_MESSAGE);
+    return project;
+  }
+
   async function targetFor(projectId, targetId) {
     const { rows } = await db.query(
       `SELECT id, host, type, scope, status FROM targets WHERE id = $1 AND project_id = $2`,
@@ -254,6 +288,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       organization: org[0]?.name || null,
       date_start: p.date_start, date_end: p.date_end, your_role: p.member_role,
       can_propose: token.scopes === 'read_propose' && WRITER_ROLES.includes(p.member_role),
+      can_write_report: !!p.claude_code_report_enabled && token.scopes === 'read_propose' && WRITER_ROLES.includes(p.member_role),
       targets,
       findings_by_severity: Object.fromEntries(sev.map(r => [r.severity, r.n])),
       pending_proposals: pend[0].n,
@@ -319,7 +354,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   }));
 
   server.registerTool('list_findings', {
-    description: 'List the findings of a project (compact: no description). Use get_finding for the full detail of one.',
+    description: 'List the findings of a project (compact: no description). Use get_finding for the full detail of one. Findings cannot be edited directly: propose changes with propose_finding_update.',
     inputSchema: {
       project_id: uuid,
       severity: z.enum(SEVERITIES).optional(),
@@ -345,7 +380,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   }));
 
   server.registerTool('get_finding', {
-    description: 'Get the full detail of one finding: description, remediation, CVSS, CWE, notes and HTTP proofs (long texts are truncated).',
+    description: 'Get the full detail of one finding: description, remediation, CVSS, CWE, notes and HTTP proofs (long texts are truncated). Read it before propose_finding_update so you only propose the fields that really change (truncated texts must be rewritten in full, never sent back truncated).',
     inputSchema: { project_id: uuid, finding_id: uuid },
     annotations: READ_ONLY,
   }, guarded(async ({ project_id, finding_id }) => {
@@ -376,7 +411,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
   }));
 
   server.registerTool('list_my_proposals', {
-    description: 'List the findings/notes/targets you proposed through Claude Code and their review status (pending, approved, rejected, withdrawn). Only pending ones can be changed with update_proposal or withdrawn with withdraw_proposal.',
+    description: 'List the proposals you made through Claude Code — kind "finding" (new finding), "finding_update" (change to an existing finding, entity_id = finding id), "note", "target" or "report_section" (title = report section) — and their review status (pending, approved, rejected, withdrawn). Only pending ones can be changed with update_proposal or withdrawn with withdraw_proposal. An approved finding_update has already been applied to the finding (resulting_vuln_id).',
     inputSchema: {
       project_id: uuid.optional().describe('Limit to one project'),
       status: z.enum(['pending', 'approved', 'rejected', 'withdrawn']).optional(),
@@ -399,7 +434,8 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     if (status)     { values.push(status);     where += ` AND mp.status = $${values.length}`; }
     const { rows } = await db.query(
       `SELECT mp.id, mp.project_id, p.name AS project_name, mp.kind, mp.status,
-              mp.payload->>'title' AS title, mp.payload->>'severity' AS severity,
+              COALESCE(mp.payload->>'title', mp.payload->>'section_title') AS title, mp.payload->>'severity' AS severity,
+              mp.payload->>'section_id' AS section_id, mp.payload->>'subsection_id' AS subsection_id,
               mp.payload->>'host' AS host, mp.resulting_target_id,
               mp.entity_type, mp.entity_id, mp.payload->>'entity_name' AS entity_name,
               mp.target_id, mp.created_at, mp.updated_at, mp.reviewed_at, mp.resulting_vuln_id,
@@ -460,18 +496,62 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     });
   }));
 
+  // Cambios a un hallazgo EXISTENTE: nunca directo, siempre propuesta. Mismos
+  // campos que propose_finding (todos opcionales) menos lo que no se edita
+  // así (target, notas). Las capturas van como subidas + evidence_mode y se
+  // aplican recién al aprobar.
+  const UPDATABLE_FINDING_FIELDS = Object.fromEntries(
+    proposals.FINDING_UPDATE_FIELDS.map(k => [k, FINDING_FIELDS[k].optional()])
+  );
+  const EVIDENCE_MODE = z.enum(proposals.EVIDENCE_MODES).optional()
+    .describe('How the screenshots apply on approval: "append" (default) adds them to the current ones; "replace" replaces the current original screenshots (retest screenshots are kept)');
+  server.registerTool('propose_finding_update', {
+    description:
+      'Propose a change to an EXISTING finding of the project (e.g. one that came from an approved proposal, or ' +
+      'any finding from list_findings). This does NOT edit the finding: the change goes to the project\'s ' +
+      'proposals inbox and is only applied when a team member approves it. Pass only the fields you want to ' +
+      'change (fields equal to the current value are ignored); omitted fields keep their current value. Text ' +
+      'fields REPLACE the current text, so call get_finding first and send the full new text. http_proofs ' +
+      'REPLACES the whole list. To add or replace screenshots pass evidence_upload_ids (see ' +
+      'get_upload_instructions) and evidence_mode ("append" by default, or "replace"). Target, notes and ' +
+      'publication cannot be changed here (use propose_note for notes). Only one pending change per finding: if one exists, edit it with ' +
+      'update_proposal instead.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      finding_id: uuid.describe('Finding to change (from list_findings / get_finding)'),
+      ...UPDATABLE_FINDING_FIELDS,
+      evidence_upload_ids: z.array(uuid).min(1).max(MAX_UPLOADS_PER_PROPOSAL).optional()
+        .describe(`Screenshots to add or replace (max ${MAX_UPLOADS_PER_PROPOSAL}): upload_id values returned by POST /mcp/uploads. See get_upload_instructions.`),
+      evidence_mode: EVIDENCE_MODE,
+    },
+    annotations: PROPOSE,
+  }, guarded(async ({ project_id, ...input }) => {
+    await projectFor(project_id, { propose: true });
+    const prop = await proposals.createFindingUpdateProposal({ projectId: project_id, user, tokenId: token.id, input });
+    return ok({
+      proposal_id: prop.id, status: prop.status, finding: prop.entity_name, proposed_fields: prop.fields,
+      evidence_images: prop.evidence_images,
+      message: 'Finding change proposed. It is pending human review in Flowdit; the finding is unchanged until approved.',
+    });
+  }));
+
   server.registerTool('update_proposal', {
     description:
       'Change one of YOUR proposals while it is still pending review (not yet approved, rejected or ' +
       'withdrawn). Only the fields you pass change. Finding proposals accept the propose_finding ' +
       'fields (plus target_id; evidence_upload_ids REPLACES the attached screenshots, [] removes ' +
       'them); note proposals accept text, entity_type and entity_id; target proposals accept host, ' +
-      'type and notes (never scope). Scope and duplicate checks run ' +
+      'type and notes (never scope); finding_update proposals accept the propose_finding_update fields ' +
+      '(title, severity, category, description, remediation, cvss_vector, cvss_score, cwe, http_proofs, ' +
+      'evidence_upload_ids and evidence_mode — never the finding they apply to; evidence_upload_ids REPLACES ' +
+      'the proposed screenshots, [] removes them); report_section proposals accept content and rationale (never the ' +
+      'section they apply to). Scope and duplicate checks run ' +
       'again as when proposing.' +
       ' ' + LANGUAGE_RULE,
     inputSchema: {
       project_id: uuid,
-      proposal_id: uuid.describe('From propose_finding/propose_note/propose_target or list_my_proposals'),
+      proposal_id: uuid.describe('From propose_finding/propose_note/propose_target/propose_finding_update or list_my_proposals'),
       target_id: uuid.optional().describe('Finding proposals only: move it to another in-scope target'),
       ...Object.fromEntries(Object.entries(FINDING_FIELDS).map(([k, v]) => [k, v.optional()])),
       entity_type: z.enum(proposals.NOTE_ENTITY_TYPES).optional().describe('Note proposals only'),
@@ -480,6 +560,9 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       host: TARGET_FIELDS.host.optional().describe('Target proposals only'),
       type: TARGET_FIELDS.type.optional().describe('Target proposals only'),
       notes: TARGET_FIELDS.notes.describe('Target proposals only'),
+      evidence_mode: EVIDENCE_MODE.describe('Finding change proposals only: "append" adds the screenshots to the finding, "replace" replaces its original screenshots'),
+      content: REPORT_FIELDS.content.optional().describe('Report section proposals only: the full new HTML'),
+      rationale: REPORT_FIELDS.rationale.describe('Report section proposals only'),
     },
     annotations: { ...PROPOSE, idempotentHint: true },
   }, guarded(async ({ project_id, proposal_id, ...fields }) => {
@@ -519,6 +602,56 @@ function buildMcpServer({ user, token, uploadsUrl }) {
     return ok({
       proposal_id: prop.id, status: prop.status, host: prop.host,
       message: 'Target proposed. It is pending human review in Flowdit; the reviewer decides its scope. Do not test it until it appears in list_targets with scope "in" and status "active".',
+    });
+  }));
+
+  // ── Report sections (proposal only, opt-in per project) ───────────────
+  server.registerTool('get_report_sections', {
+    description:
+      'Get the sections of the project report (as laid out in the report builder) with their current HTML, so you ' +
+      'can write in the same tone and structure. Each section has id, type, title, visible, editable and its children ' +
+      '(subsections). Only editable targets can be proposed with propose_report_section: custom sections, their ' +
+      'subsections and the executive summary (exec-summary, whose intro text is its description). The other ' +
+      'sections are generated from project data and cannot be written. Requires report proposals to be enabled ' +
+      'for the project (get_project → can_write_report).',
+    inputSchema: { project_id: uuid },
+    annotations: READ_ONLY,
+  }, guarded(async ({ project_id }) => {
+    await reportProjectFor(project_id);
+    const { rows } = await db.query(`SELECT data, updated_at FROM report_config WHERE project_id = $1`, [project_id]);
+    const sections = report.describeSections(rows[0]?.data);
+    if (!sections.length) {
+      return ok({
+        sections: [],
+        hint: 'This project has no saved report yet. A lead must open the report builder (Export) once to create it; until then there are no sections to propose content for.',
+      });
+    }
+    return ok({ sections, updated_at: rows[0].updated_at });
+  }));
+
+  server.registerTool('propose_report_section', {
+    description:
+      'Propose the HTML content of ONE report section or subsection for human review. This does NOT edit the ' +
+      'report: the proposal goes to the project\'s proposals inbox and is written into the report only when a lead ' +
+      '(owner or editor) approves it, replacing that section\'s current content. Call get_report_sections first: ' +
+      'section_id (and subsection_id for a subsection of a custom section) must be an editable target. For the ' +
+      'executive summary (section_id "exec-summary") the content becomes its intro text. Only one pending proposal ' +
+      'per section/subsection: if one exists, edit it with update_proposal. Base the text only on project data ' +
+      '(findings, targets, project description); never invent facts.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      section_id: z.string().trim().min(1).max(200).describe('Section id from get_report_sections'),
+      subsection_id: z.string().trim().min(1).max(200).optional().describe('Subsection id (children[].id) of a custom section; omit to write the section itself'),
+      ...REPORT_FIELDS,
+    },
+    annotations: PROPOSE,
+  }, guarded(async (input) => {
+    await reportProjectFor(input.project_id, { propose: true });
+    const prop = await proposals.createReportSectionProposal({ projectId: input.project_id, user, tokenId: token.id, input });
+    return ok({
+      proposal_id: prop.id, status: prop.status, section: prop.section_title, subsection: prop.subsection_title, field: prop.field,
+      message: 'Report content proposed. It is pending review by a lead in Flowdit; the report is unchanged until approved.',
     });
   }));
 
@@ -612,7 +745,7 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       'that target\'s node when it is on the board), sticky notes and images (screenshots uploaded first with ' +
       `POST /mcp/uploads, see get_upload_instructions; max ${whiteboard.MAX_IMAGES_PER_CALL} per call; each upload is ` +
       'consumed and cannot be reused). ADD-ONLY: existing items are never ' +
-      'moved, edited or removed. The server places the batch in free space to the right of the current ' +
+      'edited or removed (use move_whiteboard_items to reposition them). The server places the batch in free space to the right of the current ' +
       'board; dx/dy optionally arrange items relative to each other inside the batch, and w/h optionally ' +
       'size the NEW items (larger items get larger grid cells so the batch never overlaps). Returns the new ' +
       'ids with their geometry (use the ids with connect_whiteboard_items).' +
@@ -698,6 +831,27 @@ function buildMcpServer({ user, token, uploadsUrl }) {
       })),
       skipped: r.skipped,
     });
+  }));
+
+  server.registerTool('move_whiteboard_items', {
+    description:
+      `Move items already on the whiteboard (max ${whiteboard.MAX_MOVES_PER_CALL} per call): target nodes (id = target id), ` +
+      'cards, sticky notes and images, by id from get_whiteboard. x/y are the new absolute top-left position in board ' +
+      `pixels (clamped to ±${whiteboard.MAX_COORD}); arrows follow their items. Only the position changes — content, ` +
+      'size and connections stay as they are. Items already at that position are reported as unchanged.' +
+      ' ' + LANGUAGE_RULE,
+    inputSchema: {
+      project_id: uuid,
+      moves: z.array(z.object({
+        id: z.string().uuid(),
+        x: z.number().finite().describe('New absolute x (left) in board pixels'),
+        y: z.number().finite().describe('New absolute y (top) in board pixels'),
+      })).min(1).max(whiteboard.MAX_MOVES_PER_CALL),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, guarded(async ({ project_id, moves }) => {
+    await projectFor(project_id, { propose: true });
+    return ok(await whiteboard.moveItems({ projectId: project_id, user, moves }));
   }));
 
   server.registerTool('get_upload_instructions', {

@@ -1,6 +1,6 @@
-// Whiteboard para Claude Code: leer un resumen y AGREGAR cosas (notas,
-// tarjetas, nodos de target, flechas). Nunca borra, mueve ni edita lo que ya
-// está: el tablero es del equipo.
+// Whiteboard para Claude Code: leer un resumen, AGREGAR cosas (notas,
+// tarjetas, nodos de target, flechas) y MOVER ítems (solo x/y). Nunca borra
+// ni edita el contenido de lo que ya está: el tablero es del equipo.
 //
 // El tablero es un único JSON por proyecto (whiteboard_state.data) que los
 // navegadores guardan mezclando ítem por ítem (services/whiteboardSync.js).
@@ -22,6 +22,9 @@ const { inTransaction } = wbSync;
 
 const MAX_ITEMS_PER_CALL = 30;
 const MAX_EDGES_PER_CALL = 50;
+const MAX_MOVES_PER_CALL = 50;
+// Rango de x/y absolutos que acepta move_whiteboard_items.
+const MAX_COORD = 50000;
 // Cada imagen copia hasta 4 MB dentro de la transacción del tablero.
 const MAX_IMAGES_PER_CALL = 10;
 // Tope del tablero entero: un Claude Code en loop no debe poder inflar el
@@ -463,9 +466,47 @@ async function connectItems({ projectId, user, edges }) {
   return result;
 }
 
+// Mueve ítems existentes (nodos, tarjetas, notas, imágenes) a x/y absolutos.
+// Solo cambia la posición; el resto del ítem queda igual. Con la revisión
+// nueva marcada en cada ítem movido, las pestañas lo traen con su pull
+// (op 'rev') y una edición local pendiente de ese ítem gana igual que con
+// cualquier otro cambio remoto.
+async function moveItems({ projectId, user, moves }) {
+  if (!moves.length) throw new WhiteboardError('pass at least one move');
+  if (moves.length > MAX_MOVES_PER_CALL) throw new WhiteboardError(`at most ${MAX_MOVES_PER_CALL} moves per call`);
+  if (new Set(moves.map(m => m.id)).size !== moves.length) throw new WhiteboardError('each id can be moved only once per call');
+  const clamp = v => Math.round(Math.max(-MAX_COORD, Math.min(MAX_COORD, v)));
+  const result = await inTransaction(async client => {
+    const { board, state } = await lockBoard(client, projectId);
+    const moved = { nodes: [], cards: [], notes: [], images: [] };
+    const out = [], unchanged = [];
+    for (const m of moves) {
+      const kind = Object.keys(moved).find(k => board[k].some(it => it.id === m.id));
+      if (!kind) throw new WhiteboardError(`"${m.id}" is not a target node, card, note or image on this whiteboard — call get_whiteboard`);
+      const item = board[kind].find(it => it.id === m.id);
+      const x = clamp(m.x), y = clamp(m.y);
+      if (item.x === x && item.y === y) { unchanged.push(m.id); continue; }
+      item.x = x; item.y = y;
+      moved[kind].push(item);
+      out.push({ id: item.id, ...geometry(kind.slice(0, -1), item) });
+    }
+    const revision = out.length ? await saveAdded(client, projectId, board, state, moved, user.id) : null;
+    return { moved: out, unchanged, revision };
+  });
+  if (result.revision !== null) ws.broadcastWhiteboardPatch(projectId, { op: 'rev', source: CREATED_BY, revision: result.revision });
+  delete result.revision;
+  if (result.moved.length) {
+    await activity.log({
+      projectId, user, action: 'claude_code_whiteboard_moved', entityType: 'whiteboard',
+      entityName: 'Whiteboard', meta: { via: 'claude-code', count: result.moved.length },
+    });
+  }
+  return result;
+}
+
 module.exports = {
-  getWhiteboard, addItems, connectItems, geometry, WhiteboardError,
-  MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_IMAGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
+  getWhiteboard, addItems, connectItems, moveItems, geometry, WhiteboardError,
+  MAX_ITEMS_PER_CALL, MAX_EDGES_PER_CALL, MAX_MOVES_PER_CALL, MAX_COORD, MAX_IMAGES_PER_CALL, MAX_BOARD_ITEMS, NOTE_COLORS, CARD_COLORS,
   EDGE_COLORS, EDGE_STYLES, EDGE_ARROWS, REF_TYPES,
   SIZE, MIN_SIZE, MAX_ITEM_SIZE,
 };

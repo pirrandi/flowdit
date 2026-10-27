@@ -110,6 +110,45 @@ test('deleting the user who last saved the report keeps the report config', asyn
   assert.equal(got.body.updated_by, null);
 });
 
+test('report config PUT with base_updated_at refuses stale copies with 409 and the current server copy', async () => {
+  const owner = await registerUser();
+  const project = await createProject(owner.accessToken);
+  const auth = { Authorization: `Bearer ${owner.accessToken}` };
+  const url = `/api/projects/${project.id}/report-config`;
+
+  // null = "I saw no saved report": fine while there is none.
+  const first = await request(app).put(url).set(auth).send({ data: SAMPLE, base_updated_at: null });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const t1 = first.body.updated_at;
+
+  // Building on the current copy works and moves the stamp forward.
+  const second = await request(app).put(url).set(auth)
+    .send({ data: { ...SAMPLE, meta: { preparedBy: 'Tab A' } }, base_updated_at: t1 });
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  const t2 = second.body.updated_at;
+  assert.ok(new Date(t2) > new Date(t1));
+
+  // A tab still on t1 (or one that never saw a saved report) is refused.
+  for (const base of [t1, null]) {
+    const stale = await request(app).put(url).set(auth)
+      .send({ data: { ...SAMPLE, meta: { preparedBy: 'Tab B' } }, base_updated_at: base });
+    assert.equal(stale.status, 409, `base ${base}`);
+    assert.equal(stale.body.current.data.meta.preparedBy, 'Tab A');
+    assert.equal(stale.body.current.updated_at, t2);
+  }
+  const got = await request(app).get(url).set(auth);
+  assert.equal(got.body.data.meta.preparedBy, 'Tab A');
+  assert.equal(got.body.updated_at, t2);
+
+  // Without base_updated_at it is still last-write-wins (older clients).
+  const legacy = await request(app).put(url).set(auth).send({ data: { ...SAMPLE, meta: { preparedBy: 'Legacy' } } });
+  assert.equal(legacy.status, 200);
+  assert.equal(legacy.body.data.meta.preparedBy, 'Legacy');
+
+  const bad = await request(app).put(url).set(auth).send({ data: SAMPLE, base_updated_at: 'yesterday' });
+  assert.equal(bad.status, 400);
+});
+
 // ── report templates ─────────────────────────────────────────────────
 
 test('a saved report template comes back on the next session', async () => {

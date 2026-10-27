@@ -113,7 +113,13 @@ async function request(method, path, body, retry = true) {
   }
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed');
+  if (!res.ok) {
+    // The body travels with the error: some answers carry state the caller
+    // needs (e.g. the current server copy on a report-config 409).
+    const err = new ApiError(res.status, data.error || 'Request failed');
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
@@ -283,7 +289,9 @@ const api = {
   },
   // Inbox de propuestas de Claude Code (hallazgos/notas pendientes de revisión).
   mcpProposals: {
-    list:    (pid, status = 'pending') => request('GET',  `/projects/${pid}/mcp-proposals?status=${status}`),
+    // filter: { kind } keeps only that kind, { exclude_kind } drops it.
+    list:    (pid, status = 'pending', filter = {}) =>
+      request('GET', `/projects/${pid}/mcp-proposals?${new URLSearchParams({ status, ...filter })}`),
     approve: (pid, id, body)           => request('POST', `/projects/${pid}/mcp-proposals/${id}/approve`, body),
     reject:  (pid, id)                 => request('POST', `/projects/${pid}/mcp-proposals/${id}/reject`),
     // Capturas adjuntas como data URLs; el listado solo trae metadatos.
@@ -312,7 +320,10 @@ const api = {
   // priority, business impact, executive action, rewritten texts).
   reportConfig: {
     get:  (pid)       => request('GET', `/projects/${pid}/report-config`),
-    save: (pid, data) => request('PUT', `/projects/${pid}/report-config`, { data }),
+    // baseUpdatedAt: updated_at of the copy being edited (null = none saved
+    // yet). The server answers 409 + { current } if the stored copy changed.
+    save: (pid, data, baseUpdatedAt) => request('PUT', `/projects/${pid}/report-config`,
+      baseUpdatedAt === undefined ? { data } : { data, base_updated_at: baseUpdatedAt }),
   },
   aiScan: {
     listSessions:  (pid)          => request('GET',    `/projects/${pid}/ai-scan/sessions`),

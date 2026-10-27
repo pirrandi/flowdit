@@ -209,7 +209,8 @@ wsClient.on('ai_scan:event', (msg) => {
 async function initNavProposalsBadge() {
   if (!state.currentProject) return;
   try {
-    const pending = await api.mcpProposals.list(state.currentProject.id);
+    // Report proposals are reviewed in the report builder, not in Findings.
+    const pending = await api.mcpProposals.list(state.currentProject.id, 'pending', { exclude_kind: 'report_section' });
     setNavProposalsBadge(pending.length);
   } catch {}
 }

@@ -110,9 +110,9 @@ test('valid token authenticates /mcp and initialize works', async () => {
   const names = tools.body.result.tools.map(t => t.name).sort();
   assert.deepEqual(names, [
     'add_endpoints', 'add_ports', 'add_whiteboard_items', 'connect_whiteboard_items',
-    'get_finding', 'get_project', 'get_upload_instructions', 'get_whiteboard', 'list_endpoints', 'list_findings',
-    'list_my_proposals', 'list_ports', 'list_projects', 'list_targets', 'propose_finding',
-    'propose_note', 'propose_target', 'update_proposal', 'withdraw_proposal',
+    'get_finding', 'get_project', 'get_report_sections', 'get_upload_instructions', 'get_whiteboard', 'list_endpoints', 'list_findings',
+    'list_my_proposals', 'list_ports', 'list_projects', 'list_targets', 'move_whiteboard_items', 'propose_finding',
+    'propose_finding_update', 'propose_note', 'propose_report_section', 'propose_target', 'update_proposal', 'withdraw_proposal',
   ]);
 });
 
@@ -883,6 +883,7 @@ test('viewers cannot add ports, endpoints, whiteboard items or propose targets',
     ['add_ports', { target_id: target.id, ports: [{ port: 80 }] }],
     ['add_endpoints', { target_id: target.id, endpoints: [{ path: '/' }] }],
     ['add_whiteboard_items', { notes: [{ text: 'hola' }] }],
+    ['move_whiteboard_items', { moves: [{ id: target.id, x: 0, y: 0 }] }],
     ['get_whiteboard', {}],
     ['propose_target', { host: 'x.example.com', type: 'domain' }],
   ]) {
@@ -975,6 +976,50 @@ test('whiteboard additions keep existing items intact and consecutive batches do
   assert.deepEqual([noteEdge.style, noteEdge.arrow, noteEdge.color], ['dashed', 'both', '#43a047']);
   const plain = summary.data.edges.find(e => e.from_id === card.id);
   assert.deepEqual([plain.style, plain.arrow, plain.color, plain.from_endpoint_id], ['solid', 'end', null, null]);
+});
+
+test('whiteboard items can be moved: only x/y change, revisions advance, unknown ids are refused', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const note = { id: '11111111-1111-4111-8111-111111111111', x: 500, y: 100, w: 300, text: 'humano', color: '#ffd96a' };
+  const card = { id: '22222222-2222-4222-8222-222222222222', x: 100, y: 600, title: 'Card', body: 'b', color: '#1e3a5f' };
+  const put = await request(app).put(`/api/projects/${project.id}/whiteboard`).set(auth(owner.accessToken))
+    .send({ data: { nodes: [{ id: target.id, x: 80, y: 80, collapsed: true }], notes: [note], cards: [card], edges: [], strokes: [] } });
+  assert.equal(put.status, 200);
+  const before = await request(app).get(`/api/projects/${project.id}/whiteboard`).set(auth(owner.accessToken));
+  const rev = before.body.revision;
+
+  const r = await callTool(ownerToken.token, 'move_whiteboard_items', {
+    project_id: project.id,
+    moves: [{ id: target.id, x: 1000.4, y: -20 }, { id: note.id, x: 999999, y: 10 }, { id: card.id, x: 100, y: 600 }],
+  });
+  assert.equal(r.isError, false, r.text);
+  assert.deepEqual(r.data.moved.map(m => [m.id, m.x, m.y]), [[target.id, 1000, -20], [note.id, 50000, 10]]);
+  assert.equal(r.data.moved[1].w, 300, 'reports the real size');
+  assert.deepEqual(r.data.unchanged, [card.id]);
+
+  const { rows: [wb] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  assert.deepEqual(wb.data.nodes[0], { id: target.id, x: 1000, y: -20, collapsed: true });
+  assert.deepEqual(wb.data.notes[0], { ...note, x: 50000, y: 10 });
+  assert.deepEqual(wb.data.cards[0], card);
+
+  // Las pestañas traen solo lo movido con ?since.
+  const delta = await request(app).get(`/api/projects/${project.id}/whiteboard?since=${rev}`).set(auth(owner.accessToken));
+  assert.equal(delta.body.full, false);
+  assert.deepEqual(delta.body.changes.nodes.map(n => n.id), [target.id]);
+  assert.deepEqual(delta.body.changes.notes.map(n => n.id), [note.id]);
+  assert.deepEqual(delta.body.changes.cards, []);
+
+  const unknown = await callTool(ownerToken.token, 'move_whiteboard_items', {
+    project_id: project.id, moves: [{ id: note.id, x: 0, y: 0 }, { id: '33333333-3333-4333-8333-333333333333', x: 0, y: 0 }],
+  });
+  assert.equal(unknown.isError, true);
+  assert.match(unknown.text, /is not a target node, card, note or image/);
+  const dup = await callTool(ownerToken.token, 'move_whiteboard_items', {
+    project_id: project.id, moves: [{ id: note.id, x: 0, y: 0 }, { id: note.id, x: 1, y: 1 }],
+  });
+  assert.equal(dup.isError, true);
+  const { rows: [after] } = await db.query(`SELECT data FROM whiteboard_state WHERE project_id = $1`, [project.id]);
+  assert.deepEqual([after.data.notes[0].x, after.data.notes[0].y], [50000, 10], 'a refused call moves nothing');
 });
 
 test('whiteboard items can be sized on creation, sizes are clamped and reported, and sized batches do not overlap', async () => {
@@ -1216,4 +1261,599 @@ test('whiteboard images refuse foreign, attached and expired uploads without con
   // Todo se revirtió: ni imágenes ni tablero.
   assert.equal((await db.query('SELECT 1 FROM whiteboard_images')).rows.length, 0);
   assert.equal((await db.query('SELECT 1 FROM whiteboard_state')).rows.length, 0);
+});
+
+// ── Cambios propuestos a hallazgos existentes (finding_update) ───────────
+
+// Hallazgo real del proyecto creado a mano, publicado y con evidencia, para
+// verificar que aprobar un cambio no toca lo que no venía en la propuesta.
+async function createFinding(ownerToken, projectId, targetId, body = {}) {
+  const res = await request(app).post(`/api/projects/${projectId}/vulns`).set(auth(ownerToken)).send({
+    name: 'SQL injection en login', severity: 'medium', category: 'Injection',
+    description: 'Original description', remediation: 'Original remediation', cwe: 'CWE-89',
+    target_id: targetId, evidence: [{ data: 'data:image/png;base64,AAAA', name: 'a.png', phase: 'original' }],
+    ...body,
+  });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  await db.query(`UPDATE custom_vulns SET client_visible = true, origin = 'manual' WHERE id = $1`, [res.body.id]);
+  return res.body;
+}
+
+test('propose_finding_update leaves the finding untouched and approval applies only the changed fields', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const finding = await createFinding(owner.accessToken, project.id, target.id);
+
+  const prop = await callTool(ownerToken.token, 'propose_finding_update', {
+    project_id: project.id, finding_id: finding.id,
+    severity: 'critical', description: 'Nueva descripción', cwe: 'CWE-89', // cwe igual al actual: se ignora
+  });
+  assert.equal(prop.isError, false, prop.text);
+  assert.deepEqual(prop.data.proposed_fields.sort(), ['description', 'severity']);
+
+  const { rows: [stored] } = await db.query('SELECT kind, entity_type, entity_id, target_id, payload FROM mcp_proposals WHERE id=$1', [prop.data.proposal_id]);
+  assert.equal(stored.kind, 'finding_update');
+  assert.equal(stored.entity_type, 'finding');
+  assert.equal(stored.entity_id, finding.id);
+  assert.equal(stored.target_id, target.id);
+  assert.deepEqual(stored.payload, { severity: 'critical', description: 'Nueva descripción', entity_name: finding.name });
+
+  // Hasta aprobar, el hallazgo sigue igual.
+  const { rows: [before] } = await db.query('SELECT severity, description FROM custom_vulns WHERE id=$1', [finding.id]);
+  assert.equal(before.severity, 'medium');
+  assert.equal(before.description, 'Original description');
+
+  const act = await db.query(`SELECT meta FROM activity_log WHERE action='claude_code_proposed'`);
+  assert.equal(act.rows[0].meta.kind, 'finding_update');
+  assert.deepEqual(act.rows[0].meta.fields.sort(), ['description', 'severity']);
+
+  // El inbox trae los valores actuales para el antes/después.
+  const inbox = await request(app).get(`/api/projects/${project.id}/mcp-proposals`).set(auth(pentester.accessToken));
+  assert.equal(inbox.status, 200);
+  assert.equal(inbox.body[0].kind, 'finding_update');
+  assert.equal(inbox.body[0].current_finding.severity, 'medium');
+  assert.equal(inbox.body[0].current_finding.title, finding.name);
+
+  const res = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${prop.data.proposal_id}/approve`).set(auth(pentester.accessToken));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.resulting_vuln_id, finding.id);
+
+  const { rows: [v] } = await db.query('SELECT * FROM custom_vulns WHERE id=$1', [finding.id]);
+  assert.equal(v.severity, 'critical');
+  assert.equal(v.description, 'Nueva descripción');
+  assert.equal(v.name, finding.name);
+  assert.equal(v.remediation, 'Original remediation');
+  assert.equal(v.category, 'Injection');
+  assert.equal(v.updated_by, pentester.user.id);
+  assert.equal(v.client_visible, true);
+  assert.equal(v.origin, 'manual');
+  assert.equal(v.evidence.length, 1);
+  assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM custom_vulns')).rows[0].n, 1);
+
+  const { rows: [p] } = await db.query('SELECT status, resulting_vuln_id FROM mcp_proposals WHERE id=$1', [prop.data.proposal_id]);
+  assert.equal(p.status, 'approved');
+  assert.equal(p.resulting_vuln_id, finding.id);
+  const approved = await db.query(`SELECT meta FROM activity_log WHERE action='claude_code_proposal_approved'`);
+  assert.equal(approved.rows[0].meta.via, 'claude-code');
+  assert.equal(approved.rows[0].meta.kind, 'finding_update');
+});
+
+test('propose_finding_update works on a finding that came from an approved proposal', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const id = await propose(ownerToken.token, project, target);
+  const ok = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${id}/approve`).set(auth(owner.accessToken));
+  const vulnId = ok.body.resulting_vuln_id;
+
+  const prop = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: vulnId, title: 'XSS reflejado en búsqueda', remediation: 'Codificar la salida' });
+  assert.equal(prop.isError, false, prop.text);
+  const res = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${prop.data.proposal_id}/approve`).set(auth(owner.accessToken));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const { rows: [v] } = await db.query('SELECT name, remediation, severity, client_visible, origin FROM custom_vulns WHERE id=$1', [vulnId]);
+  assert.equal(v.name, 'XSS reflejado en búsqueda');
+  assert.equal(v.remediation, 'Codificar la salida');
+  assert.equal(v.severity, FINDING.severity);
+  assert.equal(v.client_visible, false);
+  assert.equal(v.origin, 'claude_code');
+});
+
+test('a second pending change for the same finding is refused; update_proposal edits it instead', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const finding = await createFinding(owner.accessToken, project.id, target.id);
+  const first = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: finding.id, severity: 'high' });
+  assert.equal(first.isError, false, first.text);
+
+  const again = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: finding.id, severity: 'low' });
+  assert.equal(again.isError, true);
+  assert.match(again.text, /already pending review/);
+  assert.match(again.text, new RegExp(first.data.proposal_id));
+  assert.match(again.text, /update_proposal/);
+
+  const upd = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: first.data.proposal_id, severity: 'low', cwe: 'CWE-90' });
+  assert.equal(upd.isError, false, upd.text);
+  const { rows: [p] } = await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [first.data.proposal_id]);
+  assert.deepEqual(p.payload, { severity: 'low', cwe: 'CWE-90', entity_name: finding.name });
+
+  // El hallazgo al que aplica no se puede cambiar, ni otros campos ajenos.
+  const moved = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: first.data.proposal_id, entity_id: target.id });
+  assert.equal(moved.isError, true);
+  assert.match(moved.text, /cannot be set on a finding_update proposal/);
+  const ev = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: first.data.proposal_id, evidence: 'x' });
+  assert.equal(ev.isError, true);
+
+  // Sin campos, o con valores iguales a los actuales: nada que proponer.
+  const other = await createFinding(owner.accessToken, project.id, target.id, { name: 'Otro hallazgo' });
+  const empty = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: other.id });
+  assert.equal(empty.isError, true);
+  assert.match(empty.text, /nothing to change/);
+  const same = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: other.id, severity: 'medium' });
+  assert.equal(same.isError, true);
+  assert.match(same.text, /already has that value/);
+});
+
+test('propose_finding_update refuses findings of other projects and duplicate titles', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const otherProject = await createProject(owner.accessToken, { name: 'Other' });
+  const otherTarget = await createTarget(owner.accessToken, otherProject.id);
+  const foreign = await createFinding(owner.accessToken, otherProject.id, otherTarget.id);
+
+  const res = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: foreign.id, severity: 'low' });
+  assert.equal(res.isError, true);
+  assert.match(res.text, /does not belong to this project/);
+
+  const a = await createFinding(owner.accessToken, project.id, target.id, { name: 'Open redirect' });
+  const b = await createFinding(owner.accessToken, project.id, target.id, { name: 'CSRF en perfil' });
+  const dup = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: b.id, title: ' open REDIRECT' });
+  assert.equal(dup.isError, true);
+  assert.match(dup.text, /already exists for this target/);
+  // Renombrarse a sí mismo (otro casing) no choca consigo mismo.
+  const self = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: a.id, title: 'Open Redirect' });
+  assert.equal(self.isError, false, self.text);
+
+  // Un hallazgo creado con ese título mientras la propuesta esperaba bloquea la aprobación.
+  const pending = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: b.id, title: 'IDOR en facturas' });
+  assert.equal(pending.isError, false, pending.text);
+  await createFinding(owner.accessToken, project.id, target.id, { name: 'IDOR en facturas' });
+  const blocked = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${pending.data.proposal_id}/approve`).set(auth(owner.accessToken));
+  assert.equal(blocked.status, 409);
+  const { rows: [bv] } = await db.query('SELECT name FROM custom_vulns WHERE id=$1', [b.id]);
+  assert.equal(bv.name, 'CSRF en perfil');
+  const { rows: [bp] } = await db.query('SELECT status FROM mcp_proposals WHERE id=$1', [pending.data.proposal_id]);
+  assert.equal(bp.status, 'pending');
+});
+
+test('rejecting a finding change leaves the finding unchanged; a deleted finding cannot be updated', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const finding = await createFinding(owner.accessToken, project.id, target.id);
+  const prop = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: finding.id, severity: 'info', remediation: 'Otra' });
+  const rej = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${prop.data.proposal_id}/reject`).set(auth(owner.accessToken));
+  assert.equal(rej.status, 200);
+  const { rows: [v] } = await db.query('SELECT severity, remediation, updated_by FROM custom_vulns WHERE id=$1', [finding.id]);
+  assert.equal(v.severity, 'medium');
+  assert.equal(v.remediation, 'Original remediation');
+
+  // Rechazada, ya no bloquea una nueva propuesta para el mismo hallazgo.
+  const again = await callTool(ownerToken.token, 'propose_finding_update', { project_id: project.id, finding_id: finding.id, severity: 'high' });
+  assert.equal(again.isError, false, again.text);
+  await db.query('DELETE FROM custom_vulns WHERE id=$1', [finding.id]);
+  const gone = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${again.data.proposal_id}/approve`).set(auth(owner.accessToken));
+  assert.equal(gone.status, 409);
+  assert.match(gone.body.error, /no longer exists/);
+});
+
+test('a read-only token or a viewer cannot propose finding changes', async () => {
+  const { owner, project, target } = await setup();
+  const finding = await createFinding(owner.accessToken, project.id, target.id);
+  const readOnly = await createToken(owner.accessToken, { scopes: 'read' });
+  const r = await callTool(readOnly.token, 'propose_finding_update', { project_id: project.id, finding_id: finding.id, severity: 'low' });
+  assert.equal(r.isError, true);
+  assert.match(r.text, /read-only/);
+  const viewer = await addMember(owner.accessToken, project.id, 'viewer');
+  const vt = await createToken(viewer.accessToken);
+  const v = await callTool(vt.token, 'propose_finding_update', { project_id: project.id, finding_id: finding.id, severity: 'low' });
+  assert.equal(v.isError, true);
+  assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM mcp_proposals')).rows[0].n, 0);
+});
+
+// ── Capturas en cambios a hallazgos existentes ─────────────────────────
+
+const pngUrl = buf => `data:image/png;base64,${buf.toString('base64')}`;
+
+test('propose_finding_update can carry only screenshots; approval appends them to the evidence', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const finding = await createFinding(owner.accessToken, project.id, target.id);
+  const u = await uploadOk(ownerToken.token, PNG, 'nueva.png');
+
+  const prop = await callTool(ownerToken.token, 'propose_finding_update', {
+    project_id: project.id, finding_id: finding.id, evidence_upload_ids: [u.upload_id],
+  });
+  assert.equal(prop.isError, false, prop.text);
+  assert.deepEqual(prop.data.proposed_fields, ['evidence']);
+  assert.equal(prop.data.evidence_images, 1);
+  const { rows: [stored] } = await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [prop.data.proposal_id]);
+  assert.deepEqual(stored.payload, { entity_name: finding.name, evidence_mode: 'append' });
+
+  // Hasta aprobar, la evidencia sigue igual.
+  assert.equal((await db.query('SELECT evidence FROM custom_vulns WHERE id=$1', [finding.id])).rows[0].evidence.length, 1);
+  const inbox = await request(app).get(`/api/projects/${project.id}/mcp-proposals`).set(auth(owner.accessToken));
+  assert.equal(inbox.body[0].evidence_uploads.length, 1);
+  assert.equal(inbox.body[0].current_finding.evidence_count, 1);
+  assert.equal(inbox.body[0].current_finding.original_evidence_count, 1);
+
+  const res = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${prop.data.proposal_id}/approve`).set(auth(owner.accessToken));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const { rows: [v] } = await db.query('SELECT evidence, severity, client_visible FROM custom_vulns WHERE id=$1', [finding.id]);
+  assert.deepEqual(v.evidence, [
+    { data: 'data:image/png;base64,AAAA', name: 'a.png', phase: 'original' },
+    { data: pngUrl(PNG), name: 'nueva.png', phase: 'original' },
+  ]);
+  assert.equal(v.severity, 'medium');
+  assert.equal(v.client_visible, true);
+  const approved = await db.query(`SELECT meta FROM activity_log WHERE action='claude_code_proposal_approved'`);
+  assert.deepEqual(approved.rows[0].meta.fields, ['evidence']);
+  assert.equal(approved.rows[0].meta.evidence_images, 1);
+});
+
+test('evidence_mode replace swaps the original screenshots and keeps retest ones', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const finding = await createFinding(owner.accessToken, project.id, target.id, {
+    evidence: [
+      { data: 'data:image/png;base64,AAAA', name: 'a.png', phase: 'original' },
+      { data: 'data:image/png;base64,BBBB', name: 'b.png' },
+      { data: 'data:image/png;base64,CCCC', name: 'retest.png', phase: 'retest' },
+    ],
+  });
+  const u = await uploadOk(ownerToken.token, PNG, 'real.png');
+  const prop = await callTool(ownerToken.token, 'propose_finding_update', {
+    project_id: project.id, finding_id: finding.id, severity: 'high',
+    evidence_upload_ids: [u.upload_id], evidence_mode: 'replace',
+  });
+  assert.equal(prop.isError, false, prop.text);
+  assert.deepEqual(prop.data.proposed_fields.sort(), ['evidence', 'severity']);
+
+  const res = await request(app).post(`/api/projects/${project.id}/mcp-proposals/${prop.data.proposal_id}/approve`).set(auth(owner.accessToken));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const { rows: [v] } = await db.query('SELECT evidence, severity FROM custom_vulns WHERE id=$1', [finding.id]);
+  assert.equal(v.severity, 'high');
+  assert.deepEqual(v.evidence, [
+    { data: 'data:image/png;base64,CCCC', name: 'retest.png', phase: 'retest' },
+    { data: pngUrl(PNG), name: 'real.png', phase: 'original' },
+  ]);
+});
+
+test('finding change screenshots: evidence_mode needs uploads, and removing the only change is refused', async () => {
+  const { owner, project, target, ownerToken } = await setup();
+  const finding = await createFinding(owner.accessToken, project.id, target.id);
+
+  const noUploads = await callTool(ownerToken.token, 'propose_finding_update', {
+    project_id: project.id, finding_id: finding.id, severity: 'high', evidence_mode: 'replace',
+  });
+  assert.equal(noUploads.isError, true);
+  assert.match(noUploads.text, /evidence_mode only applies/);
+
+  const u = await uploadOk(ownerToken.token, PNG, 'x.png');
+  const prop = await callTool(ownerToken.token, 'propose_finding_update', {
+    project_id: project.id, finding_id: finding.id, evidence_upload_ids: [u.upload_id],
+  });
+  assert.equal(prop.isError, false, prop.text);
+  const id = prop.data.proposal_id;
+
+  // Cambiar el modo sin tocar las capturas: siguen vinculadas.
+  const mode = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, evidence_mode: 'replace' });
+  assert.equal(mode.isError, false, mode.text);
+  assert.equal((await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [id])).rows[0].payload.evidence_mode, 'replace');
+
+  // Sacar las capturas dejaría la propuesta sin cambios.
+  const empty = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, evidence_upload_ids: [] });
+  assert.equal(empty.isError, true);
+  assert.match(empty.text, /would not change anything/);
+  assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM mcp_uploads WHERE used_by_proposal_id=$1', [id])).rows[0].n, 1);
+
+  // Con otro cambio sí se pueden sacar, y evidence_mode desaparece del payload.
+  const swap = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, evidence_upload_ids: [], severity: 'low' });
+  assert.equal(swap.isError, false, swap.text);
+  assert.deepEqual((await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [id])).rows[0].payload, { severity: 'low', entity_name: finding.name });
+  assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM mcp_uploads WHERE used_by_proposal_id=$1', [id])).rows[0].n, 0);
+});
+
+// ── Report sections (report_section) ─────────────────────────────────────
+// Claude Code only PROPOSES the HTML of one prose field; a lead approves it
+// and only that field of report_config changes.
+
+const REPORT = {
+  meta: { preparedBy: 'Diego', coverFields: { date: true } },
+  sections: [
+    { id: 'exec-summary', type: 'exec-summary', title: 'Resumen Ejecutivo', visible: true, description: '<p>Resumen viejo</p>' },
+    { id: 'detailed-findings', type: 'detailed-findings', title: 'Hallazgos Detallados', visible: true },
+    { id: 'custom-1', type: 'custom', title: 'Introduccion', visible: true, content: '<p>Intro vieja</p>' },
+    {
+      id: 'custom-2', type: 'custom', title: 'Clasificación de Riesgo', visible: true, content: '<p>Riesgo</p>',
+      children: [
+        { id: 'sub-1', title: 'Estimación', content: '<p>Estimación vieja</p>', visible: true },
+        { id: 'sub-2', title: 'Factores de Amenaza', content: '<p>Factores</p>', visible: false },
+      ],
+    },
+  ],
+  vulnEdits: { 'ffffffff-ffff-4fff-8fff-ffffffffffff': { probability: 4 } },
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+
+async function enableReportProposals(ownerToken, projectId, value = true) {
+  const res = await request(app).patch(`/api/projects/${projectId}`).set(auth(ownerToken)).send({ claude_code_report_enabled: value });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.claude_code_report_enabled, value);
+}
+
+async function saveReport(accessToken, projectId, data = REPORT) {
+  const res = await request(app).put(`/api/projects/${projectId}/report-config`).set(auth(accessToken)).send({ data });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  return res.body;
+}
+
+async function reportSetup() {
+  const s = await setup();
+  await enableReportProposals(s.owner.accessToken, s.project.id);
+  const saved = await saveReport(s.owner.accessToken, s.project.id);
+  return { ...s, saved };
+}
+
+async function storedReport(projectId) {
+  return (await db.query('SELECT data, updated_by, updated_at FROM report_config WHERE project_id=$1', [projectId])).rows[0];
+}
+
+function approveProposal(accessToken, projectId, id) {
+  return request(app).post(`/api/projects/${projectId}/mcp-proposals/${id}/approve`).set(auth(accessToken));
+}
+
+async function proposalStatus(id) {
+  return (await db.query('SELECT status FROM mcp_proposals WHERE id=$1', [id])).rows[0].status;
+}
+
+test('report tools refuse projects without claude_code_report_enabled', async () => {
+  const { owner, project, ownerToken } = await setup();
+  await saveReport(owner.accessToken, project.id);
+  assert.equal((await db.query('SELECT claude_code_report_enabled FROM projects WHERE id=$1', [project.id])).rows[0].claude_code_report_enabled, false);
+
+  const info = await callTool(ownerToken.token, 'get_project', { project_id: project.id });
+  assert.equal(info.data.can_propose, true);
+  assert.equal(info.data.can_write_report, false);
+
+  const read = await callTool(ownerToken.token, 'get_report_sections', { project_id: project.id });
+  assert.equal(read.isError, true);
+  assert.match(read.text, /report proposals are not enabled/);
+  const prop = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, section_id: 'custom-1', content: '<p>x</p>' });
+  assert.equal(prop.isError, true);
+  assert.match(prop.text, /report proposals are not enabled/);
+  assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM mcp_proposals')).rows[0].n, 0);
+
+  await enableReportProposals(owner.accessToken, project.id);
+  assert.equal((await callTool(ownerToken.token, 'get_project', { project_id: project.id })).data.can_write_report, true);
+  // Apagar Claude Code entero también apaga las tools del informe.
+  await enableClaudeCode(owner.accessToken, project.id, false);
+  assert.equal((await callTool(ownerToken.token, 'get_report_sections', { project_id: project.id })).isError, true);
+});
+
+test('only the project owner can toggle claude_code_report_enabled', async () => {
+  const { owner, project } = await setup();
+  const editor = await addMember(owner.accessToken, project.id, 'editor');
+  const res = await request(app).patch(`/api/projects/${project.id}`).set(auth(editor.accessToken)).send({ claude_code_report_enabled: true });
+  assert.equal(res.status, 403);
+  assert.equal((await db.query('SELECT claude_code_report_enabled FROM projects WHERE id=$1', [project.id])).rows[0].claude_code_report_enabled, false);
+  await enableReportProposals(owner.accessToken, project.id);
+});
+
+test('get_report_sections returns every section with editability and current HTML, or a hint when there is no report', async () => {
+  const { owner, project, ownerToken } = await setup();
+  await enableReportProposals(owner.accessToken, project.id);
+
+  const empty = await callTool(ownerToken.token, 'get_report_sections', { project_id: project.id });
+  assert.equal(empty.isError, false, empty.text);
+  assert.deepEqual(empty.data.sections, []);
+  assert.match(empty.data.hint, /no saved report/);
+
+  await saveReport(owner.accessToken, project.id);
+  const r = await callTool(ownerToken.token, 'get_report_sections', { project_id: project.id });
+  assert.equal(r.isError, false, r.text);
+  assert.deepEqual(r.data.sections.map(s => [s.id, s.type, s.editable]), [
+    ['exec-summary', 'exec-summary', true], ['detailed-findings', 'detailed-findings', false],
+    ['custom-1', 'custom', true], ['custom-2', 'custom', true],
+  ]);
+  const exec = r.data.sections[0];
+  assert.equal(exec.field, 'description');
+  assert.equal(exec.content, '<p>Resumen viejo</p>');
+  assert.equal(r.data.sections[2].content, '<p>Intro vieja</p>');
+  assert.deepEqual(r.data.sections[3].children, [
+    { id: 'sub-1', title: 'Estimación', visible: true, editable: true, content: '<p>Estimación vieja</p>' },
+    { id: 'sub-2', title: 'Factores de Amenaza', visible: false, editable: true, content: '<p>Factores</p>' },
+  ]);
+});
+
+test('approving a subsection proposal writes only that field and refuses stale report saves', async () => {
+  const { owner, project, ownerToken, saved } = await reportSetup();
+  const prop = await callTool(ownerToken.token, 'propose_report_section', {
+    project_id: project.id, section_id: 'custom-2', subsection_id: 'sub-1',
+    content: '<p>Estimación <strong>nueva</strong></p>', rationale: 'Basado en los 3 hallazgos altos.',
+  });
+  assert.equal(prop.isError, false, prop.text);
+  assert.equal(prop.data.section, 'Clasificación de Riesgo');
+  assert.equal(prop.data.subsection, 'Estimación');
+
+  const { rows: [row] } = await db.query('SELECT kind, payload FROM mcp_proposals WHERE id=$1', [prop.data.proposal_id]);
+  assert.equal(row.kind, 'report_section');
+  assert.equal(row.payload.base_content, '<p>Estimación vieja</p>');
+  assert.equal(row.payload.section_title, 'Clasificación de Riesgo');
+  // Proponer no toca el informe.
+  assert.deepEqual((await storedReport(project.id)).data, REPORT);
+
+  const res = await approveProposal(owner.accessToken, project.id, prop.data.proposal_id);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const after = await storedReport(project.id);
+  const expected = clone(REPORT);
+  expected.sections[3].children[0].content = '<p>Estimación <strong>nueva</strong></p>';
+  assert.deepEqual(after.data, expected);
+  assert.equal(after.updated_by, owner.user.id);
+  assert.ok(new Date(after.updated_at) > new Date(saved.updated_at));
+  assert.equal(await proposalStatus(prop.data.proposal_id), 'approved');
+
+  // Una pestaña abierta con la copia anterior no pisa lo aprobado.
+  const stale = await request(app).put(`/api/projects/${project.id}/report-config`).set(auth(owner.accessToken))
+    .send({ data: REPORT, base_updated_at: saved.updated_at });
+  assert.equal(stale.status, 409);
+  assert.deepEqual(stale.body.current.data, expected);
+  assert.deepEqual((await storedReport(project.id)).data, expected);
+});
+
+test('the proposals list filters by kind: the Findings inbox excludes report_section, the report builder asks only for it', async () => {
+  const { owner, project, ownerToken, target } = await reportSetup();
+  const finding = await propose(ownerToken.token, project, target);
+  const section = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, section_id: 'custom-1', content: '<p>Intro nueva</p>' });
+  assert.equal(section.isError, false, section.text);
+  const base = `/api/projects/${project.id}/mcp-proposals`;
+  const ids = res => res.body.map(p => p.id);
+
+  const all = await request(app).get(base).set(auth(owner.accessToken));
+  assert.equal(all.status, 200);
+  assert.deepEqual(ids(all).sort(), [finding, section.data.proposal_id].sort());
+
+  const inbox = await request(app).get(`${base}?exclude_kind=report_section`).set(auth(owner.accessToken));
+  assert.equal(inbox.status, 200);
+  assert.deepEqual(ids(inbox), [finding]);
+
+  const report = await request(app).get(`${base}?kind=report_section`).set(auth(owner.accessToken));
+  assert.equal(report.status, 200);
+  assert.deepEqual(ids(report), [section.data.proposal_id]);
+  assert.equal(report.body[0].payload.section_title, 'Introduccion');
+
+  // Combined with status: nothing approved yet.
+  const approved = await request(app).get(`${base}?status=approved&kind=report_section`).set(auth(owner.accessToken));
+  assert.deepEqual(approved.body, []);
+
+  for (const q of ['kind=bogus', 'exclude_kind=bogus', 'kind=finding&kind=note', "kind=report_section'--"]) {
+    const bad = await request(app).get(`${base}?${q}`).set(auth(owner.accessToken));
+    assert.equal(bad.status, 400, q);
+  }
+});
+
+test('an exec-summary proposal writes the section description', async () => {
+  const { owner, project, ownerToken } = await reportSetup();
+  const prop = await callTool(ownerToken.token, 'propose_report_section', {
+    project_id: project.id, section_id: 'exec-summary', content: '<p>Resumen nuevo</p>',
+  });
+  assert.equal(prop.isError, false, prop.text);
+  assert.equal(prop.data.field, 'description');
+  const res = await approveProposal(owner.accessToken, project.id, prop.data.proposal_id);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const expected = clone(REPORT);
+  expected.sections[0].description = '<p>Resumen nuevo</p>';
+  assert.deepEqual((await storedReport(project.id)).data, expected);
+});
+
+test('propose_report_section refuses built-in, unknown and non-existent targets', async () => {
+  const { project, ownerToken } = await reportSetup();
+  const cases = [
+    [{ section_id: 'detailed-findings' }, /generated from project data/],
+    [{ section_id: 'nope' }, /does not exist/],
+    [{ section_id: 'custom-2', subsection_id: 'nope' }, /does not exist/],
+    [{ section_id: 'exec-summary', subsection_id: 'sub-1' }, /no editable subsections/],
+  ];
+  for (const [target, re] of cases) {
+    const r = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, content: '<p>x</p>', ...target });
+    assert.equal(r.isError, true, JSON.stringify(target));
+    assert.match(r.text, re);
+  }
+  assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM mcp_proposals')).rows[0].n, 0);
+});
+
+test('proposed report HTML is sanitized server-side', async () => {
+  const { project, ownerToken } = await reportSetup();
+  const prop = await callTool(ownerToken.token, 'propose_report_section', {
+    project_id: project.id, section_id: 'custom-1',
+    content: '<p onclick="steal()">Hola<script>alert(1)</script> <img src=x onerror=alert(1)>' +
+      '<a href="javascript:alert(1)">mal</a> <a href="https://example.com" onmouseover="x()">bien</a></p><iframe src="https://x"></iframe>',
+  });
+  assert.equal(prop.isError, false, prop.text);
+  const { rows: [row] } = await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [prop.data.proposal_id]);
+  const html = row.payload.content;
+  assert.doesNotMatch(html, /<script|alert\(1\)|onerror|onclick|onmouseover|javascript:|<img|<iframe/i);
+  assert.equal(html, '<p>Hola mal <a href="https://example.com" rel="noopener noreferrer">bien</a></p>');
+
+  const blank = await callTool(ownerToken.token, 'propose_report_section', {
+    project_id: project.id, section_id: 'exec-summary', content: '<script>alert(1)</script>',
+  });
+  assert.equal(blank.isError, true);
+  assert.match(blank.text, /empty after sanitizing/);
+});
+
+test('one pending report proposal per section: duplicates refused, update_proposal and withdraw work', async () => {
+  const { project, ownerToken } = await reportSetup();
+  const args = { project_id: project.id, section_id: 'custom-1', content: '<p>v1</p>' };
+  const first = await callTool(ownerToken.token, 'propose_report_section', args);
+  assert.equal(first.isError, false, first.text);
+  const id = first.data.proposal_id;
+
+  const dup = await callTool(ownerToken.token, 'propose_report_section', { ...args, content: '<p>otra</p>' });
+  assert.equal(dup.isError, true);
+  assert.match(dup.text, new RegExp(`already pending review \\(proposal_id ${id}\\)`));
+  // Otra sección (o subsección) no choca.
+  const other = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, section_id: 'custom-2', subsection_id: 'sub-2', content: '<p>x</p>' });
+  assert.equal(other.isError, false, other.text);
+
+  const upd = await callTool(ownerToken.token, 'update_proposal', {
+    project_id: project.id, proposal_id: id, content: '<p>v2<script>x</script></p>', rationale: 'Más corto',
+  });
+  assert.equal(upd.isError, false, upd.text);
+  assert.deepEqual(upd.data.updated_fields.sort(), ['content', 'rationale']);
+  const { rows: [row] } = await db.query('SELECT payload FROM mcp_proposals WHERE id=$1', [id]);
+  assert.equal(row.payload.content, '<p>v2</p>');
+  assert.equal(row.payload.rationale, 'Más corto');
+  assert.equal(row.payload.section_id, 'custom-1');
+
+  const foreign = await callTool(ownerToken.token, 'update_proposal', { project_id: project.id, proposal_id: id, title: 'Otro título' });
+  assert.equal(foreign.isError, true);
+  assert.match(foreign.text, /cannot be set on a report_section proposal/);
+
+  const wd = await callTool(ownerToken.token, 'withdraw_proposal', { project_id: project.id, proposal_id: id });
+  assert.equal(wd.isError, false, wd.text);
+  assert.equal(await proposalStatus(id), 'withdrawn');
+  const again = await callTool(ownerToken.token, 'propose_report_section', args);
+  assert.equal(again.isError, false, again.text);
+});
+
+test('a pentester cannot approve report content; the proposal stays pending', async () => {
+  const { owner, project, ownerToken } = await reportSetup();
+  const pentester = await addMember(owner.accessToken, project.id, 'pentester');
+  const prop = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, section_id: 'custom-1', content: '<p>nuevo</p>' });
+  assert.equal(prop.isError, false, prop.text);
+
+  const res = await approveProposal(pentester.accessToken, project.id, prop.data.proposal_id);
+  assert.equal(res.status, 403);
+  assert.equal(await proposalStatus(prop.data.proposal_id), 'pending');
+  assert.deepEqual((await storedReport(project.id)).data, REPORT);
+
+  // Un pentester con token sí puede PROPONER (es writer).
+  const pTok = await createToken(pentester.accessToken);
+  const pp = await callTool(pTok.token, 'propose_report_section', { project_id: project.id, section_id: 'exec-summary', content: '<p>x</p>' });
+  assert.equal(pp.isError, false, pp.text);
+});
+
+test('approving after the target section was deleted fails with 409 and leaves the proposal pending', async () => {
+  const { owner, project, ownerToken, saved } = await reportSetup();
+  const sec = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, section_id: 'custom-1', content: '<p>nuevo</p>' });
+  const sub = await callTool(ownerToken.token, 'propose_report_section', { project_id: project.id, section_id: 'custom-2', subsection_id: 'sub-1', content: '<p>nuevo</p>' });
+  assert.equal(sec.isError, false, sec.text);
+  assert.equal(sub.isError, false, sub.text);
+
+  const edited = clone(REPORT);
+  edited.sections = edited.sections.filter(s => s.id !== 'custom-1');
+  edited.sections.find(s => s.id === 'custom-2').children = [];
+  const put = await request(app).put(`/api/projects/${project.id}/report-config`).set(auth(owner.accessToken))
+    .send({ data: edited, base_updated_at: saved.updated_at });
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+
+  for (const id of [sec.data.proposal_id, sub.data.proposal_id]) {
+    const res = await approveProposal(owner.accessToken, project.id, id);
+    assert.equal(res.status, 409, JSON.stringify(res.body));
+    assert.match(res.body.error, /no longer available/);
+    assert.equal(await proposalStatus(id), 'pending');
+  }
+  assert.deepEqual((await storedReport(project.id)).data, edited);
 });

@@ -1400,7 +1400,10 @@ window.renderCompliancePicker = renderCompliancePicker;
 window.toggleComplianceTag    = toggleComplianceTag;
 window.collectComplianceTags  = collectComplianceTags;
 // ── PROPUESTAS DE CLAUDE CODE ─────────────────────────────────────────
-// Hallazgos y notas que Claude Code propuso vía MCP. Viven aparte
+// Hallazgos, cambios a hallazgos existentes ('finding_update'), notas y
+// targets que Claude Code propuso vía MCP. Las de contenido del informe
+// ('report_section') se revisan en el editor del informe (export.html), no
+// acá: este inbox las excluye. Viven aparte
 // (mcp_proposals), no en custom_vulns: no cuentan en el dashboard ni llegan
 // al reporte/portal hasta que un writer los aprueba acá. Aprobar un hallazgo
 // lo crea como cualquier otro, sin publicar al cliente.
@@ -1427,13 +1430,65 @@ function _ccpTitle(pr) {
   const pl = pr.payload || {};
   if (pr.kind === 'finding') return esc(pl.title || 'Hallazgo sin título');
   if (pr.kind === 'target')  return esc(pl.host || 'Target sin host');
+  if (pr.kind === 'finding_update') return `Cambios en ${esc(pl.entity_name || 'hallazgo')}`;
   return `Nota en ${esc(pl.entity_name || pr.entity_type)}`;
 }
 
 function _ccpKindLabel(pr) {
   if (pr.kind === 'finding') return 'Hallazgo';
   if (pr.kind === 'target')  return `Target (${esc(pr.payload?.type || 'domain')})`;
+  if (pr.kind === 'finding_update') {
+    const n = _ccpUpdateCount(pr);
+    return `Cambio de hallazgo (${n} campo${n === 1 ? '' : 's'})`;
+  }
   return `Nota (${esc(pr.entity_type)})`;
+}
+
+// ── Cambios propuestos a un hallazgo existente (finding_update) ───────
+// El payload trae SOLO los campos que cambian (+ entity_name); el listado
+// trae además current_finding con los valores actuales para el antes/después.
+const CCP_UPDATE_FIELDS = [
+  ['title', 'Título'], ['severity', 'Severidad'], ['category', 'Categoría'],
+  ['cvss_score', 'CVSS score'], ['cvss_vector', 'Vector CVSS'], ['cwe', 'CWE'],
+  ['description', 'Descripción'], ['remediation', 'Remediación'], ['http_proofs', 'HTTP proofs'],
+];
+
+function _ccpUpdateFields(pr) {
+  const pl = pr.payload || {};
+  return CCP_UPDATE_FIELDS.filter(([k]) => pl[k] !== undefined);
+}
+
+// Las capturas cuentan como un campo más del cambio.
+function _ccpUpdateCount(pr) {
+  return _ccpUpdateFields(pr).length + ((pr.evidence_uploads || []).length ? 1 : 0);
+}
+
+function _ccpUpdateValue(field, v, cls) {
+  if (v == null || v === '' || (Array.isArray(v) && !v.length)) return `<span class="ccp-muted">(vacío)</span>`;
+  if (field === 'severity') return severityBadge(v);
+  if (field === 'description' || field === 'remediation') return `<div class="drw-prose md-body">${renderMd(v)}</div>`;
+  if (field === 'http_proofs') return _ccpProofsHtml(v);
+  return `<code class="ccp-vector ${cls}">${esc(String(v))}</code>`;
+}
+
+function _ccpUpdateHtml(pr) {
+  const pl = pr.payload || {};
+  const cur = pr.current_finding;
+  const gone = !cur ? `<div class="ccp-diff-gone">${icon('triangle-alert', { size: 12 })} El hallazgo ya no existe: esta propuesta no se puede aprobar.</div>` : '';
+  const shots = (pr.evidence_uploads || []).length;
+  // 'replace' reemplaza solo las capturas de fase original; las de retest
+  // quedan (ver approveProposal en el backend).
+  const orig = Number(cur?.original_evidence_count) || 0;
+  const mode = pl.evidence_mode === 'replace'
+    ? `reemplazan ${orig === 1 ? 'la captura original actual' : `las ${orig} capturas originales actuales`}`
+    : `se suman a ${Number(cur?.evidence_count) === 1 ? 'la captura actual' : `las ${Number(cur?.evidence_count) || 0} capturas actuales`}`;
+  return gone + _ccpUpdateFields(pr).map(([k, label]) => _ccpSection(label, `
+    <div class="ccp-diff">
+      ${cur ? `<div class="ccp-diff-side is-old"><div class="ccp-diff-tag">Actual</div>${_ccpUpdateValue(k, cur[k], 'is-old')}</div>` : ''}
+      <div class="ccp-diff-side is-new"><div class="ccp-diff-tag">Propuesto</div>${_ccpUpdateValue(k, pl[k], 'is-new')}</div>
+    </div>`)).join('') +
+    _ccpSection(`Capturas (${shots}) <span class="ccp-sec-hint">· al aprobar ${mode}</span>`,
+      shots ? `<div class="ccp-shots" id="ccp-shots"><span class="ccp-muted">Cargando capturas…</span></div>` : '');
 }
 
 async function renderClaudeProposals() {
@@ -1441,7 +1496,7 @@ async function renderClaudeProposals() {
   const p  = state.currentProject;
   if (!el || !p) return;
   try {
-    _ccProposals = await api.mcpProposals.list(p.id);
+    _ccProposals = await api.mcpProposals.list(p.id, 'pending', { exclude_kind: 'report_section' });
   } catch {
     _ccProposals = [];
   }
@@ -1468,6 +1523,7 @@ async function renderClaudeProposals() {
         const shots  = (pr.evidence_uploads || []).length;
         const proofs = isFinding ? (pl.http_proofs || []).length : 0;
         const isTarget = pr.kind === 'target';
+        const isUpdate = pr.kind === 'finding_update';
         const meta = [
           _ccpKindLabel(pr),
           pr.target_host ? esc(pr.target_host) : '',
@@ -1481,6 +1537,7 @@ async function renderClaudeProposals() {
           <div class="ccp-row-main">
             ${isFinding ? severityBadge(pl.severity)
               : isTarget ? `<span class="ccp-kind-note">${icon('circle-plus', { size: 11 })} Target</span>`
+              : isUpdate ? `<span class="ccp-kind-note">${icon('pencil', { size: 11 })} Cambio</span>`
               : `<span class="ccp-kind-note">${icon('sticky-note', { size: 11 })} Nota</span>`}
             <div class="ccp-row-text">
               <div class="ccp-row-title">${_ccpTitle(pr)}</div>
@@ -1568,7 +1625,10 @@ function openClaudeProposal(id) {
   document.getElementById('ccp-drw-head').innerHTML = `
     <button class="drw-close" onclick="closeClaudeProposal()" title="Cerrar (Esc)">${icon('x', { size: 16 })}</button>
     <div class="drw-id">
-      <span class="ccp-drw-kind">${icon('sparkles', { size: 11 })} ${isFinding ? 'Hallazgo propuesto' : pr.kind === 'target' ? `Target propuesto (${esc(pl.type || 'domain')})` : `Nota propuesta (${esc(pr.entity_type)})`}</span>
+      <span class="ccp-drw-kind">${icon('sparkles', { size: 11 })} ${isFinding ? 'Hallazgo propuesto'
+        : pr.kind === 'target' ? `Target propuesto (${esc(pl.type || 'domain')})`
+        : pr.kind === 'finding_update' ? 'Cambio propuesto a un hallazgo · se aplica al aprobar'
+        : `Nota propuesta (${esc(pr.entity_type)})`}</span>
       ${isFinding ? severityBadge(pl.severity) : ''}
     </div>
     <div class="drw-title">${_ccpTitle(pr)}</div>
@@ -1589,6 +1649,8 @@ function openClaudeProposal(id) {
         shots ? `<div class="ccp-shots" id="ccp-shots"><span class="ccp-muted">Cargando capturas…</span></div>` : '') +
       _ccpSection('Remediación', pl.remediation ? `<div class="drw-prose md-body">${renderMd(pl.remediation)}</div>` : '') +
       _ccpSection('Vector CVSS', pl.cvss_vector ? `<code class="ccp-vector">${esc(pl.cvss_vector)}</code>` : '');
+  } else if (pr.kind === 'finding_update') {
+    html = _ccpUpdateHtml(pr);
   } else if (pr.kind === 'target') {
     html =
       _ccpSection('Host', `<code class="ccp-vector">${esc(pl.host || '')}</code>`) +
@@ -1770,7 +1832,7 @@ async function reviewClaudeProposal(id, action) {
   try {
     if (action === 'approve') {
       await api.mcpProposals.approve(pid, id, pr.kind === 'target' ? { scope: _ccpScope[id] } : undefined);
-      if (pr.kind === 'finding') {
+      if (pr.kind === 'finding' || pr.kind === 'finding_update') {
         const fresh = await api.vulns.list(pid);
         state.customVulns = fresh.vulns || fresh;
         renderCustomVulns();
@@ -1780,6 +1842,7 @@ async function reviewClaudeProposal(id, action) {
       }
       showToast(pr.kind === 'finding' ? 'Hallazgo creado (sin publicar al cliente)'
         : pr.kind === 'target' ? `Target creado (${CCP_SCOPE_LABELS[_ccpScope[id]]})`
+        : pr.kind === 'finding_update' ? 'Cambios aplicados al hallazgo'
         : 'Nota agregada', 'success');
       delete _ccpScope[id];
     } else {

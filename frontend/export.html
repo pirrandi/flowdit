@@ -501,6 +501,13 @@
 .sec-sub-body { display:none;padding:6px 10px 8px 20px;background:var(--bg); }
 .sec-sub-body.open { display:block; }
 .sec-sub-add { display:flex;align-items:center;padding:4px 8px 6px 20px;border-top:1px dashed var(--b1)55; }
+/* ── Pending Claude Code report proposals ── */
+.rptp-slot:empty { display:none; }
+.rptp-badge { flex-shrink:0;white-space:nowrap; }
+.rptp-body { flex:1;overflow-y:auto;padding:18px 22px;min-height:0; }
+.rptp-content { margin:0;max-height:52vh;overflow-y:auto; }
+.rptp-foot { padding:10px 16px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3); }
+.rptp-modal .fe-modal-inner { max-width:1100px;height:auto; }
 /* ── Numbering toggle ── */
 .sec-num-prefix { color:var(--t3);font-weight:400;margin-right:3px; }
 .sec-meta-chevron { font-size:8px;transition:transform .18s;margin-left:auto;margin-right:2px; }
@@ -697,14 +704,17 @@
 
 <script src="js/data.js?v=3"></script>
 <script src="js/services/state.js?v=3"></script>
-<script src="js/services/api.js?v=4"></script>
+<script src="js/services/api.js?v=5"></script>
 <script src="js/services/ws.js?v=3"></script>
 <script src="js/services/icons.js?v=3"></script>
 <script src="js/services/utils.js?v=4"></script>
 <script src="js/components/csel.js?v=3"></script>
 <script src="js/components/activity.js?v=3"></script>
 <script src="js/components/notifications.js?v=4"></script>
-<script src="js/page.js?v=5"></script>
+<script src="js/page.js?v=6"></script>
+<!-- Vendored, not CDN — see js/vendor/README.md. Sanitizes the Claude Code
+     report proposals shown in the review modal (rptpSafeHtml). -->
+<script src="js/vendor/purify.min.js?v=3"></script>
 <script>
 // ── Styled markdown renderer (uses .rpt CSS classes) ─────────────
 function renderMdStyled(raw) {
@@ -962,6 +972,55 @@ const PROB_LABELS  = ['Muy Baja','Baja','Moderada','Alta','Muy Alta'];
 let _rptSyncTimer   = null;
 let _rptSyncReady   = false;  // the server copy has been pulled; pushes allowed
 let _rptSyncBlocked = false;  // viewer/pentester role or unreachable API: work locally
+// updated_at of the server copy this tab builds on (null = nothing saved
+// yet). Sent with every push: the server refuses the write with 409 if the
+// stored copy changed since (another tab, or an approved Claude Code
+// proposal), instead of letting this tab silently overwrite it.
+let _rptServerUpdatedAt = null;
+// PUTs run one after another, so each carries the stamp the previous one got.
+let _rptSaving = Promise.resolve();
+
+const RPT_CONFLICT_MSG = 'El informe se modificó en otro lado (por ejemplo, una propuesta de Claude Code aprobada). Se cargó la versión del servidor: los cambios sin guardar de esta ventana se perdieron, revisalos.';
+const RPT_REMOTE_MSG   = 'El informe se actualizó en otro lado (por ejemplo, una propuesta de Claude Code aprobada). Se cargó la versión nueva.';
+
+function saveReportToServer(pid) {
+  _rptSaving = _rptSaving.then(async () => {
+    if (_rptSyncBlocked || pid !== state.currentProject?.id) return;
+    try {
+      // Read at send time: the latest local copy, not the one when queued.
+      const row = await api.reportConfig.save(pid, getReportData(), _rptServerUpdatedAt);
+      _rptServerUpdatedAt = row?.updated_at ?? _rptServerUpdatedAt;
+    } catch (e) {
+      // 403 = viewer/pentester, it will never succeed; anything else may be transient.
+      if (e?.status === 403) _rptSyncBlocked = true;
+      else if (e?.status === 409 && e.data?.current) adoptServerReport(e.data.current, RPT_CONFLICT_MSG, 'error');
+      else console.warn('[export] report config sync failed:', e?.message || e);
+    }
+  });
+  return _rptSaving;
+}
+
+// Replaces the local working copy with the server one and re-renders.
+// Whatever this tab had not saved yet is discarded: it was built on a copy
+// that no longer exists.
+function adoptServerReport(row, message, type = 'info') {
+  const pid = state.currentProject?.id;
+  if (!pid || !row?.data || typeof row.data !== 'object') return;
+  clearTimeout(_rptSyncTimer);
+  _rptSyncTimer = null;
+  _rptServerUpdatedAt = row.updated_at ?? null;
+  localStorage.setItem(`fd_rpt_${pid}`, JSON.stringify(row.data));
+  _freeEditMd = row.data.freeEditMd || null;
+  const d = getReportData();
+  applyReportFont(d.meta?.font);
+  applyBaseFontSize(d.meta?.baseFontSize);
+  applyReportAccent(d.meta?.accentColor);
+  applyWatermark(d.meta);
+  applyTitleSizes(d.meta?.h2Size, d.meta?.h3Size);
+  try { buildEditor(); } catch (e) { console.warn('[export] buildEditor error:', e); }
+  try { buildReport(); } catch (e) { console.warn('[export] buildReport error:', e); }
+  if (message) showToast(message, type);
+}
 
 function pushReportConfig() {
   if (window.FLOWDIT_SNAPSHOT) return;   // headless PDF render — never writes back
@@ -969,15 +1028,9 @@ function pushReportConfig() {
   const pid = state.currentProject?.id;
   if (!pid) return;
   clearTimeout(_rptSyncTimer);
-  _rptSyncTimer = setTimeout(async () => {
+  _rptSyncTimer = setTimeout(() => {
     _rptSyncTimer = null;
-    try {
-      await api.reportConfig.save(pid, getReportData());
-    } catch (e) {
-      // 403 = viewer/pentester, it will never succeed; anything else may be transient.
-      if (e?.status === 403) _rptSyncBlocked = true;
-      else console.warn('[export] report config sync failed:', e?.message || e);
-    }
+    saveReportToServer(pid);
   }, 800);
 }
 
@@ -991,13 +1044,320 @@ function flushReportConfig() {
   if (!_rptSyncReady || _rptSyncBlocked || window.FLOWDIT_SNAPSHOT) return;
   const pid = state.currentProject?.id;
   if (!pid) return;
-  api.reportConfig.save(pid, getReportData()).catch(() => {});
+  saveReportToServer(pid);
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushReportConfig();
 });
 window.addEventListener('pagehide', flushReportConfig);
+
+// The server wrote the report (an approved Claude Code report_section
+// proposal, see services/mcp/proposals.js): adopt it now instead of waiting
+// for the next autosave to bounce with a 409.
+wsClient.on('report_config:changed', (msg) => {
+  if (window.FLOWDIT_SNAPSHOT || !_rptSyncReady || _rptSyncBlocked) return;
+  // This tab is approving a proposal: approveReportProposal() pulls and
+  // adopts the new copy itself, with its own message.
+  if (_rptpApproving) return;
+  if (msg?.updated_at && msg.updated_at === _rptServerUpdatedAt) return;
+  // Local edits still waiting to be saved: that save gets the 409 and the
+  // adopt-with-loss notice, which is what actually happened to them.
+  if (_rptSyncTimer) { flushReportConfig(); return; }
+  const pid = state.currentProject?.id;
+  if (!pid) return;
+  _rptSaving = _rptSaving.then(async () => {
+    try {
+      const row = await api.reportConfig.get(pid);
+      if (pid === state.currentProject?.id && row?.updated_at !== _rptServerUpdatedAt) {
+        adoptServerReport(row, RPT_REMOTE_MSG, 'info');
+      }
+    } catch (e) {
+      console.warn('[export] could not refresh report config:', e?.message || e);
+    }
+  });
+});
+
+// ── Claude Code report proposals (report_section) ─────────────────
+// Claude Code proposes the HTML of one prose field (a section's content, or
+// the intro text of a built-in section like exec-summary). They are reviewed
+// here, next to the report, not in the Findings inbox. Approving writes only
+// that field server-side (lead roles only, same rule as PUT /report-config);
+// this tab then pulls and adopts the new copy.
+let _rptProposals   = [];     // pending report_section proposals
+let _rptpOpenId     = null;   // proposal shown in the review modal
+let _rptpBusy       = false;  // approve/reject in flight
+let _rptpApproving  = false;  // see the report_config:changed handler
+let _rptpLoadSeq    = 0;      // drops stale list responses
+
+const RPTP_LEAD_ONLY = 'Solo un Owner o Editor puede aprobar contenido del informe';
+
+function _rptpCanReview() {
+  return ['owner', 'editor', 'pentester'].includes(state.currentProject?.member_role);
+}
+
+async function loadReportProposals() {
+  if (window.FLOWDIT_SNAPSHOT) return;
+  const pid = state.currentProject?.id;
+  if (!pid) return;
+  const seq = ++_rptpLoadSeq;
+  let list;
+  try {
+    list = await api.mcpProposals.list(pid, 'pending', { kind: 'report_section' });
+  } catch (e) {
+    // A viewer gets 403 (proposals are internal): simply nothing to show.
+    if (e?.status !== 403) console.warn('[export] could not load report proposals:', e?.message || e);
+    list = [];
+  }
+  if (seq !== _rptpLoadSeq || pid !== state.currentProject?.id) return;
+  _rptProposals = Array.isArray(list) ? list : [];
+  rptpPaintBadges();
+  // Reviewed elsewhere (another tab, another lead) while open here.
+  if (_rptpOpenId && !_rptProposals.some(p => p.id === _rptpOpenId)) {
+    closeReportProposal();
+    showToast('Esa propuesta ya fue revisada', 'info');
+  }
+}
+
+function _rptpFor(secId, subId) {
+  return _rptProposals.find(p => p.payload?.section_id === secId && (p.payload?.subsection_id || '') === (subId || ''));
+}
+
+// Fills the badge slots rendered by buildSecItem / _buildSubItem /
+// buildSectionList, in place: no editor rebuild, so an open inline editor
+// keeps its caret.
+function rptpPaintBadges() {
+  document.querySelectorAll('.rptp-slot').forEach(slot => {
+    if (slot.dataset.summary) {
+      const n = _rptProposals.length;
+      slot.innerHTML = n ? `<button class="ai-btn rptp-badge" onclick="event.stopPropagation();openReportProposal('${esc(_rptProposals[0].id)}')"
+        title="Revisar las propuestas de Claude Code para el informe">${icon('sparkles', { size: 10 })} ${n} propuesta${n > 1 ? 's' : ''} de Claude</button>` : '';
+      return;
+    }
+    const pr = _rptpFor(slot.dataset.sec, slot.dataset.sub);
+    slot.innerHTML = pr ? `<button class="ai-btn rptp-badge" onclick="event.stopPropagation();openReportProposal('${esc(pr.id)}')"
+      title="Claude Code propuso contenido para esta ${slot.dataset.sub ? 'subsección' : 'sección'}: revisarlo">${icon('sparkles', { size: 10 })} Propuesta de Claude</button>` : '';
+  });
+}
+
+// HTML is sanitized server-side (services/mcp/report.js) and again here
+// before it touches the DOM. Fails closed: without DOMPurify the markup is
+// shown escaped instead of rendered.
+function rptpSafeHtml(html) {
+  if (!html) return `<span class="ccp-muted">(vacío)</span>`;
+  if (!window.DOMPurify) return `<pre class="drw-code ccp-pre">${esc(html)}</pre>`;
+  return `<div class="rpt"><div class="rpt-prose rptp-content">${window.DOMPurify.sanitize(_secContentHtml(html))}</div></div>`;
+}
+
+function _rptpWhere(pl) {
+  return esc(pl.section_title || pl.section_id || 'sección') + (pl.subsection_id ? ` › ${esc(pl.subsection_title || pl.subsection_id)}` : '');
+}
+
+// The field as it stands in THIS tab's working copy (what approving replaces),
+// or undefined when the section/subsection is no longer in the report.
+function _rptpCurrent(pl) {
+  const sec = getReportData().sections?.find(s => s.id === pl.section_id);
+  if (!sec) return undefined;
+  const holder = pl.subsection_id ? sec.children?.find(c => c.id === pl.subsection_id) : sec;
+  if (!holder) return undefined;
+  return holder[pl.field === 'description' ? 'description' : 'content'] || '';
+}
+
+function _rptpSection(label, html) {
+  return html ? `<div class="drw-sec"><div class="drw-sec-label">${label}</div>${html}</div>` : '';
+}
+
+function openReportProposal(id) {
+  const pr = _rptProposals.find(p => p.id === id);
+  if (!pr) return;
+  _rptpOpenId = id;
+  const pl = pr.payload || {};
+  const current = _rptpCurrent(pl);
+  const gone = current === undefined;
+  const drifted = !gone && (pl.base_content || '') !== current;
+  const idx = _rptProposals.indexOf(pr);
+  const n = _rptProposals.length;
+
+  document.getElementById('rptp-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'rptp-modal';
+  modal.className = 'fe-modal rptp-modal no-print';
+  modal.innerHTML = `
+    <div class="fe-modal-inner" role="dialog" aria-modal="true" aria-labelledby="rptp-title">
+      <div style="padding:9px 16px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg3)">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--a)">${icon('sparkles', { size: 11 })} Propuesta de Claude</span>
+        <span id="rptp-title" style="font-size:12px;font-weight:600;color:var(--t1);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_rptpWhere(pl)}</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+          ${n > 1 ? `
+          <button class="sec-btn" onclick="stepReportProposal(-1)" ${idx <= 0 ? 'disabled' : ''} title="Anterior">‹</button>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${idx + 1} de ${n}</span>
+          <button class="sec-btn" onclick="stepReportProposal(1)" ${idx >= n - 1 ? 'disabled' : ''} title="Siguiente">›</button>` : ''}
+          <button class="btn-secondary" style="padding:4px 11px;font-size:11px" onclick="closeReportProposal()">${icon('x', { size: 11 })} Cerrar</button>
+        </div>
+      </div>
+      <div class="rptp-body">
+        ${_rptpSection('Sección', `<div class="ccp-entity"><span class="ccp-chip">${pl.field === 'description' ? 'texto introductorio' : 'contenido'}</span> ${_rptpWhere(pl)}</div>
+          <div class="ccp-muted" style="margin-top:6px">por ${esc(displayName(pr, 'proposed_by_'))} · ${esc(timeAgo(pr.created_at))}</div>`)}
+        ${_rptpSection('Motivo', pl.rationale ? `<div class="drw-prose md-body">${renderMd(pl.rationale)}</div>` : '')}
+        ${gone ? `<div class="ccp-diff-gone">${icon('triangle-alert', { size: 12 })} Esta sección ya no está en el informe: la propuesta no se puede aprobar. Rechazala o pedile a Claude Code que la proponga de nuevo.</div>` : ''}
+        ${drifted ? `<div class="ccp-muted" style="margin-bottom:12px">${icon('info', { size: 12 })} El contenido cambió desde que Claude hizo la propuesta: abajo se ve el actual, que es el que se reemplaza.</div>` : ''}
+        ${_rptpSection('Contenido <span class="ccp-sec-hint">· al aprobar reemplaza el actual</span>', `
+          <div class="ccp-diff">
+            ${gone ? '' : `<div class="ccp-diff-side is-old"><div class="ccp-diff-tag">Actual</div>${rptpSafeHtml(current)}</div>`}
+            <div class="ccp-diff-side is-new"><div class="ccp-diff-tag">Propuesto</div>${rptpSafeHtml(pl.content)}</div>
+          </div>`)}
+      </div>
+      <div class="rptp-foot" id="rptp-foot"></div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) closeReportProposal(); });
+  document.body.appendChild(modal);
+  document.addEventListener('keydown', _rptpOnKey);
+  _rptpRenderFoot();
+}
+
+function _rptpRenderFoot() {
+  const foot = document.getElementById('rptp-foot');
+  const pr = _rptProposals.find(p => p.id === _rptpOpenId);
+  if (!foot || !pr) return;
+  const id = esc(pr.id);
+  const dis = _rptpBusy ? 'disabled' : '';
+  const gone = _rptpCurrent(pr.payload || {}) === undefined;
+  const canApprove = canActForClient() && !_rptSyncBlocked && !gone;
+  const why = !canActForClient() ? RPTP_LEAD_ONLY
+    : gone ? 'La sección ya no está en el informe'
+    : _rptSyncBlocked ? 'El informe no se puede sincronizar con el servidor: recargá la página' : '';
+  foot.innerHTML = _rptpCanReview() ? `
+    ${why ? `<span class="ccp-muted">${icon('info', { size: 12 })} ${esc(why)}</span>` : ''}
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn-secondary" style="padding:5px 14px;font-size:12px" ${dis} onclick="rejectReportProposal('${id}')">Rechazar</button>
+      <button class="btn-save" ${canApprove ? dis : 'disabled'} title="${esc(why || 'Escribe este contenido en el informe')}"
+        onclick="approveReportProposal('${id}')">${_rptpBusy ? 'Aplicando…' : 'Aprobar'}</button>
+    </div>` : `<span class="ccp-muted">Solo un Owner, Editor o Pentester puede revisar propuestas</span>`;
+}
+
+function stepReportProposal(delta) {
+  const idx = _rptProposals.findIndex(p => p.id === _rptpOpenId);
+  const next = _rptProposals[idx + delta];
+  if (idx >= 0 && next && !_rptpBusy) openReportProposal(next.id);
+}
+
+function closeReportProposal() {
+  _rptpOpenId = null;
+  document.removeEventListener('keydown', _rptpOnKey);
+  document.getElementById('rptp-modal')?.remove();
+}
+
+function _rptpOnKey(e) {
+  if (e.key === 'Escape' && !_rptpBusy) { e.preventDefault(); closeReportProposal(); }
+}
+
+// Server-side error → a message the reviewer can act on.
+function _rptpErrorMsg(e) {
+  const msg = e?.message || '';
+  if (e?.status === 403) return RPTP_LEAD_ONLY;
+  if (e?.status === 404) return 'La propuesta ya no existe';
+  if (e?.status === 413) return 'El informe quedaría demasiado grande con este contenido';
+  if (e?.status === 409 && /no longer available/i.test(msg))
+    return 'La sección de esta propuesta ya no está en el informe guardado. Rechazala o pedile a Claude Code que la proponga de nuevo.';
+  if (e?.status === 409) return 'La propuesta ya fue revisada (aprobada, rechazada o retirada)';
+  return msg || 'No se pudo completar la acción';
+}
+
+// Pull the server copy and adopt it, on the same queue as the autosave so a
+// PUT in flight finishes first. Never rejects: a rejected _rptSaving would
+// stop every later autosave.
+function _rptpPullReport(pid) {
+  _rptSaving = _rptSaving.then(async () => {
+    try {
+      const row = await api.reportConfig.get(pid);
+      if (pid === state.currentProject?.id) adoptServerReport(row, null);
+      return true;
+    } catch (e) {
+      console.warn('[export] could not refresh report config:', e?.message || e);
+      return false;
+    }
+  });
+  return _rptSaving;
+}
+
+async function approveReportProposal(id) {
+  const pr = _rptProposals.find(p => p.id === id);
+  const pid = state.currentProject?.id;
+  if (!pr || !pid || _rptpBusy) return;
+  if (!canActForClient()) { showToast(RPTP_LEAD_ONLY, 'error'); return; }
+  _rptpBusy = true;
+  _rptpApproving = true;
+  _rptpRenderFoot();
+  let approved = false;
+  try {
+    // 1. Edits still waiting for the debounce reach the server first: the
+    //    approval bumps updated_at, so a save sent after it would bounce with
+    //    a 409 and those edits would be lost. If this flush itself conflicts,
+    //    saveReportToServer() already adopted the server copy and said so.
+    flushReportConfig();
+    await _rptSaving;
+    // 2. The server writes only the proposed field.
+    await api.mcpProposals.approve(pid, id);
+    approved = true;
+    // 3. Adopt the new server copy (re-renders editor and preview).
+    const pulled = await _rptpPullReport(pid);
+    _rptProposals = _rptProposals.filter(p => p.id !== id);
+    closeReportProposal();
+    rptpPaintBadges();
+    showToast(pulled ? 'Propuesta aprobada: la sección del informe se actualizó'
+      : 'Propuesta aprobada, pero no se pudo cargar el informe actualizado: recargá la página antes de seguir editando',
+      pulled ? 'success' : 'error');
+  } catch (e) {
+    showToast(_rptpErrorMsg(e), 'error');
+  } finally {
+    _rptpBusy = false;
+    _rptpApproving = false;
+    if (!approved) _rptpRenderFoot();
+  }
+  // The real state, whatever happened (someone else may have reviewed it).
+  await loadReportProposals();
+}
+
+async function rejectReportProposal(id) {
+  const pr = _rptProposals.find(p => p.id === id);
+  const pid = state.currentProject?.id;
+  if (!pr || !pid || _rptpBusy) return;
+  if (!confirm('¿Rechazar esta propuesta?')) return;
+  _rptpBusy = true;
+  _rptpRenderFoot();
+  try {
+    await api.mcpProposals.reject(pid, id);
+    _rptProposals = _rptProposals.filter(p => p.id !== id);
+    closeReportProposal();
+    rptpPaintBadges();
+    showToast('Propuesta rechazada', 'success');
+  } catch (e) {
+    showToast(_rptpErrorMsg(e), 'error');
+  } finally {
+    _rptpBusy = false;
+    _rptpRenderFoot();
+  }
+  await loadReportProposals();
+}
+
+// Live: every proposal status change (created, edited, withdrawn, reviewed
+// here or elsewhere) broadcasts mcp_proposals:changed. Coalesced, since a
+// review also fires report_config:changed.
+let _rptpReloadTimer = null;
+function _rptpScheduleReload() {
+  clearTimeout(_rptpReloadTimer);
+  _rptpReloadTimer = setTimeout(loadReportProposals, 150);
+}
+wsClient.on('mcp_proposals:changed', (msg) => {
+  if (window.FLOWDIT_SNAPSHOT) return;
+  // report_pending is the server's count: skip the request when both agree
+  // there is nothing to show.
+  if (Number(msg?.report_pending) === 0 && !_rptProposals.length) return;
+  _rptpScheduleReload();
+});
+wsClient.on('report_config:changed', () => { if (!window.FLOWDIT_SNAPSHOT) _rptpScheduleReload(); });
+// Missed WS messages (sleep, dropped socket): catch up when the tab returns.
+window.addEventListener('focus', () => { if (!window.FLOWDIT_SNAPSHOT && state.currentProject) _rptpScheduleReload(); });
 
 async function pullReportConfig() {
   // The headless PDF render gets the originating tab's exact snapshot injected
@@ -1010,6 +1370,7 @@ async function pullReportConfig() {
     const row    = await api.reportConfig.get(pid);
     const remote = row?.data;
     _rptSyncReady = true;
+    _rptServerUpdatedAt = row?.updated_at ?? null;
     if (remote && typeof remote === 'object' && (remote.meta || remote.sections)) {
       localStorage.setItem(`fd_rpt_${pid}`, JSON.stringify(remote));
       return;
@@ -1510,6 +1871,7 @@ function _buildSubItem(secId, sub) {
       <div class="sec-sub-title-wrap" style="flex:1;min-width:0">
         <div class="sec-sub-title ${sub.visible?'':'sec-dim'}" id="sub-title-${sub.id}">${esc(sub.title)}</div>
       </div>
+      <span class="rptp-slot" data-sec="${esc(secId)}" data-sub="${esc(sub.id)}"></span>
       <button class="sec-btn" onclick="openRichModalSub('${secId}','${sub.id}')" title="Full editor">${icon('maximize-2',{size:12})}</button>
       <button class="sec-btn" onclick="secToggleSubEdit('${sub.id}')" title="Edit">${icon('pencil',{size:12})}</button>
       <button class="sec-btn del" onclick="secDelSub('${secId}','${sub.id}')" title="Delete subsection">${icon('trash-2',{size:12})}</button>
@@ -2372,6 +2734,7 @@ function buildSecItem(sec) {
       <div class="sec-title-wrap">
         <div class="sec-title ${sec.visible?'':'sec-dim'}" id="sec-title-${sec.id}">${esc(sec.title)}</div>
       </div>
+      <span class="rptp-slot" data-sec="${esc(sec.id)}" data-sub=""></span>
       <button class="sec-btn sec-pb-btn ${sec.pageBreak?'sec-pb-on':''}" id="sec-pb-${sec.id}"
         title="${sec.pageBreak?'Remove page break':'Start on new page'}"
         onclick="secTogglePageBreak('${sec.id}')">${icon('separator-horizontal',{size:12})}</button>
@@ -2834,7 +3197,7 @@ function buildSectionList() {
         </div>`;
       })()}
     </div>
-    ${_sh('sections','Report Sections',`<button class="sec-btn" onclick="event.stopPropagation();secAddCustom()" style="font-size:9px;margin-left:6px">+ Custom</button>`)}
+    ${_sh('sections','Report Sections',`<button class="sec-btn" onclick="event.stopPropagation();secAddCustom()" style="font-size:9px;margin-left:6px">+ Custom</button><span class="rptp-slot" data-summary="1" style="margin-left:6px"></span>`)}
     <div id="esec-sections" style="display:${_secOpen.sections?'':'none'}">
       <div style="padding:8px 14px 6px;border-bottom:1px solid var(--b1)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -3368,6 +3731,7 @@ function buildEditor() {
   if (!html) html = `<div style="padding:20px 14px;font-family:var(--mono);font-size:11px;color:var(--t3)">No findings to edit for this scope.</div>`;
 
   document.getElementById('editor-panel').innerHTML = html;
+  rptpPaintBadges();
   // Restore evidence lists
   vulns.forEach(v => renderEvidenceList(v.id, false));
   failedTests.forEach(({ test }) => renderEvidenceList(test.id, true));
@@ -4514,6 +4878,7 @@ async function pageInit() {
   applyWatermark(d.meta);
   if (d.freeEditMd) _freeEditMd = d.freeEditMd; // restore persisted free edit
   try { buildEditor(); } catch(e) { console.warn('[export] buildEditor error:', e); }
+  loadReportProposals();
   try { buildPageLayout(); } catch(e) {}
   try { buildReport(); } catch(e) { console.warn('[export] buildReport error:', e); }
   setTimeout(() => { try { buildReport(); } catch(e) {} }, 0);

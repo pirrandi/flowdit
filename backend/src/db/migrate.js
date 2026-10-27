@@ -962,6 +962,10 @@ const migrations = [
   // usuario (y de ahí al proveedor del modelo), algo que el NDA del
   // engagement puede no permitir. Apagado = el proyecto no existe para MCP.
   `ALTER TABLE projects ADD COLUMN IF NOT EXISTS claude_code_enabled BOOLEAN NOT NULL DEFAULT false`,
+  // Second opt-in, on top of claude_code_enabled: lets Claude Code PROPOSE
+  // prose for report sections (propose_report_section). Off by default: the
+  // report is the client deliverable, so the owner decides separately.
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS claude_code_report_enabled BOOLEAN NOT NULL DEFAULT false`,
   // De dónde salió el hallazgo ('manual', 'ai_agent', 'claude_code'...). Sin
   // backfill: NULL = creado antes de que existiera la columna.
   `ALTER TABLE custom_vulns ADD COLUMN IF NOT EXISTS origin TEXT`,
@@ -1026,9 +1030,16 @@ const migrations = [
   // + 'target': Claude Code puede PROPONER targets (propose_target). Nunca
   // los crea: el humano aprueba y elige el scope. Mismo patrón DROP + ADD
   // con el nombre que Postgres le dio al CHECK inline del CREATE TABLE.
+  // + 'finding_update' (propose_finding_update): cambios propuestos a un
+  // hallazgo existente, ver más abajo. Va en ESTE mismo CHECK y no en un
+  // DROP + ADD posterior: migrate.js re-corre todo en cada arranque y un ADD
+  // con la lista vieja fallaría en cuanto exista una fila 'finding_update'.
+  // + 'report_section' (propose_report_section): HTML proposed for one prose
+  // field of report_config, written only when a lead approves it. Same rule:
+  // extended here, never in a later DROP + ADD.
   `ALTER TABLE mcp_proposals DROP CONSTRAINT IF EXISTS mcp_proposals_kind_check`,
   `ALTER TABLE mcp_proposals ADD CONSTRAINT mcp_proposals_kind_check
-     CHECK (kind IN ('finding','note','target'))`,
+     CHECK (kind IN ('finding','note','target','finding_update','report_section'))`,
   `ALTER TABLE mcp_proposals ADD COLUMN IF NOT EXISTS resulting_target_id UUID REFERENCES targets(id) ON DELETE SET NULL`,
   // De dónde salió la fila ('claude_code' = escrita por el servidor MCP).
   // Sin CHECK ni backfill: NULL = cargada a mano o antes de la columna. Los
@@ -1062,6 +1073,21 @@ const migrations = [
   `ALTER TABLE whiteboard_images ADD CONSTRAINT whiteboard_images_source_check
      CHECK (source IN ('user','claude_code'))`,
   `CREATE INDEX IF NOT EXISTS idx_whiteboard_images_project ON whiteboard_images(project_id, created_at)`,
+  // Propuestas 'finding_update' (propose_finding_update; el kind se habilita
+  // en el CHECK de arriba): entity_type='finding', entity_id =
+  // custom_vulns.id y el payload trae solo los campos que cambian. Nunca
+  // edita directo: el cambio se aplica cuando un writer lo aprueba.
+  // Una sola propuesta de cambio pendiente por hallazgo: dos en paralelo se
+  // pisarían al aprobarse. Además del chequeo previo en proposals.js, esto
+  // cierra la carrera entre dos propuestas simultáneas.
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_proposals_pending_finding_update
+     ON mcp_proposals(entity_id) WHERE kind = 'finding_update' AND status = 'pending'`,
+  // One pending report proposal per section/subsection: two pending ones
+  // would overwrite each other on approval. Revisions go through
+  // update_proposal. Closes the race the pre-check in proposals.js leaves.
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_proposals_pending_report_section
+     ON mcp_proposals(project_id, (payload->>'section_id'), (COALESCE(payload->>'subsection_id', '')))
+     WHERE kind = 'report_section' AND status = 'pending'`,
 
   // ── Limpieza de CHECK constraints anónimos duplicados ──────────────────
   // Va ÚLTIMO a propósito. `ALTER TABLE ... ADD COLUMN IF NOT EXISTS x ... CHECK (...)`

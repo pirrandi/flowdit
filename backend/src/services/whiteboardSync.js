@@ -141,8 +141,8 @@ function mergeBoard(state, incoming, { baseRevision, removed = {}, limits = {} }
   return { data, sync, revision: changed ? rev : state.revision || 0, changed };
 }
 
-// Altas del servidor (Claude Code): ítems nuevos con la revisión siguiente.
-// Si era un nodo quitado antes (mismo id de target), es un alta explícita y
+// Altas y movidas del servidor (Claude Code): ítems nuevos o cambiados con
+// la revisión siguiente. Si era un nodo quitado antes (mismo id de target), es un alta explícita y
 // se levanta el tombstone. `added`: { kind: [items] } ya metidos en `data`.
 function stampAdded(state, added) {
   const sync = normalizeSync(state.sync);

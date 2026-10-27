@@ -133,6 +133,7 @@ function actionLabel(action, entityType, entityName, meta) {
     case 'claude_code_proposed':
       if (meta?.kind === 'note')   return `proposed a note on ${name} via Claude Code`;
       if (meta?.kind === 'target') return `proposed target ${name} via Claude Code`;
+      if (meta?.kind === 'finding_update') return `proposed changes to finding ${name} via Claude Code`;
       return `proposed finding ${name} via Claude Code`;
     // Altas directas de Claude Code (sin aprobación): un evento por lote.
     case 'claude_code_ports_added':
@@ -141,7 +142,11 @@ function actionLabel(action, entityType, entityName, meta) {
       return `added ${meta?.count || 0} endpoint${meta?.count === 1 ? '' : 's'} to ${name} via Claude Code`;
     case 'claude_code_whiteboard_added':
       return `added ${meta?.count || 0} item${meta?.count === 1 ? '' : 's'} to the whiteboard via Claude Code`;
-    case 'claude_code_proposal_approved': return `approved a Claude Code note on ${name}`;
+    case 'claude_code_whiteboard_moved':
+      return `moved ${meta?.count || 0} whiteboard item${meta?.count === 1 ? '' : 's'} via Claude Code`;
+    case 'claude_code_proposal_approved':
+      if (meta?.kind === 'finding_update') return `applied Claude Code changes to finding ${name}` + (Array.isArray(meta.fields) && meta.fields.length ? ` (${esc(meta.fields.join(', '))})` : '');
+      return `approved a Claude Code note on ${name}`;
     case 'claude_code_proposal_rejected': return `rejected the Claude Code proposal ${name}`;
     case 'claude_code_proposal_updated':  return `updated the Claude Code proposal ${name}`;
     case 'claude_code_proposal_withdrawn': return `withdrew the Claude Code proposal ${name}`;

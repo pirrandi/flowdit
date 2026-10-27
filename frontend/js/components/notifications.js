@@ -14,6 +14,7 @@ const NOTIF_TEXT = {
   // trabajo), el "actor" es la fuente fija.
   ai_finding_proposed: (_, title) => `<strong>Claude Code</strong> propuso el hallazgo <span class="hl">${title}</span>`,
   ai_finding_gate:     (_, title) => `<strong>AI Agent</strong> espera aprobación para <span class="hl">${title}</span>`,
+  ai_finding_update_proposed: (_, title) => `<strong>Claude Code</strong> propuso cambios al hallazgo <span class="hl">${title}</span>`,
   ai_target_proposed:  (_, title) => `<strong>Claude Code</strong> propuso el target <span class="hl">${title}</span>`,
 };
 
