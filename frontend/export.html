@@ -165,8 +165,8 @@
 /* Preview ↔ outline sync. Screen only: never in print, never in the PDF. */
 @media screen {
   #report-preview [data-node-id] { scroll-margin-top:16px;border-radius:3px;cursor:pointer;transition:outline-color .1s; }
-  #report-preview [data-node-id].rpt-is-hover { outline:1px dashed rgba(245,158,11,.7);outline-offset:4px; }
-  #report-preview [data-node-id].rpt-is-sel { outline:2px solid #f59e0b;outline-offset:4px; }
+  #report-preview [data-node-id].rpt-is-hover { outline:1px dashed rgba(245,158,11,.7);outline-offset:12px; }
+  #report-preview [data-node-id].rpt-is-sel { outline:2px solid #f59e0b;outline-offset:12px; }
   .rpt-pv-band { margin:0 0 12px;padding:5px 9px;background:#fff7e6;border:1px solid #f3c56b;border-radius:4px;font-family:var(--mono);font-size:10.5px;color:#7a4b00; }
   .rpt-ghost { margin:24px 0;padding:10px 12px;border:1px dashed var(--b3);border-radius:4px;color:var(--t3);font-family:var(--mono);font-size:11px;background:var(--bg2); }
 }
@@ -669,9 +669,12 @@
 @media screen {
   body { height:100vh!important;overflow:hidden; }
   .workarea { overflow:hidden;min-height:0; }
-  /* Reset table wrapper to block so screen preview looks normal */
-  #rpt-ph-wrap { display:block;width:100%; }
+  /* Unwrap the print header/footer table on screen. Flex column so the
+     footer (tfoot precedes tbody in the markup) shows below the report
+     instead of stacked under the header. */
+  #rpt-ph-wrap { display:flex;flex-direction:column;width:100%; }
   #rpt-ph-wrap > thead, #rpt-ph-wrap > tfoot, #rpt-ph-wrap > tbody { display:block;border:none; }
+  #rpt-ph-wrap > tfoot { order:1; }
   #rpt-ph-wrap > thead > tr, #rpt-ph-wrap > tfoot > tr, #rpt-ph-wrap > tbody > tr { display:block;border:none; }
   #rpt-ph-wrap > thead > tr > td, #rpt-ph-wrap > tfoot > tr > td, #rpt-ph-wrap > tbody > tr > td { display:block;border:none;padding:0 !important; }
 }
