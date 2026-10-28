@@ -5681,11 +5681,13 @@ async function exportDocx() {
     const meta     = getReportData().meta;
     const filename = meta.coverTitle || state.currentProject?.name || 'report';
 
-    const type = document.getElementById('report-type')?.value || 'technical';
+    // Same scope/type the PDF export replays (see exportPdf).
+    const type  = _curType();
+    const scope = _curScope();
     const res = await fetch(`${window.FLOWDIT_API || '/api'}/export/docx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ projectId: pid, type, rptData, filename }),
+      body: JSON.stringify({ projectId: pid, type, scope, rptData, filename }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

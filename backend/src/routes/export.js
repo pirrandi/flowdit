@@ -5,8 +5,8 @@ const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
 const { requireAuth: auth, requireUser } = require('../middleware/auth');
-const db   = require('../db');
-const { generateDocx } = require('../services/docxExport');
+const { exportProjectDocx } = require('../services/docxExport');
+const { findChrome, isExecutable, CHROME_ARGS } = require('../services/browser');
 const { findProjectForUser, isLeadRole } = require('../middleware/project');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,38 +25,6 @@ async function checkExportAccess(projectId, userId) {
 }
 
 const router = express.Router();
-
-// Any Chromium-based browser drives Puppeteer, so the list stays broad on
-// purpose: distro Chrome/Chromium, Brave, Edge and Vivaldi across the common
-// install locations (Arch, Debian, snap, /opt vendor dirs). Deployers whose
-// binary lives elsewhere set PUPPETEER_EXECUTABLE_PATH (or CHROME_BIN) and
-// skip the guessing entirely.
-const CHROME_CANDIDATES = [
-  '/opt/brave-bin/brave',
-  '/usr/bin/brave',
-  '/usr/bin/brave-browser',
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-  '/snap/bin/chromium',
-  '/usr/bin/microsoft-edge',
-  '/usr/bin/microsoft-edge-stable',
-  '/opt/vivaldi/vivaldi',
-  '/usr/bin/vivaldi',
-  '/usr/bin/vivaldi-stable',
-];
-
-function isExecutable(p) {
-  try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
-}
-
-function findChrome() {
-  // Explicit override wins — a deployer knows their binary better than we do.
-  const override = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
-  if (override && isExecutable(override)) return override;
-  return CHROME_CANDIDATES.find(isExecutable);
-}
 
 // SECURITY: pageUrl is browser-supplied (window.location.href), so it is
 // attacker-controlled. Handing it to page.goto() unchanged made this endpoint a
@@ -185,17 +153,7 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
     browser = await puppeteer.launch({
       executablePath,
       headless: true,
-      // NOTE: no --single-process / --no-zygote. They save a few processes but
-      // are notoriously fragile — they segfault (core dump) on several
-      // Chromium builds, including Vivaldi, right after DevTools comes up,
-      // which surfaces to the client as "socket hang up". Stability wins.
-      args: [
-        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--force-device-scale-factor=1',
-        '--font-render-hinting=none',
-        '--disable-font-subpixel-positioning',
-      ],
+      args: CHROME_ARGS,   // see services/browser.js for why the list is what it is
     });
 
     const page = await browser.newPage();
@@ -329,9 +287,12 @@ router.post('/pdf', auth, requireUser, async (req, res) => {
 
 
 // POST /api/export/docx
-// Body: { projectId, type, rptData, filename? }
+// Body: { projectId, type?, scope?, rptData, filename? }
+// type/scope mirror the PDF call: the tab's current selection wins, and the
+// values persisted in the report (meta.reportType / meta.reportScope) are the
+// fallback when the caller sends none.
 router.post('/docx', auth, requireUser, async (req, res) => {
-  const { projectId, type = 'technical', rptData, filename: rawFilename } = req.body;
+  const { projectId, type, scope, rptData, filename: rawFilename } = req.body;
 
   try {
     // Verify project access + lead role (same resolution as requireProjectAccess)
@@ -339,53 +300,7 @@ router.post('/docx', auth, requireUser, async (req, res) => {
     if (!access.project) return res.status(access.status).json({ error: access.error });
     const { project } = access;
 
-    // Parse report metadata + sections from localStorage snapshot
-    let meta = {}, sections = [];
-    try {
-      const parsed = JSON.parse(rptData || '{}');
-      meta     = parsed.meta     || {};
-      sections = parsed.sections || [];
-    } catch {}
-
-    // Fetch vulns (ordered by severity)
-    const { rows: vulns } = await db.query(
-      `SELECT cv.*, t.host AS target_host
-       FROM custom_vulns cv
-       LEFT JOIN targets t ON t.id = cv.target_id
-       WHERE cv.project_id = $1
-       ORDER BY
-         CASE cv.severity
-           WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3
-           WHEN 'low' THEN 4 WHEN 'info' THEN 5 ELSE 6
-         END, cv.created_at`,
-      [projectId]
-    );
-
-    // Fetch targets
-    const { rows: targets } = await db.query(
-      `SELECT * FROM targets WHERE project_id = $1 ORDER BY created_at`,
-      [projectId]
-    );
-
-    // Fetch ports for all targets
-    const { rows: ports } = await db.query(
-      `SELECT tp.* FROM target_ports tp
-       JOIN targets t ON t.id = tp.target_id
-       WHERE t.project_id = $1
-       ORDER BY t.host, tp.port`,
-      [projectId]
-    );
-
-    // Fetch WSTG progress (only rows with a status)
-    const { rows: wstgProgress } = await db.query(
-      `SELECT * FROM wstg_progress WHERE project_id = $1 AND status IS NOT NULL ORDER BY test_id`,
-      [projectId]
-    );
-
-    const buffer = await generateDocx({
-      project, vulns, targets, ports, wstgProgress,
-      meta, type, sections,
-    });
+    const buffer = await exportProjectDocx(projectId, { rptData, type, scope });
 
     const filename = (rawFilename || project.name || 'report').replace(/[^a-z0-9_\-. ]/gi, '_');
     res.set({
